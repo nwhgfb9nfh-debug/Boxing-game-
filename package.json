@@ -1,0 +1,17 @@
+{
+  "name": "boxing-game-",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:artifact": "tsc && ARTIFACT_BUILD=1 vite build && node scripts/make-artifact.mjs dist-artifact/index.html dist-artifact/artifact-content.html",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
