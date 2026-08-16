@@ -1,5 +1,5 @@
 // Heavy Bag training minigame (Section 4, Power stat): the meter charges
-// on its own once started, release inside the sweet-spot zone. 5 reps.
+// on its own once started, release inside the sweet-spot zone. 12 reps.
 // Driven by two discrete taps (start / release) rather than a
 // press-and-hold — see ui/actionButtons.ts. Intensity/Energy Star/stat
 // persistence aren't wired up yet — this piece just proves the core
@@ -16,7 +16,7 @@
 export type HeavyBagResult = "weak" | "good" | "perfect" | "overswing";
 export type HeavyBagPhase = "ready" | "charging" | "result" | "summary";
 
-const REPS = 5;
+const REPS = 12;
 const FILL_DURATION = 1.1; // seconds for the meter to go 0 -> 1
 const RESULT_PAUSE = 0.9; // seconds to show the per-rep result before continuing
 

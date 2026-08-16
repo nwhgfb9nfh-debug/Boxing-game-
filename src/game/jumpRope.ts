@@ -1,4 +1,4 @@
-// Jump Rope training minigame (Section 4, Endurance stat): 16 beats at a
+// Jump Rope training minigame (Section 4, Endurance stat): 12 beats at a
 // fixed rhythm, tap in sync without breaking stride. Graded per beat
 // (Perfect/Good/Miss) — purely by the ball's position at the moment of
 // tap, no clock and no decay over time. The grade is read directly off
@@ -15,7 +15,7 @@
 export type JumpRopeResult = "perfect" | "good" | "miss";
 export type JumpRopePhase = "countdown" | "active" | "summary";
 
-const BEATS = 16;
+const BEATS = 12;
 const BEAT_INTERVAL = 0.75; // seconds per bounce cycle — the fixed rhythm (a longer drop, slower rhythm)
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.2; // seconds the marker holds its result color

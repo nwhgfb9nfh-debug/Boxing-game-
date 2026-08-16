@@ -1,4 +1,4 @@
-// Reflex Dots training minigame (Section 4, Speed stat): 5 dots flash
+// Reflex Dots training minigame (Section 4, Speed stat): 12 dots flash
 // briefly at random positions; tap before they vanish. Graded by
 // reaction speed — Green (0-0.50 of the window) = Perfect, Yellow
 // (0.50-0.90) = Good. The dot vanishes right at 0.90 — there's no
@@ -8,7 +8,7 @@
 export type ReflexResult = "perfect" | "good" | "miss";
 export type ReflexPhase = "waiting" | "active" | "result" | "summary";
 
-const ROUNDS = 5;
+const ROUNDS = 12;
 const DOT_LIFETIME = 0.85; // seconds the zone timings are fractions of
 const HIT_RADIUS = 44;
 const RESULT_PAUSE = 0.7;
