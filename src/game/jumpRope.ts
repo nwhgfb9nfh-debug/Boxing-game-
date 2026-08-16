@@ -16,7 +16,7 @@ export type JumpRopeResult = "perfect" | "good" | "miss";
 export type JumpRopePhase = "countdown" | "active" | "summary";
 
 const BEATS = 16;
-const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
+const BEAT_INTERVAL = 0.75; // seconds per bounce cycle — the fixed rhythm (a longer drop, slower rhythm)
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
 const BALL_RADIUS = 22;
@@ -94,8 +94,8 @@ export class JumpRopeScene {
   // Single source of truth for the ball/line positions, shared by
   // handleTap() and render() so grading always matches what's drawn.
   private geometry(height: number) {
-    const centerY = height * 0.42;
-    const amplitude = height * 0.16;
+    const centerY = height * 0.46;
+    const amplitude = height * 0.2; // taller drop from the top down to the line
     // The line sits just past the ball's lowest point (by radius + a tiny
     // clearance) — the ball barely fits fully below it at the very bottom
     // of the swing, leaving almost no room to spare once it's underneath.
