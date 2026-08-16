@@ -5,6 +5,7 @@ import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
+import { createActionMenu } from "./ui/actionMenu";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
@@ -66,7 +67,9 @@ function getHouseListings(): HouseListing[] {
 const phoneApi: PhoneApi = {
   getEnergy: () => energy.remaining,
   getFame: () => playerState.fame,
+  getImage: () => playerState.image,
   getMoney: () => playerState.money,
+  getHp: () => playerState.hp,
   getTraining: () => playerState.training,
   getHouses: getHouseListings,
   buyHouse: (name) => {
@@ -97,6 +100,31 @@ phoneBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   phoneUI.open();
 });
+
+// Shared overlay for every other Private Life location's action menu
+// (Gym's Workout Clip first; Diner/Beach/Office/Lounge/Press reuse this
+// same instance as they come online — only one can be open at a time).
+const locationMenu = createActionMenu(app);
+
+function openWorkoutClipMenu() {
+  locationMenu.open(() => ({
+    title: "🎥 Workout Clip",
+    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+    actions: [
+      {
+        id: "post-workout",
+        label: "Post a Workout Clip",
+        cost: 10,
+        run: () => {
+          if (!energy.spend(10)) return "Not enough energy to post a clip.";
+          playerState.fame += 2;
+          playerState.image += 2;
+          return "Posted! Fame +2, Image +2.";
+        },
+      },
+    ],
+  }));
+}
 
 function sleepAtBed(anchor: { x: number; y: number }) {
   const leftover = energy.sleep();
@@ -138,6 +166,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
     { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
     { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
+    { id: "workoutclip", label: "Workout Clip", nx: 0.5, ny: 0.6 },
   ],
 };
 
@@ -218,8 +247,10 @@ function loop(now: number) {
     moneyPill.textContent = `$${playerState.money}`;
   }
 
-  // The Phone only works inside a building, not while driving.
-  phoneBtn.style.display = scene.type === "interior" && !phoneUI.isOpen() ? "flex" : "none";
+  // The Phone only works inside a building, not while driving, and stays
+  // hidden while another location's action menu is already open.
+  phoneBtn.style.display =
+    scene.type === "interior" && !phoneUI.isOpen() && !locationMenu.isOpen() ? "flex" : "none";
 
   if (scene.type === "street") {
     street.update(dt);
@@ -248,8 +279,10 @@ function loop(now: number) {
       exitBuilding();
     } else if (nearStation) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
-      const onTrigger =
-        nearStation.id === "bed" ? () => sleepAtBed(pos) : () => startStation(lot, interior, nearStation.id);
+      let onTrigger: () => void;
+      if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
+      else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
+      else onTrigger = () => startStation(lot, interior, nearStation.id);
       buildingUI.setEnterPrompt(pos, onTrigger, nearStation.label.toUpperCase());
     } else {
       buildingUI.setEnterPrompt(null, () => {});

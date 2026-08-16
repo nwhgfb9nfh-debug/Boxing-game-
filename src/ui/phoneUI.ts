@@ -15,7 +15,9 @@ export interface HouseListing {
 export interface PhoneApi {
   getEnergy: () => number;
   getFame: () => number;
+  getImage: () => number;
   getMoney: () => number;
+  getHp: () => number;
   getTraining: () => TrainingStats;
   getHouses: () => HouseListing[];
   buyHouse: (name: string) => string;
@@ -148,25 +150,54 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
 
   function renderStats() {
     const t = api.getTraining();
-    const list = document.createElement("div");
-    list.className = "phone-stats";
     const statValue = (s: { bonus: number; trained: boolean }) => (s.trained ? `+${s.bonus}` : "Not trained yet");
-    const rows: [string, string][] = [
+
+    const trainingHeader = document.createElement("div");
+    trainingHeader.className = "phone-stats__header";
+    trainingHeader.textContent = "Training";
+    panel.appendChild(trainingHeader);
+
+    const trainingList = document.createElement("div");
+    trainingList.className = "phone-stats";
+    const trainingRows: [string, string][] = [
       ["Power", statValue(t.power)],
       ["Speed", statValue(t.speed)],
       ["Endurance", statValue(t.endurance)],
       ["Chin", statValue(t.chin)],
     ];
-    for (const [label, value] of rows) {
+    for (const [label, value] of trainingRows) {
       const row = document.createElement("div");
       row.className = "phone-stats__row";
       row.innerHTML = `<span>${label}</span><span>${value}</span>`;
-      list.appendChild(row);
+      trainingList.appendChild(row);
     }
-    panel.appendChild(list);
+    panel.appendChild(trainingList);
+
+    const statusHeader = document.createElement("div");
+    statusHeader.className = "phone-stats__header";
+    statusHeader.textContent = "Status";
+    panel.appendChild(statusHeader);
+
+    const statusList = document.createElement("div");
+    statusList.className = "phone-stats";
+    const statusRows: [string, string][] = [
+      ["Energy", `${api.getEnergy()}/100`],
+      ["HP", `${api.getHp()}`],
+      ["Money", `$${api.getMoney()}`],
+      ["Fame", `${api.getFame()}`],
+      ["Image", `${api.getImage()}`],
+    ];
+    for (const [label, value] of statusRows) {
+      const row = document.createElement("div");
+      row.className = "phone-stats__row";
+      row.innerHTML = `<span>${label}</span><span>${value}</span>`;
+      statusList.appendChild(row);
+    }
+    panel.appendChild(statusList);
+
     const note = document.createElement("div");
     note.className = "phone-empty";
-    note.textContent = "Bonuses from completed training sessions — these carry into fight day.";
+    note.textContent = "Training bonuses carry into fight day.";
     panel.appendChild(note);
   }
 
