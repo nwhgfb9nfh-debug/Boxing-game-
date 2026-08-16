@@ -149,6 +149,16 @@ canvas {
   transform: translate(-50%, -50%) scale(0.94);
 }
 
+/* Invisible full-screen tap target for minigames like Reflex Dots — the
+   canvas draws the target, this just catches where the player tapped. */
+.tap-zone {
+  position: absolute;
+  inset: 0;
+  display: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Floating joystick: an invisible full-screen touch zone. Nothing is
    drawn until the player puts a finger down — the stick then appears
    centered exactly where they touched. */

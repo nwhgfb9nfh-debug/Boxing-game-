@@ -3,9 +3,11 @@ import { createDriveControls } from "./ui/controls";
 import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
+import { createTapZone } from "./ui/tapZone";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
+import { ReflexDotsScene } from "./game/reflexDots";
 import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -25,18 +27,27 @@ const controls = createDriveControls(app);
 const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
+const tapZone = createTapZone(app);
 const street = new StreetScene(controls);
+
+tapZone.onTap((x, y) => {
+  if (scene.type === "reflexdots") scene.game.handleTap(x, y);
+});
 
 // Stations placed inside specific buildings' interiors — walk up to one
 // and its prompt surfaces the same way the street's ENTER prompt does.
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
-  Gym: [{ id: "heavybag", label: "Heavy Bag", nx: 0.5, ny: 0.32 }],
+  Gym: [
+    { id: "heavybag", label: "Heavy Bag", nx: 0.3, ny: 0.3 },
+    { id: "reflexdots", label: "Reflex Dots", nx: 0.7, ny: 0.3 },
+  ],
 };
 
 type Scene =
   | { type: "street" }
   | { type: "interior"; lot: LotInstance; interior: InteriorScene }
-  | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene };
+  | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
+  | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene };
 let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
@@ -61,15 +72,21 @@ function exitBuilding() {
   joystick.setActive(false);
 }
 
-function startHeavyBag(lot: LotInstance, interior: InteriorScene) {
-  scene = { type: "heavybag", lot, interior, game: new HeavyBagScene() };
+function startStation(lot: LotInstance, interior: InteriorScene, stationId: string) {
   joystick.setActive(false);
   buildingUI.setEnterPrompt(null, () => {});
+  if (stationId === "heavybag") {
+    scene = { type: "heavybag", lot, interior, game: new HeavyBagScene() };
+  } else if (stationId === "reflexdots") {
+    scene = { type: "reflexdots", lot, interior, game: new ReflexDotsScene() };
+    tapZone.setActive(true);
+  }
 }
 
-function finishHeavyBag(lot: LotInstance, interior: InteriorScene) {
+function finishMinigame(lot: LotInstance, interior: InteriorScene) {
   scene = { type: "interior", lot, interior };
   actionButtons.hideAll();
+  tapZone.setActive(false);
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
 }
@@ -117,11 +134,11 @@ function loop(now: number) {
       exitBuilding();
     } else if (nearStation) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
-      buildingUI.setEnterPrompt(pos, () => startHeavyBag(lot, interior), nearStation.label.toUpperCase());
+      buildingUI.setEnterPrompt(pos, () => startStation(lot, interior, nearStation.id), nearStation.label.toUpperCase());
     } else {
       buildingUI.setEnterPrompt(null, () => {});
     }
-  } else {
+  } else if (scene.type === "heavybag") {
     const { lot, interior, game } = scene;
     game.update(dt);
     game.render(ctx, window.innerWidth, window.innerHeight);
@@ -139,7 +156,21 @@ function loop(now: number) {
     if (game.isDone()) {
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
-        () => finishHeavyBag(lot, interior),
+        () => finishMinigame(lot, interior),
+        "DONE",
+      );
+    }
+  } else {
+    const { lot, interior, game } = scene;
+    game.update(dt, window.innerWidth, window.innerHeight);
+    game.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = "Reflex Dots";
+
+    if (game.isDone()) {
+      tapZone.setActive(false);
+      buildingUI.setEnterPrompt(
+        { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
+        () => finishMinigame(lot, interior),
         "DONE",
       );
     }
