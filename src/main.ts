@@ -228,27 +228,129 @@ const GYM_CATEGORIES: GymCategory[] = [
 // any other room, but walking out their door returns to the Lobby instead
 // of the street — see the "interior" scene branch below.
 const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
-  1: [{ id: "charity", label: "Charity Appearance", nx: 0.5, ny: 0.4 }],
+  1: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
 };
 
-function openCharityMenu() {
-  locationMenu.open(() => ({
-    title: "🏢 Manager's Office",
-    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+const CASH_ADVANCE_AMOUNT = 1000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
+
+interface SponsorshipDeal {
+  id: string;
+  name: string;
+  payout: number; // placeholder signing bonus — recurring payouts arrive with a real sponsorship economy
+}
+const SPONSORSHIP_DEALS: SponsorshipDeal[] = [
+  { id: "local-gym", name: "Local Gym Co-Sponsor", payout: 500 },
+  { id: "sportswear", name: "Sportswear Brand", payout: 1500 },
+  { id: "energy-drink", name: "Energy Drink Co.", payout: 3000 },
+];
+
+type ManagerDeskView = "main" | "sponsorships";
+let managerDeskView: ManagerDeskView = "main";
+
+function buildManagerDeskMenu(): MenuData {
+  if (managerDeskView === "sponsorships") return buildSponsorshipsMenu();
+  return {
+    title: "🗄️ Manager Desk",
+    energyText: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}`,
     actions: [
       {
-        id: "charity",
-        label: "Charity Appearance",
-        cost: 15,
+        id: "set-next-fight",
+        label: "Set Next Fight",
+        cost: 0,
+        costLabel: playerState.fightScheduled ? "SCHEDULED" : "SET",
+        disabled: playerState.fightScheduled,
         run: () => {
-          if (!energy.spend(15)) return "Not enough energy for a charity appearance.";
-          playerState.fame += 3;
-          playerState.image += 2;
-          return `Great turnout! Fame +3, Image +2.`;
+          if (playerState.fightScheduled) return "You already have a fight scheduled.";
+          playerState.fightScheduled = true;
+          return "Fight scheduled! (Full matchmaking arrives with the Promotion system.)";
         },
       },
+      {
+        id: "sponsorships",
+        label: "Sponsorships",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          managerDeskView = "sponsorships";
+          return "";
+        },
+      },
+      {
+        id: "cash-advance",
+        label: "Request Cash Advance",
+        cost: 0,
+        costLabel: !playerState.fightScheduled
+          ? "NEED FIGHT"
+          : playerState.cashAdvanceTaken
+            ? "TAKEN"
+            : `+$${CASH_ADVANCE_AMOUNT}`,
+        disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
+        run: () => {
+          if (!playerState.fightScheduled) return "Schedule a fight first.";
+          if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
+          playerState.money += CASH_ADVANCE_AMOUNT;
+          playerState.cashAdvanceTaken = true;
+          return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
+        },
+      },
+      {
+        id: "media-training",
+        label: "Media Training",
+        cost: 0,
+        costLabel: "SOON",
+        disabled: true,
+        run: () => "Media Training opens once the Private Life phase loop is built.",
+      },
+      {
+        id: "charity-event",
+        label: "Charity Event",
+        cost: 0,
+        costLabel: "SOON",
+        disabled: true,
+        run: () => "Charity Event opens once the Private Life phase loop is built.",
+      },
     ],
-  }));
+  };
+}
+
+function buildSponsorshipsMenu(): MenuData {
+  return {
+    title: "🤝 Sponsorships",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          managerDeskView = "main";
+          return "";
+        },
+      },
+      ...SPONSORSHIP_DEALS.map((deal) => {
+        const signed = playerState.sponsorships.includes(deal.id);
+        return {
+          id: `sponsor-${deal.id}`,
+          label: `${deal.name} (+$${deal.payout})`,
+          cost: 0,
+          costLabel: signed ? "RUNNING" : "SIGN",
+          disabled: signed,
+          run: () => {
+            if (signed) return `${deal.name} is already running.`;
+            playerState.sponsorships.push(deal.id);
+            playerState.money += deal.payout;
+            return `Signed with ${deal.name}! +$${deal.payout}.`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+function openManagerDeskMenu() {
+  managerDeskView = "main";
+  locationMenu.open(buildManagerDeskMenu);
 }
 
 type ReceptionView = "main" | "staff" | "staff-role" | "gym" | "gym-category";
@@ -347,7 +449,6 @@ function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
           disabled: owned,
           run: () => {
             if (owned) return `${role.name} Lvl ${level} already hired.`;
-            if (level !== current + 1) return `Hire ${role.name} Lvl ${current + 1} first.`;
             if (playerState.money < price) {
               return `Not enough money — need $${price}, have $${playerState.money}.`;
             }
@@ -419,7 +520,6 @@ function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
           disabled: owned,
           run: () => {
             if (owned) return `${cat.name} Lvl ${level} already owned.`;
-            if (level !== current + 1) return `Upgrade to Lvl ${current + 1} first.`;
             if (playerState.money < price) {
               return `Not enough money — need $${price}, have $${playerState.money}.`;
             }
@@ -650,7 +750,7 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "charity") onTrigger = openCharityMenu;
+      else if (nearStation.id === "managerdesk") onTrigger = openManagerDeskMenu;
       else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;

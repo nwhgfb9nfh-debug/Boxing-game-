@@ -48,6 +48,12 @@ export interface PlayerState {
   coachLevel: number;
   cutmanLevel: number;
   gymLevels: GymLevels;
+  // Manager's Office desk (Section 5): a real fight-scheduling/purse system
+  // doesn't exist yet (needs Promotion/Fight), so these are placeholders —
+  // fightScheduled just gates Cash Advance and re-selecting Set Next Fight.
+  fightScheduled: boolean;
+  cashAdvanceTaken: boolean;
+  sponsorships: string[]; // ids of signed sponsorship deals
 }
 
 function freshStat(): StatProgress {
@@ -65,5 +71,8 @@ export function createPlayerState(): PlayerState {
     coachLevel: 1,
     cutmanLevel: 1,
     gymLevels: { weightArea: 1, power: 1, speed: 1, endurance: 1 },
+    fightScheduled: false,
+    cashAdvanceTaken: false,
+    sponsorships: [],
   };
 }
