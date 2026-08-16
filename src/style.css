@@ -122,6 +122,38 @@ canvas {
   transform: translate(-50%, -50%) scale(0.94);
 }
 
+.joystick {
+  position: absolute;
+  left: 26px;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: none;
+}
+
+.joystick__base {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+.joystick__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin-left: -28px;
+  margin-top: -28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffd23f, #b9910a);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: transform 0.05s linear;
+}
+
 .btn--exit {
   position: absolute;
   left: 50%;

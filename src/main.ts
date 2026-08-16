@@ -1,8 +1,9 @@
 import "./style.css";
 import { createDriveControls } from "./ui/controls";
 import { createBuildingUI } from "./ui/buildingUI";
+import { createJoystick } from "./ui/joystick";
 import { StreetScene } from "./game/street";
-import { renderInterior } from "./game/interior";
+import { InteriorScene } from "./game/interior";
 import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -20,22 +21,27 @@ app.appendChild(hud);
 
 const controls = createDriveControls(app);
 const buildingUI = createBuildingUI(app);
+const joystick = createJoystick(app);
 const street = new StreetScene(controls);
 
-type Scene = { type: "street" } | { type: "interior"; lot: LotInstance };
+type Scene =
+  | { type: "street" }
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene };
 let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance) {
-  scene = { type: "interior", lot };
+  scene = { type: "interior", lot, interior: new InteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   buildingUI.showExit(exitBuilding);
+  joystick.root.style.display = "block";
 }
 
 function exitBuilding() {
   scene = { type: "street" };
   controls.root.style.display = "flex";
   buildingUI.hideExit();
+  joystick.root.style.display = "none";
 }
 
 function resize() {
@@ -72,7 +78,8 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else {
-    renderInterior(ctx, window.innerWidth, window.innerHeight, scene.lot);
+    scene.interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
+    scene.interior.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = scene.lot.building.name;
   }
 
