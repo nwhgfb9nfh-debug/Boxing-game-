@@ -5,7 +5,7 @@ import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
-import { createActionMenu } from "./ui/actionMenu";
+import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
@@ -183,17 +183,42 @@ function openSwimMenu() {
   }));
 }
 
-// Office reception (Section 5): a manager (Lvl 1) is already on staff for
-// free; Lvl 2/3 cost money and each one unlocks the matching elevator floor.
-interface ManagerTier {
+// Office reception (Section 5): each staff role (and the gym itself) is
+// already at Lvl 1 for free; Lvl 2/3 cost money. Manager level additionally
+// gates which Office elevator floors are reachable.
+interface StaffRole {
+  id: "manager" | "coach" | "promoter";
+  name: string;
+  icon: string;
+  prices: [number, number]; // price to reach Lvl 2, Lvl 3
+}
+const STAFF_ROLES: StaffRole[] = [
+  { id: "manager", name: "Manager", icon: "💼", prices: [2000, 5000] },
+  { id: "coach", name: "Coach", icon: "🥊", prices: [2000, 5000] },
+  { id: "promoter", name: "Promoter", icon: "📣", prices: [1500, 4000] },
+];
+
+function getStaffLevel(role: StaffRole["id"]): number {
+  if (role === "manager") return playerState.managerLevel;
+  if (role === "coach") return playerState.coachLevel;
+  return playerState.promoterLevel;
+}
+
+function setStaffLevel(role: StaffRole["id"], level: number) {
+  if (role === "manager") playerState.managerLevel = level;
+  else if (role === "coach") playerState.coachLevel = level;
+  else playerState.promoterLevel = level;
+}
+
+interface GymTier {
   level: number;
   name: string;
   price: number;
 }
-const MANAGER_TIERS: ManagerTier[] = [
-  { level: 1, name: "Manager — Lvl 1", price: 0 },
-  { level: 2, name: "Manager — Lvl 2", price: 2000 },
-  { level: 3, name: "Manager — Lvl 3", price: 5000 },
+const GYM_TIERS: GymTier[] = [
+  { level: 1, name: "Gym — Lvl 1", price: 0 },
+  { level: 2, name: "Gym — Lvl 2", price: 3000 },
+  { level: 3, name: "Gym — Lvl 3", price: 7000 },
 ];
 
 // Office is a multi-room building: Lobby (Reception + Elevator) -> Floor
@@ -224,30 +249,121 @@ function openCharityMenu() {
   }));
 }
 
-function openReceptionMenu() {
-  locationMenu.open(() => ({
+type ReceptionView = "main" | "staff" | "gym";
+let receptionView: ReceptionView = "main";
+
+function buildReceptionMenu(): MenuData {
+  if (receptionView === "staff") return buildStaffMenu();
+  if (receptionView === "gym") return buildGymMenu();
+  return {
     title: "🛎️ Reception",
     energyText: `Money: $${playerState.money}`,
-    actions: MANAGER_TIERS.map((tier) => {
-      const owned = playerState.managerLevel >= tier.level;
-      return {
-        id: `hire-${tier.level}`,
-        label: tier.name,
+    actions: [
+      {
+        id: "hire-staff",
+        label: "Hire Staff",
         cost: 0,
-        costLabel: owned ? "HIRED" : `$${tier.price}`,
-        disabled: owned,
+        costLabel: "›",
         run: () => {
-          if (owned) return `${tier.name} already hired.`;
-          if (playerState.money < tier.price) {
-            return `Not enough money — need $${tier.price}, have $${playerState.money}.`;
-          }
-          playerState.money -= tier.price;
-          playerState.managerLevel = tier.level;
-          return `${tier.name} hired! Floor ${tier.level} unlocked.`;
+          receptionView = "staff";
+          return "";
         },
-      };
-    }),
-  }));
+      },
+      {
+        id: "upgrade-gym",
+        label: "Upgrade Gym",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          receptionView = "gym";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildStaffMenu(): MenuData {
+  return {
+    title: "👥 Hire Staff",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          receptionView = "main";
+          return "";
+        },
+      },
+      ...STAFF_ROLES.map((role) => {
+        const level = getStaffLevel(role.id);
+        const maxed = level >= 3;
+        const price = maxed ? 0 : role.prices[level - 1];
+        return {
+          id: `hire-${role.id}`,
+          label: `${role.icon} ${role.name} (Lvl ${level}/3)`,
+          cost: 0,
+          costLabel: maxed ? "MAX" : `$${price}`,
+          disabled: maxed,
+          run: () => {
+            if (maxed) return `${role.name} is already Lvl 3.`;
+            if (playerState.money < price) {
+              return `Not enough money — need $${price}, have $${playerState.money}.`;
+            }
+            playerState.money -= price;
+            setStaffLevel(role.id, level + 1);
+            return `${role.name} promoted to Lvl ${level + 1}!`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+function buildGymMenu(): MenuData {
+  return {
+    title: "🏋️ Upgrade Gym",
+    energyText: `Money: $${playerState.money}  ·  Current: Lvl ${playerState.gymLevel}/3`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          receptionView = "main";
+          return "";
+        },
+      },
+      ...GYM_TIERS.map((tier) => {
+        const owned = playerState.gymLevel >= tier.level;
+        return {
+          id: `gym-${tier.level}`,
+          label: tier.name,
+          cost: 0,
+          costLabel: owned ? "OWNED" : `$${tier.price}`,
+          disabled: owned,
+          run: () => {
+            if (owned) return `${tier.name} already owned.`;
+            if (playerState.money < tier.price) {
+              return `Not enough money — need $${tier.price}, have $${playerState.money}.`;
+            }
+            playerState.money -= tier.price;
+            playerState.gymLevel = tier.level;
+            return `${tier.name} unlocked!`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+function openReceptionMenu() {
+  receptionView = "main";
+  locationMenu.open(buildReceptionMenu);
 }
 
 function openElevatorMenu(lot: LotInstance) {

@@ -30,10 +30,14 @@ export interface PlayerState {
   // starts (not implemented yet — no fight system).
   hp: number;
   training: TrainingStats;
-  // Office reception (Section 5): starts at 1 (a manager is already on
-  // staff), rises to 2 or 3 as higher-tier managers are hired. Gates which
-  // Office elevator floors are reachable.
+  // Office reception (Section 5): staff levels all start at 1 (already on
+  // staff), rising to 2 or 3 as higher tiers are hired for money.
+  // managerLevel also gates which Office elevator floors are reachable.
   managerLevel: number;
+  coachLevel: number;
+  promoterLevel: number;
+  // Gym upgrade tier, bought at Reception — starts at 1 (current gym).
+  gymLevel: number;
 }
 
 function freshStat(): StatProgress {
@@ -48,5 +52,8 @@ export function createPlayerState(): PlayerState {
     hp: 100,
     training: { power: freshStat(), speed: freshStat(), endurance: freshStat(), chin: freshStat() },
     managerLevel: 1,
+    coachLevel: 1,
+    promoterLevel: 1,
+    gymLevel: 1,
   };
 }
