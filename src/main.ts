@@ -37,15 +37,18 @@ const street = new StreetScene(controls);
 const playerState = createPlayerState();
 const energy = new EnergyStar();
 
-// Energy Star + HP (Section 3 & 7) — always visible outside minigames.
+// Energy Star + HP + Money (Section 3, 5 & 7) — always visible outside minigames.
 const statusHud = document.createElement("div");
 statusHud.className = "status-hud";
 const energyPill = document.createElement("div");
 energyPill.className = "status-hud__pill status-hud__pill--energy";
 const hpPill = document.createElement("div");
 hpPill.className = "status-hud__pill status-hud__pill--hp";
+const moneyPill = document.createElement("div");
+moneyPill.className = "status-hud__pill status-hud__pill--money";
 statusHud.appendChild(energyPill);
 statusHud.appendChild(hpPill);
+statusHud.appendChild(moneyPill);
 app.appendChild(statusHud);
 
 // The Phone (Section 5) — only usable inside a building, not while
@@ -200,6 +203,7 @@ function loop(now: number) {
   if (outOfMinigame) {
     energyPill.textContent = `⚡ ${energy.remaining}/100`;
     hpPill.textContent = `❤ ${playerState.hp} HP`;
+    moneyPill.textContent = `$${playerState.money}`;
   }
 
   // The Phone only works inside a building, not while driving.

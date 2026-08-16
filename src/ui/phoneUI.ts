@@ -22,7 +22,7 @@ export interface PhoneApi {
   post: () => string;
 }
 
-type View = "home" | "contacts" | "stats" | "realestate" | "buzzer" | "imagestar";
+type View = "home" | "contacts" | "stats" | "realestate" | "buzzer" | "imagestar" | "bca";
 
 interface AppDef {
   id: View;
@@ -36,6 +36,7 @@ const APPS: AppDef[] = [
   { id: "realestate", icon: "🏠", label: "Real Estate" },
   { id: "buzzer", icon: "🐦", label: "Buzzer" },
   { id: "imagestar", icon: "📷", label: "Imagestar" },
+  { id: "bca", icon: "👑", label: "BCA" },
 ];
 
 export interface PhoneUI {
@@ -104,7 +105,8 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     else if (view === "stats") renderStats();
     else if (view === "realestate") renderRealEstate();
     else if (view === "buzzer") renderBuzzer();
-    else renderImagestar();
+    else if (view === "imagestar") renderImagestar();
+    else renderBCA();
   }
 
   function renderHome() {
@@ -148,11 +150,12 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     const t = api.getTraining();
     const list = document.createElement("div");
     list.className = "phone-stats";
+    const statValue = (n: number) => (n > 0 ? `+${n}` : "Not trained yet");
     const rows: [string, string][] = [
-      ["Power", `+${t.power}`],
-      ["Speed", `+${t.speed}`],
-      ["Endurance", `+${t.endurance}`],
-      ["Chin", t.chin > 0 ? `+${t.chin}` : "Not trained yet"],
+      ["Power", statValue(t.power)],
+      ["Speed", statValue(t.speed)],
+      ["Endurance", statValue(t.endurance)],
+      ["Chin", statValue(t.chin)],
     ];
     for (const [label, value] of rows) {
       const row = document.createElement("div");
@@ -222,6 +225,14 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     const empty = document.createElement("div");
     empty.className = "phone-empty";
     empty.textContent = "Imagestar is coming soon.";
+    panel.appendChild(empty);
+  }
+
+  function renderBCA() {
+    const empty = document.createElement("div");
+    empty.className = "phone-empty";
+    empty.textContent =
+      "Boxing Crown Association — rankings will appear here once the opponent roster is built.";
     panel.appendChild(empty);
   }
 

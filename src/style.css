@@ -252,6 +252,10 @@ canvas {
   color: #ff6b6b;
 }
 
+.status-hud__pill--money {
+  color: #3fbf6b;
+}
+
 /* Phone — only usable inside a building, so it sits below the status HUD
    rather than competing with it on the street. */
 .btn--phone {
