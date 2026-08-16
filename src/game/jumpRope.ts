@@ -12,13 +12,14 @@ export type JumpRopePhase = "countdown" | "active" | "summary";
 
 const BEATS = 16;
 const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
-const LEAD_IN = BEAT_INTERVAL * 2; // two practice bounces before beat 0 counts
+const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
 const BALL_RADIUS = 22;
 
 export class JumpRopeScene {
   private phase: JumpRopePhase = "countdown";
-  private elapsed = 0;
+  private countdownElapsed = 0;
+  private activeElapsed = 0; // resets to 0 when "active" begins — the ball starts at the top here
   private beatIndex = 0;
   private results: JumpRopeResult[] = [];
   private scoredThisBeat = false;
@@ -26,7 +27,6 @@ export class JumpRopeScene {
 
   update(dt: number) {
     if (this.phase === "summary") return;
-    this.elapsed += dt;
 
     if (this.flash) {
       this.flash.timer -= dt;
@@ -34,15 +34,21 @@ export class JumpRopeScene {
     }
 
     if (this.phase === "countdown") {
-      if (this.elapsed >= LEAD_IN) this.phase = "active";
+      this.countdownElapsed += dt;
+      if (this.countdownElapsed >= COUNTDOWN_DURATION) {
+        this.phase = "active";
+        this.activeElapsed = 0;
+      }
       return;
     }
+
+    this.activeElapsed += dt;
 
     // A beat's opportunity closes once the ball has swung all the way
     // back to the top (half a cycle after its peak) — if it wasn't
     // tapped by then, that's a Miss by timeout.
-    const beatTime = LEAD_IN + this.beatIndex * BEAT_INTERVAL;
-    if (!this.scoredThisBeat && this.elapsed >= beatTime + BEAT_INTERVAL / 2) {
+    const closeTime = (this.beatIndex + 1) * BEAT_INTERVAL;
+    if (!this.scoredThisBeat && this.activeElapsed >= closeTime) {
       this.recordBeat("miss");
     }
   }
@@ -81,8 +87,13 @@ export class JumpRopeScene {
     const centerY = height * 0.42;
     const amplitude = height * 0.16;
     const lineY = centerY + amplitude * 0.5;
-    const swingPhase = this.elapsed / BEAT_INTERVAL;
-    const ballY = centerY + amplitude * Math.cos(swingPhase * Math.PI * 2); // peak (bottom) exactly on each beat
+
+    // swingPhase = 0.5 is the top of the swing. During "countdown" the
+    // ball sits still there; once "active", it starts at the top
+    // (activeElapsed = 0) and falls toward its first peak (bottom) at
+    // swingPhase = 1, i.e. half a beat interval later.
+    const swingPhase = this.phase === "countdown" ? 0.5 : 0.5 + this.activeElapsed / BEAT_INTERVAL;
+    const ballY = centerY + amplitude * Math.cos(swingPhase * Math.PI * 2);
     const diff = ballY - lineY; // positive = ball's center has passed the line
     return { centerY, amplitude, lineY, ballY, diff };
   }
