@@ -121,6 +121,14 @@ export class StreetScene {
     return frameAt(this.worldX).label;
   }
 
+  getWorldX(): number {
+    return this.worldX;
+  }
+
+  isStopped(): boolean {
+    return !this.isUTurning && Math.abs(this.speed) < STOPPED_EPS;
+  }
+
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
     ctx.save();
     ctx.fillStyle = "#171a21";

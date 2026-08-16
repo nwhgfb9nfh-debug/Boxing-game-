@@ -1,6 +1,9 @@
 import "./style.css";
 import { createDriveControls } from "./ui/controls";
+import { createBuildingUI } from "./ui/buildingUI";
 import { StreetScene } from "./game/street";
+import { renderInterior } from "./game/interior";
+import { nearbyLots, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -16,7 +19,26 @@ hud.appendChild(hudLabel);
 app.appendChild(hud);
 
 const controls = createDriveControls(app);
+const buildingUI = createBuildingUI(app);
 const street = new StreetScene(controls);
+
+type Scene = { type: "street" } | { type: "interior"; lot: LotInstance };
+let scene: Scene = { type: "street" };
+let lastPromptKey = "";
+
+function enterBuilding(lot: LotInstance) {
+  scene = { type: "interior", lot };
+  controls.root.style.display = "none";
+  buildingUI.hideEnterPrompts();
+  lastPromptKey = "";
+  buildingUI.showExit(exitBuilding);
+}
+
+function exitBuilding() {
+  scene = { type: "street" };
+  controls.root.style.display = "flex";
+  buildingUI.hideExit();
+}
 
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -34,9 +56,21 @@ function loop(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  street.update(dt);
-  street.render(ctx, window.innerWidth, window.innerHeight);
-  hudLabel.textContent = street.getCurrentFrameLabel();
+  if (scene.type === "street") {
+    street.update(dt);
+    street.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = street.getCurrentFrameLabel();
+
+    const lots = street.isStopped() ? nearbyLots(street.getWorldX()) : [];
+    const key = lots.map((l) => l.building.name).join("|");
+    if (key !== lastPromptKey) {
+      lastPromptKey = key;
+      buildingUI.showEnterPrompts(lots, enterBuilding);
+    }
+  } else {
+    renderInterior(ctx, window.innerWidth, window.innerHeight, scene.lot);
+    hudLabel.textContent = scene.lot.building.name;
+  }
 
   requestAnimationFrame(loop);
 }

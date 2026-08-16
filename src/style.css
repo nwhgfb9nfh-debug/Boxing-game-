@@ -106,3 +106,36 @@ canvas {
   filter: grayscale(0.6) brightness(0.6);
   opacity: 0.55;
 }
+
+.enter-prompts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 110px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.btn--enter {
+  pointer-events: auto;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  background: linear-gradient(180deg, #3fbf6b, #22803f);
+  box-shadow: 0 6px 16px rgba(34, 128, 63, 0.5);
+}
+
+.btn--exit {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  border-radius: 10px;
+  padding: 14px 32px;
+  font-size: 16px;
+  background: linear-gradient(180deg, #ff5a5a, #b52b2b);
+  box-shadow: 0 6px 16px rgba(181, 43, 43, 0.5);
+}

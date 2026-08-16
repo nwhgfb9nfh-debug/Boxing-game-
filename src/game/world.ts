@@ -18,6 +18,14 @@ export interface BuildingDef {
   locked?: boolean;
 }
 
+// A specific enterable building/path placed in the world, used for
+// proximity detection and entering (Section 12 town nav, piece 2+).
+export interface LotInstance {
+  building: BuildingDef;
+  worldX: number; // lot center, world space
+  row: "top" | "bottom";
+}
+
 export interface StandardFrameDef {
   kind: "standard";
   index: number;
@@ -103,6 +111,41 @@ export const HOUSING_LOT_WIDTH = FRAME_WIDTH / HOUSING_LOTS_PER_ROW;
 
 // Player starts on the road in front of the Trailer (housing frame, bottom-left lot).
 export const START_WORLD_X = HOUSING_LOT_WIDTH * 0.5;
+
+// How close (world px) the player must stop to a lot to be able to enter it.
+export const ENTRY_PROXIMITY = 90;
+
+function computeEnterableLots(): LotInstance[] {
+  const lots: LotInstance[] = [];
+
+  for (const frame of FRAMES) {
+    const frameLeftWorld = frame.index * FRAME_WIDTH;
+
+    if (frame.kind === "housing") {
+      for (let i = 0; i < HOUSING_LOTS_PER_ROW; i++) {
+        const cx = frameLeftWorld + (i + 0.5) * HOUSING_LOT_WIDTH;
+        lots.push({ building: frame.top[i], worldX: cx, row: "top" });
+        lots.push({ building: frame.bottom[i], worldX: cx, row: "bottom" });
+      }
+    } else {
+      const cx = frameLeftWorld + (MAIN_LOT_INDEX + 0.5) * LOT_WIDTH;
+      if (frame.flavor) lots.push({ building: frame.flavor, worldX: cx, row: "top" });
+      lots.push({ building: frame.required, worldX: cx, row: "bottom" });
+    }
+  }
+
+  // The Arena's entry point is the plaza right in front of its doors —
+  // exactly where the road forces the player to stop.
+  lots.push({ building: ARENA, worldX: ARENA_PLAZA_STOP, row: "bottom" });
+
+  return lots;
+}
+
+export const ENTERABLE_LOTS: LotInstance[] = computeEnterableLots();
+
+export function nearbyLots(worldX: number): LotInstance[] {
+  return ENTERABLE_LOTS.filter((lot) => Math.abs(lot.worldX - worldX) <= ENTRY_PROXIMITY);
+}
 
 export function frameAt(worldX: number): { index: number; label: string } {
   const idx = Math.min(
