@@ -18,7 +18,8 @@ export type JumpRopePhase = "countdown" | "active" | "summary";
 const BEATS = 16;
 const BEAT_INTERVAL = 0.75; // seconds per bounce cycle — the fixed rhythm (a longer drop, slower rhythm)
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
-const FLASH_DURATION = 0.25; // seconds the marker holds its result color
+const FLASH_DURATION = 0.2; // seconds the marker holds its result color
+const FREEZE_DURATION = 0.2; // seconds the ball holds motionless at its tapped position, so what graded it is what you see
 const BALL_RADIUS = 22;
 // Extra room, past the "fully clear" threshold, the ball has before it
 // hits the bottom of its swing — kept tiny so Perfect has almost no
@@ -33,6 +34,12 @@ export class JumpRopeScene {
   private results: JumpRopeResult[] = [];
   private scoredThisBeat = false;
   private flash: { result: JumpRopeResult; timer: number } | null = null;
+  // Set only on a tap (not a timeout) — while active, activeElapsed
+  // doesn't advance, so geometry() keeps returning the exact position the
+  // ball was at when it was graded. That's the whole point: no ambiguity
+  // between what you saw, what got graded, and what a lagging tap might
+  // have caught the ball doing next.
+  private freeze: { timer: number } | null = null;
 
   update(dt: number) {
     if (this.phase === "summary") return;
@@ -40,6 +47,15 @@ export class JumpRopeScene {
     if (this.flash) {
       this.flash.timer -= dt;
       if (this.flash.timer <= 0) this.flash = null;
+    }
+
+    if (this.freeze) {
+      this.freeze.timer -= dt;
+      if (this.freeze.timer <= 0) {
+        this.freeze = null;
+        this.activeElapsed = 0; // freeze over — fresh drop from the top for the next beat
+      }
+      return;
     }
 
     if (this.phase === "countdown") {
@@ -55,7 +71,8 @@ export class JumpRopeScene {
 
     // A beat's opportunity closes once the ball has swung all the way
     // back to the top (half a cycle after its peak) — if it wasn't
-    // tapped by then, that's a Miss by timeout.
+    // tapped by then, that's a Miss by timeout (no freeze — there's no
+    // tapped position to hold on).
     const closeTime = (this.beatIndex + 1) * BEAT_INTERVAL;
     if (!this.scoredThisBeat && this.activeElapsed >= closeTime) {
       this.recordBeat("miss");
@@ -66,13 +83,16 @@ export class JumpRopeScene {
    * Grades instantly against the ball's current position vs. the line —
    * tapping before the ball has reached the line is a Miss, same as not
    * tapping at all. No time-based decay: Perfect holds for the ball's
-   * entire fully-clear window, not just the instant it crosses.
+   * entire fully-clear window, not just the instant it crosses. Freezes
+   * the ball in place for FREEZE_DURATION so the feedback shown always
+   * matches exactly what got graded.
    */
   handleTap(height: number) {
-    if (this.phase !== "active" || this.scoredThisBeat) return;
+    if (this.phase !== "active" || this.scoredThisBeat || this.freeze) return;
     const { diff } = this.geometry(height);
     const result: JumpRopeResult = diff >= BALL_RADIUS ? "perfect" : diff > 0 ? "good" : "miss";
     this.recordBeat(result);
+    this.freeze = { timer: FREEZE_DURATION };
   }
 
   private recordBeat(result: JumpRopeResult) {
