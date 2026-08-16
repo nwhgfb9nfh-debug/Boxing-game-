@@ -296,18 +296,24 @@ function buildManagerDeskMenu(): MenuData {
       {
         id: "media-training",
         label: "Media Training",
-        cost: 0,
-        costLabel: "SOON",
-        disabled: true,
-        run: () => "Media Training opens once the Private Life phase loop is built.",
+        cost: 10,
+        run: () => {
+          if (!energy.spend(10)) return "Not enough energy for media training.";
+          playerState.image += 2;
+          return `Image +2 (now ${playerState.image}).`;
+        },
       },
       {
         id: "charity-event",
         label: "Charity Event",
-        cost: 0,
-        costLabel: "SOON",
-        disabled: true,
-        run: () => "Charity Event opens once the Private Life phase loop is built.",
+        cost: 15,
+        run: () => {
+          if (!energy.spend(15)) return "Not enough energy for a charity event.";
+          if (playerState.hp < 5) return "Not enough HP for a charity event.";
+          playerState.hp -= 5;
+          playerState.image += 5;
+          return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
+        },
       },
     ],
   };
