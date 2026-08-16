@@ -39,7 +39,7 @@ export class InteriorScene {
   private lot: LotInstance;
   private stations: Station[];
   private px = 0.5; // normalized position within the room, 0..1
-  private py = 0.7; // start a bit above the door so walking in doesn't instantly trigger an exit
+  private py = 0.88; // spawn right above the door — just far enough that walking in doesn't instantly trigger an exit
 
   constructor(lot: LotInstance, stations: Station[] = []) {
     this.lot = lot;

@@ -145,10 +145,10 @@ function openDinerMenu() {
   }));
 }
 
-function openBeachMenu() {
+function openSunbatheMenu() {
   locationMenu.open(() => ({
-    title: "🏖️ Beach",
-    energyText: `Energy: ${energy.remaining}/100  ·  Image: ${playerState.image}  ·  HP: ${playerState.hp}`,
+    title: "☀️ Sunbathe",
+    energyText: `Energy: ${energy.remaining}/100  ·  Image: ${playerState.image}`,
     actions: [
       {
         id: "sunbathe",
@@ -160,6 +160,15 @@ function openBeachMenu() {
           return `Image +3 (now ${playerState.image}).`;
         },
       },
+    ],
+  }));
+}
+
+function openSwimMenu() {
+  locationMenu.open(() => ({
+    title: "🌊 Swim",
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
+    actions: [
       {
         id: "swim",
         label: "Swim",
@@ -217,7 +226,10 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "workoutclip", label: "Workout Clip", nx: 0.5, ny: 0.6 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
-  Beach: [{ id: "beach-activities", label: "Beach", nx: 0.5, ny: 0.4 }],
+  Beach: [
+    { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
+    { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
+  ],
 };
 
 type Scene =
@@ -344,7 +356,8 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "beach-activities") onTrigger = openBeachMenu;
+      else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
+      else if (nearStation.id === "swim") onTrigger = openSwimMenu;
       else onTrigger = () => startStation(lot, interior, nearStation.id, pos);
       buildingUI.setEnterPrompt(pos, onTrigger, nearStation.label.toUpperCase());
     } else {
