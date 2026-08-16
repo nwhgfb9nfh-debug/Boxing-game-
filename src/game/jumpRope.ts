@@ -1,19 +1,20 @@
 // Jump Rope training minigame (Section 4, Endurance stat): 16 beats at a
 // fixed rhythm, tap in sync without breaking stride. Graded per beat
-// (Perfect/Good/Miss). Unlike Reflex Dots' random single targets, the
-// beat is a fixed, predictable metronome — a bouncing marker peaks
-// (ground contact) exactly on each beat, and tapping anywhere on screen
-// near that moment scores it.
+// (Perfect/Good/Miss) — but unlike a hidden timing window, the grade is
+// read directly off what's on screen: the ball's center Y vs. the dashed
+// line's Y, measured in ball radii.
+//   Perfect: center has cleared the line by >= 1 full radius (whole ball past it)
+//   Good: center has passed the line, but by less than 1 radius
+//   Miss: center hasn't reached the line yet (tapped too early), or no tap at all
 
 export type JumpRopeResult = "perfect" | "good" | "miss";
 export type JumpRopePhase = "countdown" | "active" | "summary";
 
 const BEATS = 16;
-const BEAT_INTERVAL = 0.62; // seconds between beats — the fixed rhythm
-const PERFECT_WINDOW = 0.1; // +/- seconds around the beat for Perfect
-const GOOD_WINDOW = 0.22; // +/- seconds around the beat for Good
+const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
 const LEAD_IN = BEAT_INTERVAL * 2; // two practice bounces before beat 0 counts
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
+const BALL_RADIUS = 22;
 
 export class JumpRopeScene {
   private phase: JumpRopePhase = "countdown";
@@ -37,19 +38,25 @@ export class JumpRopeScene {
       return;
     }
 
+    // A beat's opportunity closes once the ball has swung all the way
+    // back to the top (half a cycle after its peak) — if it wasn't
+    // tapped by then, that's a Miss by timeout.
     const beatTime = LEAD_IN + this.beatIndex * BEAT_INTERVAL;
-    if (!this.scoredThisBeat && this.elapsed >= beatTime + GOOD_WINDOW) {
+    if (!this.scoredThisBeat && this.elapsed >= beatTime + BEAT_INTERVAL / 2) {
       this.recordBeat("miss");
     }
   }
 
-  /** Call on any tap — ignored unless it lands within the current beat's window. */
-  handleTap() {
+  /**
+   * Grades instantly against the ball's current position vs. the line —
+   * tapping before the ball has reached the line is a Miss, same as not
+   * tapping at all, per the spec's position-based rule.
+   */
+  handleTap(height: number) {
     if (this.phase !== "active" || this.scoredThisBeat) return;
-    const beatTime = LEAD_IN + this.beatIndex * BEAT_INTERVAL;
-    const delta = Math.abs(this.elapsed - beatTime);
-    if (delta > GOOD_WINDOW) return; // nowhere near a beat — ignore, don't waste it
-    this.recordBeat(delta <= PERFECT_WINDOW ? "perfect" : "good");
+    const { diff } = this.geometry(height);
+    const result: JumpRopeResult = diff >= BALL_RADIUS ? "perfect" : diff > 0 ? "good" : "miss";
+    this.recordBeat(result);
   }
 
   private recordBeat(result: JumpRopeResult) {
@@ -66,6 +73,18 @@ export class JumpRopeScene {
 
   getResults(): JumpRopeResult[] {
     return this.results;
+  }
+
+  // Single source of truth for the ball/line positions, shared by
+  // handleTap() and render() so grading always matches what's drawn.
+  private geometry(height: number) {
+    const centerY = height * 0.42;
+    const amplitude = height * 0.16;
+    const lineY = centerY + amplitude * 0.5;
+    const swingPhase = this.elapsed / BEAT_INTERVAL;
+    const ballY = centerY + amplitude * Math.cos(swingPhase * Math.PI * 2); // peak (bottom) exactly on each beat
+    const diff = ballY - lineY; // positive = ball's center has passed the line
+    return { centerY, amplitude, lineY, ballY, diff };
   }
 
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -102,35 +121,30 @@ export class JumpRopeScene {
       ctx.fillText(`Streak: ${streak}`, width / 2, 118);
     }
 
-    // Bouncing marker — peaks (ground contact) exactly on each beat
-    const swingPhase = this.elapsed / BEAT_INTERVAL;
-    const bounce = Math.cos(swingPhase * Math.PI * 2); // 1 at each beat, -1 at the midpoint between beats
-    const centerY = height * 0.5;
-    const amplitude = height * 0.16;
-    const markerY = centerY - bounce * amplitude;
-
-    let color = "rgba(255,255,255,0.7)";
-    if (this.flash) color = flashColor(this.flash.result);
+    const { centerY, amplitude, lineY, ballY } = this.geometry(height);
 
     ctx.strokeStyle = "rgba(255,255,255,0.15)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(width / 2, centerY - amplitude - 20);
-    ctx.lineTo(width / 2, centerY + amplitude + 20);
+    ctx.moveTo(width / 2, centerY - amplitude - BALL_RADIUS - 10);
+    ctx.lineTo(width / 2, centerY + amplitude + BALL_RADIUS + 10);
     ctx.stroke();
 
-    // Ground line = the hit target
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    // The line grading is measured against
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.setLineDash([6, 6]);
     ctx.beginPath();
-    ctx.moveTo(width / 2 - 60, centerY + amplitude);
-    ctx.lineTo(width / 2 + 60, centerY + amplitude);
+    ctx.moveTo(width / 2 - 70, lineY);
+    ctx.lineTo(width / 2 + 70, lineY);
     ctx.stroke();
     ctx.setLineDash([]);
 
+    let color = "rgba(255,255,255,0.7)";
+    if (this.flash) color = flashColor(this.flash.result);
+
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(width / 2, markerY, 22, 0, Math.PI * 2);
+    ctx.arc(width / 2, ballY, BALL_RADIUS, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.5)";
     ctx.lineWidth = 2;
@@ -138,7 +152,7 @@ export class JumpRopeScene {
 
     ctx.font = "14px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText("Tap when it hits the line", width / 2, centerY + amplitude + 56);
+    ctx.fillText("Tap as it crosses the line", width / 2, centerY + amplitude + BALL_RADIUS + 40);
 
     ctx.restore();
   }

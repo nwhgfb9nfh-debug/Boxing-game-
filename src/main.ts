@@ -33,7 +33,7 @@ const street = new StreetScene(controls);
 
 tapZone.onTap((x, y) => {
   if (scene.type === "reflexdots") scene.game.handleTap(x, y);
-  else if (scene.type === "jumprope") scene.game.handleTap();
+  else if (scene.type === "jumprope") scene.game.handleTap(window.innerHeight);
 });
 
 // Stations placed inside specific buildings' interiors — walk up to one
