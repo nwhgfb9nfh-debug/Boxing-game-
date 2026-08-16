@@ -3,11 +3,20 @@
 // contacts, which come with the meetup/new-people actions in a later
 // Private Life piece.
 
+// "trained" tracks whether a session was ever completed for this stat,
+// independent of the bonus it earned — a session that scored all
+// misses is still trained (bonus 0), which is different from never
+// having attempted it at all ("Not trained yet").
+export interface StatProgress {
+  bonus: number;
+  trained: boolean;
+}
+
 export interface TrainingStats {
-  power: number; // Heavy Bag
-  speed: number; // Reflex Dots
-  endurance: number; // Jump Rope
-  chin: number; // Sparring — stays 0 until the Fight system exists
+  power: StatProgress; // Heavy Bag
+  speed: StatProgress; // Reflex Dots
+  endurance: StatProgress; // Jump Rope
+  chin: StatProgress; // Sparring — stays untrained until the Fight system exists
 }
 
 export interface PlayerState {
@@ -23,12 +32,16 @@ export interface PlayerState {
   training: TrainingStats;
 }
 
+function freshStat(): StatProgress {
+  return { bonus: 0, trained: false };
+}
+
 export function createPlayerState(): PlayerState {
   return {
     fame: 0,
     image: 0,
     money: 0,
     hp: 100,
-    training: { power: 0, speed: 0, endurance: 0, chin: 0 },
+    training: { power: freshStat(), speed: freshStat(), endurance: freshStat(), chin: freshStat() },
   };
 }

@@ -150,7 +150,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     const t = api.getTraining();
     const list = document.createElement("div");
     list.className = "phone-stats";
-    const statValue = (n: number) => (n > 0 ? `+${n}` : "Not trained yet");
+    const statValue = (s: { bonus: number; trained: boolean }) => (s.trained ? `+${s.bonus}` : "Not trained yet");
     const rows: [string, string][] = [
       ["Power", statValue(t.power)],
       ["Speed", statValue(t.speed)],

@@ -109,14 +109,20 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   );
 }
 
-/** Perfect = +2, Good = +1, everything else = +0 — banked into the matching training stat. */
+/**
+ * Perfect = +2, Good = +1, everything else = +0 — banked into the matching
+ * training stat. Marks the stat as trained regardless of the bonus earned,
+ * so a session that scored all misses still reads "+0", not "Not trained
+ * yet" — that label is reserved for a stat with no completed session at all.
+ */
 function applyTraining(stat: keyof TrainingStats, results: string[]) {
   let bonus = 0;
   for (const r of results) {
     if (r === "perfect") bonus += 2;
     else if (r === "good") bonus += 1;
   }
-  playerState.training[stat] += bonus;
+  playerState.training[stat].bonus += bonus;
+  playerState.training[stat].trained = true;
 }
 
 tapZone.onTap((x, y) => {
