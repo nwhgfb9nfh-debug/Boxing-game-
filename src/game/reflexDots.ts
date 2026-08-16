@@ -1,9 +1,10 @@
 // Reflex Dots training minigame (Section 4, Speed stat): 5 dots flash
 // briefly at random positions; tap before they vanish. Graded by
-// reaction speed — faster taps grade better, same 4-tier language as
-// Heavy Bag (Perfect/Good/Weak) plus Miss for not tapping in time at all.
+// reaction speed — Green (0-0.40 of the window) = Perfect, Yellow
+// (0.40-0.80) = Good, Red (0.80 and beyond, including not tapping at
+// all before it vanishes) = Miss.
 
-export type ReflexResult = "perfect" | "good" | "weak" | "miss";
+export type ReflexResult = "perfect" | "good" | "miss";
 export type ReflexPhase = "waiting" | "active" | "result" | "summary";
 
 const ROUNDS = 5;
@@ -14,8 +15,8 @@ const MIN_WAIT = 0.4; // pause before a dot appears, randomized so it can't be a
 const MAX_WAIT = 1.0;
 
 // Speed thresholds, as a fraction of DOT_LIFETIME elapsed at tap time.
-const PERFECT_BY = 0.35;
-const GOOD_BY = 0.65;
+const PERFECT_BY = 0.4;
+const GOOD_BY = 0.8; // anything at or past this (or a full timeout) is a Miss
 
 // Keep dots clear of the HUD pill and the bottom UI band.
 const MARGIN_TOP = 110;
@@ -75,7 +76,7 @@ export class ReflexDotsScene {
     if (Math.hypot(x - this.dotX, y - this.dotY) > HIT_RADIUS) return;
 
     const frac = this.activeElapsed / DOT_LIFETIME;
-    const result: ReflexResult = frac < PERFECT_BY ? "perfect" : frac < GOOD_BY ? "good" : "weak";
+    const result: ReflexResult = frac < PERFECT_BY ? "perfect" : frac < GOOD_BY ? "good" : "miss";
     this.finishRound(result);
   }
 
@@ -116,7 +117,7 @@ export class ReflexDotsScene {
 
     if (this.phase === "active") {
       const frac = this.activeElapsed / DOT_LIFETIME;
-      const color = frac < PERFECT_BY ? "#3fbf6b" : frac < GOOD_BY ? "#ffd23f" : "#ff8c42";
+      const color = frac < PERFECT_BY ? "#3fbf6b" : frac < GOOD_BY ? "#ffd23f" : "#ff5a5a";
 
       // Shrinking ring shows the vanish countdown
       const ringR = 30 * (1 - frac) + 6;
@@ -148,7 +149,7 @@ export class ReflexDotsScene {
   }
 
   private renderSummary(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    const counts = { perfect: 0, good: 0, weak: 0, miss: 0 };
+    const counts = { perfect: 0, good: 0, miss: 0 };
     for (const r of this.results) counts[r]++;
 
     ctx.font = "18px sans-serif";
@@ -158,7 +159,6 @@ export class ReflexDotsScene {
     const lines = [
       { label: "Perfect", value: counts.perfect, color: resultColor("perfect") },
       { label: "Good", value: counts.good, color: resultColor("good") },
-      { label: "Weak", value: counts.weak, color: resultColor("weak") },
       { label: "Miss", value: counts.miss, color: resultColor("miss") },
     ];
     lines.forEach((l, i) => {
@@ -180,13 +180,11 @@ export class ReflexDotsScene {
 function resultLabel(r: ReflexResult): string {
   if (r === "perfect") return "PERFECT!";
   if (r === "good") return "GOOD";
-  if (r === "weak") return "WEAK";
   return "MISS";
 }
 
 function resultColor(r: ReflexResult): string {
   if (r === "perfect") return "#3fbf6b";
   if (r === "good") return "#ffd23f";
-  if (r === "weak") return "#ff8c42";
   return "#ff5a5a";
 }
