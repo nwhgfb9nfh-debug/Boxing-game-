@@ -19,6 +19,17 @@ export interface TrainingStats {
   chin: StatProgress; // Sparring — stays untrained until the Fight system exists
 }
 
+// Gym upgrade tiers, bought at Reception (Section 5) — each section starts
+// at Lvl 1 (the current gym) and can be upgraded to 2 or 3 for money.
+// weightArea covers the Workout Clip content; power/speed/endurance mirror
+// the three Training minigame stats.
+export interface GymLevels {
+  weightArea: number;
+  power: number;
+  speed: number;
+  endurance: number;
+}
+
 export interface PlayerState {
   fame: number;
   image: number;
@@ -35,9 +46,8 @@ export interface PlayerState {
   // managerLevel also gates which Office elevator floors are reachable.
   managerLevel: number;
   coachLevel: number;
-  promoterLevel: number;
-  // Gym upgrade tier, bought at Reception — starts at 1 (current gym).
-  gymLevel: number;
+  cutmanLevel: number;
+  gymLevels: GymLevels;
 }
 
 function freshStat(): StatProgress {
@@ -53,7 +63,7 @@ export function createPlayerState(): PlayerState {
     training: { power: freshStat(), speed: freshStat(), endurance: freshStat(), chin: freshStat() },
     managerLevel: 1,
     coachLevel: 1,
-    promoterLevel: 1,
-    gymLevel: 1,
+    cutmanLevel: 1,
+    gymLevels: { weightArea: 1, power: 1, speed: 1, endurance: 1 },
   };
 }

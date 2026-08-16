@@ -11,7 +11,7 @@ import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
-import { createPlayerState, type TrainingStats } from "./game/playerState";
+import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
 import { EnergyStar } from "./game/energyStar";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
@@ -183,11 +183,11 @@ function openSwimMenu() {
   }));
 }
 
-// Office reception (Section 5): each staff role (and the gym itself) is
+// Office reception (Section 5): each staff role (and each gym section) is
 // already at Lvl 1 for free; Lvl 2/3 cost money. Manager level additionally
 // gates which Office elevator floors are reachable.
 interface StaffRole {
-  id: "manager" | "coach" | "promoter";
+  id: "manager" | "coach" | "cutman";
   name: string;
   icon: string;
   prices: [number, number]; // price to reach Lvl 2, Lvl 3
@@ -195,30 +195,32 @@ interface StaffRole {
 const STAFF_ROLES: StaffRole[] = [
   { id: "manager", name: "Manager", icon: "💼", prices: [2000, 5000] },
   { id: "coach", name: "Coach", icon: "🥊", prices: [2000, 5000] },
-  { id: "promoter", name: "Promoter", icon: "📣", prices: [1500, 4000] },
+  { id: "cutman", name: "Cutman", icon: "🩹", prices: [1500, 4000] },
 ];
 
 function getStaffLevel(role: StaffRole["id"]): number {
   if (role === "manager") return playerState.managerLevel;
   if (role === "coach") return playerState.coachLevel;
-  return playerState.promoterLevel;
+  return playerState.cutmanLevel;
 }
 
 function setStaffLevel(role: StaffRole["id"], level: number) {
   if (role === "manager") playerState.managerLevel = level;
   else if (role === "coach") playerState.coachLevel = level;
-  else playerState.promoterLevel = level;
+  else playerState.cutmanLevel = level;
 }
 
-interface GymTier {
-  level: number;
+interface GymCategory {
+  id: keyof GymLevels;
   name: string;
-  price: number;
+  icon: string;
+  prices: [number, number]; // price to reach Lvl 2, Lvl 3
 }
-const GYM_TIERS: GymTier[] = [
-  { level: 1, name: "Gym — Lvl 1", price: 0 },
-  { level: 2, name: "Gym — Lvl 2", price: 3000 },
-  { level: 3, name: "Gym — Lvl 3", price: 7000 },
+const GYM_CATEGORIES: GymCategory[] = [
+  { id: "weightArea", name: "Weight Area", icon: "🏋️", prices: [3000, 7000] },
+  { id: "power", name: "Power", icon: "👊", prices: [3000, 7000] },
+  { id: "speed", name: "Speed", icon: "⚡", prices: [3000, 7000] },
+  { id: "endurance", name: "Endurance", icon: "🫁", prices: [3000, 7000] },
 ];
 
 // Office is a multi-room building: Lobby (Reception + Elevator) -> Floor
@@ -249,12 +251,16 @@ function openCharityMenu() {
   }));
 }
 
-type ReceptionView = "main" | "staff" | "gym";
+type ReceptionView = "main" | "staff" | "staff-role" | "gym" | "gym-category";
 let receptionView: ReceptionView = "main";
+let activeStaffRole: StaffRole["id"] | null = null;
+let activeGymCategory: GymCategory["id"] | null = null;
 
 function buildReceptionMenu(): MenuData {
   if (receptionView === "staff") return buildStaffMenu();
+  if (receptionView === "staff-role" && activeStaffRole) return buildStaffRoleMenu(activeStaffRole);
   if (receptionView === "gym") return buildGymMenu();
+  if (receptionView === "gym-category" && activeGymCategory) return buildGymCategoryMenu(activeGymCategory);
   return {
     title: "🛎️ Reception",
     energyText: `Money: $${playerState.money}`,
@@ -298,24 +304,56 @@ function buildStaffMenu(): MenuData {
           return "";
         },
       },
-      ...STAFF_ROLES.map((role) => {
-        const level = getStaffLevel(role.id);
-        const maxed = level >= 3;
-        const price = maxed ? 0 : role.prices[level - 1];
+      ...STAFF_ROLES.map((role) => ({
+        id: `role-${role.id}`,
+        label: `${role.icon} ${role.name} (Lvl ${getStaffLevel(role.id)}/3)`,
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          activeStaffRole = role.id;
+          receptionView = "staff-role";
+          return "";
+        },
+      })),
+    ],
+  };
+}
+
+function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
+  const role = STAFF_ROLES.find((r) => r.id === roleId)!;
+  return {
+    title: `${role.icon} ${role.name}`,
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          receptionView = "staff";
+          return "";
+        },
+      },
+      ...[1, 2, 3].map((level) => {
+        const current = getStaffLevel(role.id);
+        const owned = current >= level;
+        const price = level === 1 ? 0 : role.prices[level - 2];
         return {
-          id: `hire-${role.id}`,
-          label: `${role.icon} ${role.name} (Lvl ${level}/3)`,
+          id: `${role.id}-lvl${level}`,
+          label: `${role.name} Lvl ${level}`,
           cost: 0,
-          costLabel: maxed ? "MAX" : `$${price}`,
-          disabled: maxed,
+          costLabel: owned ? "HIRED" : `$${price}`,
+          disabled: owned,
           run: () => {
-            if (maxed) return `${role.name} is already Lvl 3.`;
+            if (owned) return `${role.name} Lvl ${level} already hired.`;
+            if (level !== current + 1) return `Hire ${role.name} Lvl ${current + 1} first.`;
             if (playerState.money < price) {
               return `Not enough money — need $${price}, have $${playerState.money}.`;
             }
             playerState.money -= price;
-            setStaffLevel(role.id, level + 1);
-            return `${role.name} promoted to Lvl ${level + 1}!`;
+            setStaffLevel(role.id, level);
+            return `${role.name} promoted to Lvl ${level}!`;
           },
         };
       }),
@@ -326,7 +364,7 @@ function buildStaffMenu(): MenuData {
 function buildGymMenu(): MenuData {
   return {
     title: "🏋️ Upgrade Gym",
-    energyText: `Money: $${playerState.money}  ·  Current: Lvl ${playerState.gymLevel}/3`,
+    energyText: `Money: $${playerState.money}`,
     actions: [
       {
         id: "back",
@@ -338,22 +376,56 @@ function buildGymMenu(): MenuData {
           return "";
         },
       },
-      ...GYM_TIERS.map((tier) => {
-        const owned = playerState.gymLevel >= tier.level;
+      ...GYM_CATEGORIES.map((cat) => ({
+        id: `cat-${cat.id}`,
+        label: `${cat.icon} ${cat.name} (Lvl ${playerState.gymLevels[cat.id]}/3)`,
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          activeGymCategory = cat.id;
+          receptionView = "gym-category";
+          return "";
+        },
+      })),
+    ],
+  };
+}
+
+function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
+  const cat = GYM_CATEGORIES.find((c) => c.id === catId)!;
+  return {
+    title: `${cat.icon} ${cat.name}`,
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          receptionView = "gym";
+          return "";
+        },
+      },
+      ...[1, 2, 3].map((level) => {
+        const current = playerState.gymLevels[cat.id];
+        const owned = current >= level;
+        const price = level === 1 ? 0 : cat.prices[level - 2];
         return {
-          id: `gym-${tier.level}`,
-          label: tier.name,
+          id: `${cat.id}-lvl${level}`,
+          label: `${cat.name} Lvl ${level}`,
           cost: 0,
-          costLabel: owned ? "OWNED" : `$${tier.price}`,
+          costLabel: owned ? "OWNED" : `$${price}`,
           disabled: owned,
           run: () => {
-            if (owned) return `${tier.name} already owned.`;
-            if (playerState.money < tier.price) {
-              return `Not enough money — need $${tier.price}, have $${playerState.money}.`;
+            if (owned) return `${cat.name} Lvl ${level} already owned.`;
+            if (level !== current + 1) return `Upgrade to Lvl ${current + 1} first.`;
+            if (playerState.money < price) {
+              return `Not enough money — need $${price}, have $${playerState.money}.`;
             }
-            playerState.money -= tier.price;
-            playerState.gymLevel = tier.level;
-            return `${tier.name} unlocked!`;
+            playerState.money -= price;
+            playerState.gymLevels[cat.id] = level;
+            return `${cat.name} upgraded to Lvl ${level}!`;
           },
         };
       }),
