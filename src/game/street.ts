@@ -1,14 +1,29 @@
-import { FRAMES, FRAME_WIDTH, WORLD_WIDTH, frameAt, type BuildingDef } from "./world";
+import {
+  FRAMES,
+  FRAME_WIDTH,
+  WORLD_WIDTH,
+  ARENA,
+  ARENA_FRAME_INDEX,
+  ARENA_FACADE_DEPTH,
+  ARENA_PLAZA_STOP,
+  LOTS_PER_ROW,
+  MAIN_LOT_INDEX,
+  LOT_WIDTH,
+  frameAt,
+  type BuildingDef,
+} from "./world";
 import type { DriveControls } from "../ui/controls";
 
 const MAX_SPEED = 420; // world px/sec
 const ACCEL = 900; // px/sec^2 while gas held
 const DECEL = 1400; // px/sec^2 while gas released
 const STOPPED_EPS = 4;
+const START_MARGIN = 80;
 
 const ROAD_HALF_HEIGHT = 90;
 const BUILDING_DEPTH = 140;
 const BUILDING_MARGIN = 24;
+const LOT_GAP = 14; // gap between neighboring lots so buildings read as separate
 
 export class StreetScene {
   private worldX = FRAME_WIDTH / 2; // start in front of the Apartment (frame 0)
@@ -41,15 +56,17 @@ export class StreetScene {
     }
 
     this.worldX += this.speed * dt;
-    const margin = 80;
-    this.worldX = Math.max(margin, Math.min(WORLD_WIDTH - margin, this.worldX));
+    // The road dead-ends at the Apartment on one side and the Arena plaza
+    // on the other — you drive up to the Arena's doors, not past them.
+    const clamped = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, this.worldX));
+    if (clamped !== this.worldX) this.speed = 0;
+    this.worldX = clamped;
 
     this.controls.setUTurnEnabled(Math.abs(this.speed) < STOPPED_EPS);
   }
 
   getCurrentFrameLabel(): string {
-    const f = frameAt(this.worldX);
-    return `Frame ${f.index + 1}/${FRAMES.length}`;
+    return frameAt(this.worldX).label;
   }
 
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -63,6 +80,9 @@ export class StreetScene {
     );
     const roadY = height / 2;
     const toScreenX = (wx: number) => wx - camX + width / 2;
+
+    const topEdgeY = roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN; // flavor row (north)
+    const bottomEdgeY = roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN; // required row (south)
 
     // Sidewalks / ground either side of the road
     ctx.fillStyle = "#2a2f3a";
@@ -83,44 +103,55 @@ export class StreetScene {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Buildings per frame
+    // Regular frames (0..4): a row of lots on each side, real building
+    // flanked by decorative filler buildings so it reads as a street.
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
-      const frameCenterWorld = frameLeftWorld + FRAME_WIDTH / 2;
-      const sx = toScreenX(frameCenterWorld);
-      if (sx < -FRAME_WIDTH / 2 - 100 || sx > width + FRAME_WIDTH / 2 + 100) continue;
 
-      drawBuilding(
-        ctx,
-        frame.right,
-        sx,
-        roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN,
-        FRAME_WIDTH - 40,
-        BUILDING_DEPTH,
-        "up",
-        frame.index === 0,
-      );
-      if (frame.left) {
-        drawBuilding(
+      for (let lot = 0; lot < LOTS_PER_ROW; lot++) {
+        const lotCenterWorld = frameLeftWorld + (lot + 0.5) * LOT_WIDTH;
+        const sx = toScreenX(lotCenterWorld);
+        if (sx < -LOT_WIDTH || sx > width + LOT_WIDTH) continue;
+
+        const lotW = LOT_WIDTH - LOT_GAP;
+        const isMain = lot === MAIN_LOT_INDEX;
+
+        // Flavor (top/north) row
+        drawLot(
           ctx,
-          frame.left,
+          isMain ? frame.flavor : null,
           sx,
-          roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN,
-          FRAME_WIDTH - 40,
-          BUILDING_DEPTH,
+          topEdgeY,
+          lotW,
+          "up",
+          seedFor(frame.index, 0, lot),
+        );
+
+        // Required (bottom/south) row — right-hand side driving toward the Arena
+        drawLot(
+          ctx,
+          isMain ? frame.required : null,
+          sx,
+          bottomEdgeY,
+          lotW,
           "down",
+          seedFor(frame.index, 1, lot),
+          frame.index === 0, // Apartment start highlight
         );
       }
 
-      // Frame divider
       const dividerX = toScreenX(frameLeftWorld);
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(dividerX, roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN - BUILDING_DEPTH);
-      ctx.lineTo(dividerX, roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN + BUILDING_DEPTH);
+      ctx.moveTo(dividerX, topEdgeY - BUILDING_DEPTH);
+      ctx.lineTo(dividerX, bottomEdgeY + BUILDING_DEPTH);
       ctx.stroke();
     }
+
+    // Arena terminus: parking lots flanking the road, then the arena
+    // facade spanning the full width of the road at the literal dead end.
+    drawArenaTerminus(ctx, toScreenX, width, roadY, topEdgeY, bottomEdgeY);
 
     // Player (top-down bike placeholder)
     const px = toScreenX(this.worldX);
@@ -135,6 +166,38 @@ export class StreetScene {
 
     ctx.restore();
   }
+}
+
+function seedFor(frameIndex: number, row: number, lot: number): number {
+  return frameIndex * 97 + row * 31 + lot * 7;
+}
+
+function hash01(n: number): number {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+const FILLER_COLORS = ["#4a4f5c", "#3f4a52", "#4f4640", "#454050", "#3d4a3f"];
+
+function drawLot(
+  ctx: CanvasRenderingContext2D,
+  building: BuildingDef | null,
+  centerX: number,
+  edgeY: number,
+  w: number,
+  dir: "up" | "down",
+  seed: number,
+  isStart = false,
+) {
+  if (building && building.kind === "path") {
+    drawPath(ctx, building, centerX, edgeY, w, dir);
+    return;
+  }
+  if (building) {
+    drawBuilding(ctx, building, centerX, edgeY, w, BUILDING_DEPTH, dir, isStart);
+    return;
+  }
+  drawFillerBuilding(ctx, centerX, edgeY, w, dir, seed);
 }
 
 function drawBuilding(
@@ -152,19 +215,196 @@ function drawBuilding(
 
   ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
   ctx.fillRect(x, top, w, depth);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 2;
   ctx.strokeRect(x, top, w, depth);
 
   ctx.fillStyle = "#fff";
-  ctx.font = "bold 22px sans-serif";
+  ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(building.name, centerX, top + depth / 2);
+  wrapText(ctx, building.name, centerX, top + depth / 2, w - 12);
 
   if (building.locked) {
-    ctx.font = "16px sans-serif";
+    ctx.font = "12px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillText("LOCKED", centerX, top + depth / 2 + 26);
+    ctx.fillText("LOCKED", centerX, top + depth / 2 + 34);
   }
+}
+
+function drawFillerBuilding(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  edgeY: number,
+  w: number,
+  dir: "up" | "down",
+  seed: number,
+) {
+  const heightScale = 0.55 + hash01(seed) * 0.45;
+  const depth = BUILDING_DEPTH * heightScale;
+  const top = dir === "up" ? edgeY - depth : edgeY;
+  const x = centerX - w / 2;
+  const color = FILLER_COLORS[Math.floor(hash01(seed + 0.37) * FILLER_COLORS.length)];
+
+  ctx.fillStyle = color;
+  ctx.fillRect(x, top, w, depth);
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, top, w, depth);
+
+  // A couple of window dots for texture, still just placeholder shapes.
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  const rows = Math.max(1, Math.floor(depth / 32));
+  for (let r = 0; r < rows; r++) {
+    const wy = top + 14 + r * 26;
+    ctx.fillRect(x + w * 0.28 - 3, wy, 6, 6);
+    ctx.fillRect(x + w * 0.68 - 3, wy, 6, 6);
+  }
+}
+
+function drawPath(
+  ctx: CanvasRenderingContext2D,
+  building: BuildingDef,
+  centerX: number,
+  edgeY: number,
+  w: number,
+  dir: "up" | "down",
+) {
+  // The Beach isn't a building — it's a sandy walkway leading off the road.
+  const depth = BUILDING_DEPTH * 0.9;
+  const top = dir === "up" ? edgeY - depth : edgeY;
+  const bottom = dir === "up" ? edgeY : edgeY + depth;
+  const pathW = w * 0.55;
+  const x = centerX - pathW / 2;
+
+  ctx.fillStyle = "#d8c48a";
+  ctx.beginPath();
+  ctx.moveTo(x, dir === "up" ? bottom : top);
+  ctx.lineTo(x + pathW, dir === "up" ? bottom : top);
+  ctx.lineTo(centerX + pathW * 0.3, dir === "up" ? top : bottom);
+  ctx.lineTo(centerX - pathW * 0.3, dir === "up" ? top : bottom);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 10]);
+  for (let i = 1; i <= 3; i++) {
+    const t = i / 4;
+    const yy = top + depth * t;
+    ctx.beginPath();
+    ctx.moveTo(x + pathW * (0.5 - 0.5 * (1 - t) * 0.5), yy);
+    ctx.lineTo(x + pathW * (0.5 + 0.5 * (1 - t) * 0.5), yy);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#3a3020";
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(building.name, centerX, dir === "up" ? top - 14 : bottom + 14);
+}
+
+function drawArenaTerminus(
+  ctx: CanvasRenderingContext2D,
+  toScreenX: (wx: number) => number,
+  width: number,
+  roadY: number,
+  topEdgeY: number,
+  bottomEdgeY: number,
+) {
+  const zoneStartWorld = ARENA_FRAME_INDEX * FRAME_WIDTH;
+  const facadeStartWorld = WORLD_WIDTH - ARENA_FACADE_DEPTH;
+
+  const parkingLeftSx = toScreenX(zoneStartWorld);
+  const facadeSx = toScreenX(facadeStartWorld);
+  const endSx = toScreenX(WORLD_WIDTH);
+
+  if (facadeSx > -50 && parkingLeftSx < width + 50) {
+    // Parking lots flanking the road on the approach to the Arena.
+    drawParkingLot(ctx, parkingLeftSx, facadeSx, topEdgeY - BUILDING_DEPTH, topEdgeY);
+    drawParkingLot(ctx, parkingLeftSx, facadeSx, bottomEdgeY, bottomEdgeY + BUILDING_DEPTH);
+  }
+
+  if (endSx > -50 && facadeSx < width + 50) {
+    // The Arena itself: a facade spanning the full width of the road,
+    // the literal dead end of the street.
+    const top = topEdgeY - BUILDING_DEPTH * 1.3;
+    const bottom = bottomEdgeY + BUILDING_DEPTH * 1.3;
+    const x = facadeSx;
+    const w = Math.max(4, endSx - facadeSx);
+
+    const grad = ctx.createLinearGradient(x, top, x, bottom);
+    grad.addColorStop(0, "#8a1f2b");
+    grad.addColorStop(1, "#5a1420");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, top, w, bottom - top);
+    ctx.strokeStyle = "#ffd23f";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, top, w, bottom - top);
+
+    ctx.fillStyle = "#ffd23f";
+    ctx.font = "bold 26px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ARENA.name.toUpperCase(), x + w / 2, top + (bottom - top) / 2 - 20);
+
+    // Entrance doors at road level
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(x + w / 2 - 34, roadY - 30, 68, 60);
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + w / 2 - 34, roadY - 30, 68, 60);
+  }
+}
+
+function drawParkingLot(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  x2: number,
+  y1: number,
+  y2: number,
+) {
+  const w = x2 - x1;
+  const h = y2 - y1;
+  if (w <= 0) return;
+  ctx.fillStyle = "#4b4e55";
+  ctx.fillRect(x1, y1, w, h);
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 2;
+  const stripes = Math.max(1, Math.floor(w / 60));
+  for (let i = 1; i < stripes; i++) {
+    const sx = x1 + (w / stripes) * i;
+    ctx.beginPath();
+    ctx.moveTo(sx, y1 + h * 0.15);
+    ctx.lineTo(sx, y1 + h * 0.85);
+    ctx.stroke();
+  }
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  maxWidth: number,
+) {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+
+  const lineHeight = 18;
+  const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineHeight));
 }
