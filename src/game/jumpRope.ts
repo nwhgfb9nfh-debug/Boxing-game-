@@ -20,6 +20,10 @@ const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
 const BALL_RADIUS = 22;
+// Extra room, past the "fully clear" threshold, the ball has before it
+// hits the bottom of its swing — kept tiny so Perfect has almost no
+// spare room, without adding any time-based decay to the grading itself.
+const LINE_CLEARANCE = 4;
 
 export class JumpRopeScene {
   private phase: JumpRopePhase = "countdown";
@@ -92,7 +96,10 @@ export class JumpRopeScene {
   private geometry(height: number) {
     const centerY = height * 0.42;
     const amplitude = height * 0.16;
-    const lineY = centerY + amplitude * 0.5;
+    // The line sits just past the ball's lowest point (by radius + a tiny
+    // clearance) — the ball barely fits fully below it at the very bottom
+    // of the swing, leaving almost no room to spare once it's underneath.
+    const lineY = centerY + amplitude - BALL_RADIUS - LINE_CLEARANCE;
 
     // swingPhase = 0.5 is the top of the swing. During "countdown" the
     // ball sits still there; once "active", it starts at the top
