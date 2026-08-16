@@ -7,10 +7,11 @@
 //
 // The meter is graded in 5 zones, bottom (early) to top (late):
 //   Red (too early, Weak) -> Yellow (slightly early, Good) -> Green
-//   (Perfect, deliberately narrow) -> Yellow (slightly late, Good) -> Red
-//   (too late, Overswing). The two yellows are each kept narrower than
-//   green, and the two reds — the real "miss" zones — take up most of
-//   the track.
+//   (Perfect) -> Yellow (slightly late, Good) -> Red (too late,
+//   Overswing). Yellow/Green/Yellow are all the same width (4% each);
+//   the two reds — the real "miss" zones — take up the rest of the track.
+// Weak and Overswing are graded separately (early miss vs late miss) but
+// the session summary piles them into one combined "Weak/Overswing" stat.
 
 export type HeavyBagResult = "weak" | "good" | "perfect" | "overswing";
 export type HeavyBagPhase = "ready" | "charging" | "result" | "summary";
@@ -22,8 +23,8 @@ const RESULT_PAUSE = 0.9; // seconds to show the per-rep result before continuin
 // Zone boundaries, as fractions of the meter (0 = start, 1 = fully charged).
 const YELLOW_EARLY_START = 0.46;
 const SWEET_START = 0.5;
-const SWEET_END = 0.56; // a 6%-wide window
-const YELLOW_LATE_END = 0.6; // yellow bands (4% each) stay narrower than green (6%)
+const SWEET_END = 0.54; // green: same 4% width as each yellow band
+const YELLOW_LATE_END = 0.58;
 
 export class HeavyBagScene {
   private phase: HeavyBagPhase = "ready";
@@ -191,8 +192,7 @@ export class HeavyBagScene {
     const lines = [
       { label: "Perfect", value: counts.perfect, color: resultColor("perfect") },
       { label: "Good", value: counts.good, color: resultColor("good") },
-      { label: "Weak", value: counts.weak, color: resultColor("weak") },
-      { label: "Overswing", value: counts.overswing, color: resultColor("overswing") },
+      { label: "Weak/Overswing", value: counts.weak + counts.overswing, color: resultColor("overswing") },
     ];
     lines.forEach((l, i) => {
       ctx.font = "bold 22px sans-serif";
