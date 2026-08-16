@@ -8,6 +8,7 @@ export interface DriveControls {
   isGasHeld: () => boolean;
   onUTurn: (handler: () => void) => void;
   setUTurnEnabled: (enabled: boolean) => void;
+  setGasEnabled: (enabled: boolean) => void;
   destroy: () => void;
 }
 
@@ -40,6 +41,7 @@ export function createDriveControls(container: HTMLElement): DriveControls {
 
   gasBtn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    if (gasBtn.disabled) return;
     gasBtn.setPointerCapture(e.pointerId);
     setGas(true);
   });
@@ -63,6 +65,11 @@ export function createDriveControls(container: HTMLElement): DriveControls {
     setUTurnEnabled: (enabled) => {
       uturnBtn.disabled = !enabled;
       uturnBtn.classList.toggle("is-disabled", !enabled);
+    },
+    setGasEnabled: (enabled) => {
+      gasBtn.disabled = !enabled;
+      gasBtn.classList.toggle("is-disabled", !enabled);
+      if (!enabled) setGas(false);
     },
     destroy: () => root.remove(),
   };

@@ -9,6 +9,9 @@ import {
   LOTS_PER_ROW,
   MAIN_LOT_INDEX,
   LOT_WIDTH,
+  HOUSING_LOTS_PER_ROW,
+  HOUSING_LOT_WIDTH,
+  START_WORLD_X,
   frameAt,
   type BuildingDef,
 } from "./world";
@@ -21,27 +24,55 @@ const STOPPED_EPS = 4;
 const START_MARGIN = 80;
 
 const ROAD_HALF_HEIGHT = 90;
+const LANE_OFFSET = 45; // right-hand-drive: car sits in its half of the road, not straddling the centerline
+const UTURN_DURATION = 0.8; // seconds for a real turn-around, not an instant flip
+
 const BUILDING_DEPTH = 140;
 const BUILDING_MARGIN = 24;
 const LOT_GAP = 14; // gap between neighboring lots so buildings read as separate
 
+function smoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
 export class StreetScene {
-  private worldX = FRAME_WIDTH / 2; // start in front of the Apartment (frame 0)
+  private worldX = START_WORLD_X;
   private facing: 1 | -1 = 1;
   private speed = 0; // signed, world px/sec (sign matches facing when moving)
+
+  private isUTurning = false;
+  private uturnT = 0;
+  private uturnFromFacing: 1 | -1 = 1;
+  private uturnToFacing: 1 | -1 = -1;
 
   private controls: DriveControls;
 
   constructor(controls: DriveControls) {
     this.controls = controls;
     controls.onUTurn(() => {
+      if (this.isUTurning) return;
       if (Math.abs(this.speed) < STOPPED_EPS) {
-        this.facing = this.facing === 1 ? -1 : 1;
+        this.isUTurning = true;
+        this.uturnT = 0;
+        this.uturnFromFacing = this.facing;
+        this.uturnToFacing = this.facing === 1 ? -1 : 1;
       }
     });
   }
 
   update(dt: number) {
+    if (this.isUTurning) {
+      this.uturnT += dt / UTURN_DURATION;
+      if (this.uturnT >= 1) {
+        this.uturnT = 1;
+        this.facing = this.uturnToFacing;
+        this.isUTurning = false;
+      }
+      this.controls.setUTurnEnabled(false);
+      this.controls.setGasEnabled(false);
+      return;
+    }
+
     const gasHeld = this.controls.isGasHeld();
 
     if (gasHeld) {
@@ -56,13 +87,34 @@ export class StreetScene {
     }
 
     this.worldX += this.speed * dt;
-    // The road dead-ends at the Apartment on one side and the Arena plaza
-    // on the other — you drive up to the Arena's doors, not past them.
+    // The road dead-ends at the housing frame on one side and the Arena
+    // plaza on the other — you drive up to the Arena's doors, not past them.
     const clamped = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, this.worldX));
     if (clamped !== this.worldX) this.speed = 0;
     this.worldX = clamped;
 
     this.controls.setUTurnEnabled(Math.abs(this.speed) < STOPPED_EPS);
+    this.controls.setGasEnabled(true);
+  }
+
+  private laneOffsetForFacing(facing: 1 | -1): number {
+    // Right-hand-drive convention: your lane is on your right relative to
+    // your direction of travel. Facing +1 (toward the Arena) -> right hand
+    // points south (bottom row) -> positive Y offset. Facing -1 -> north lane.
+    return facing === 1 ? LANE_OFFSET : -LANE_OFFSET;
+  }
+
+  private currentLaneOffset(): number {
+    if (!this.isUTurning) return this.laneOffsetForFacing(this.facing);
+    const from = this.laneOffsetForFacing(this.uturnFromFacing);
+    const to = this.laneOffsetForFacing(this.uturnToFacing);
+    return from + (to - from) * smoothstep(this.uturnT);
+  }
+
+  private currentAngle(): number {
+    const fromAngle = this.uturnFromFacing === 1 ? 0 : Math.PI;
+    if (!this.isUTurning) return this.facing === 1 ? 0 : Math.PI;
+    return fromAngle + Math.PI * smoothstep(this.uturnT);
   }
 
   getCurrentFrameLabel(): string {
@@ -93,7 +145,7 @@ export class StreetScene {
     ctx.fillStyle = "#3a3f4b";
     ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT, width, ROAD_HALF_HEIGHT * 2);
 
-    // Lane dashes
+    // Lane dashes (centerline)
     ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.lineWidth = 4;
     ctx.setLineDash([28, 22]);
@@ -103,41 +155,48 @@ export class StreetScene {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Regular frames (0..4): a row of lots on each side, real building
-    // flanked by decorative filler buildings so it reads as a street.
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
 
-      for (let lot = 0; lot < LOTS_PER_ROW; lot++) {
-        const lotCenterWorld = frameLeftWorld + (lot + 0.5) * LOT_WIDTH;
-        const sx = toScreenX(lotCenterWorld);
-        if (sx < -LOT_WIDTH || sx > width + LOT_WIDTH) continue;
+      if (frame.kind === "housing") {
+        for (let lot = 0; lot < HOUSING_LOTS_PER_ROW; lot++) {
+          const lotCenterWorld = frameLeftWorld + (lot + 0.5) * HOUSING_LOT_WIDTH;
+          const sx = toScreenX(lotCenterWorld);
+          if (sx < -HOUSING_LOT_WIDTH || sx > width + HOUSING_LOT_WIDTH) continue;
 
-        const lotW = LOT_WIDTH - LOT_GAP;
-        const isMain = lot === MAIN_LOT_INDEX;
+          const lotW = HOUSING_LOT_WIDTH - LOT_GAP;
+          drawBuilding(ctx, frame.top[lot], sx, topEdgeY, lotW, BUILDING_DEPTH, "up");
+          drawBuilding(
+            ctx,
+            frame.bottom[lot],
+            sx,
+            bottomEdgeY,
+            lotW,
+            BUILDING_DEPTH,
+            "down",
+            lot === 0, // bottom-left: Trailer, the start location
+          );
+        }
+      } else {
+        for (let lot = 0; lot < LOTS_PER_ROW; lot++) {
+          const lotCenterWorld = frameLeftWorld + (lot + 0.5) * LOT_WIDTH;
+          const sx = toScreenX(lotCenterWorld);
+          if (sx < -LOT_WIDTH || sx > width + LOT_WIDTH) continue;
 
-        // Flavor (top/north) row
-        drawLot(
-          ctx,
-          isMain ? frame.flavor : null,
-          sx,
-          topEdgeY,
-          lotW,
-          "up",
-          seedFor(frame.index, 0, lot),
-        );
+          const lotW = LOT_WIDTH - LOT_GAP;
+          const isMain = lot === MAIN_LOT_INDEX;
 
-        // Required (bottom/south) row — right-hand side driving toward the Arena
-        drawLot(
-          ctx,
-          isMain ? frame.required : null,
-          sx,
-          bottomEdgeY,
-          lotW,
-          "down",
-          seedFor(frame.index, 1, lot),
-          frame.index === 0, // Apartment start highlight
-        );
+          drawLot(ctx, isMain ? frame.flavor : null, sx, topEdgeY, lotW, "up", seedFor(frame.index, 0, lot));
+          drawLot(
+            ctx,
+            isMain ? frame.required : null,
+            sx,
+            bottomEdgeY,
+            lotW,
+            "down",
+            seedFor(frame.index, 1, lot),
+          );
+        }
       }
 
       const dividerX = toScreenX(frameLeftWorld);
@@ -153,11 +212,13 @@ export class StreetScene {
     // facade spanning the full width of the road at the literal dead end.
     drawArenaTerminus(ctx, toScreenX, width, roadY, topEdgeY, bottomEdgeY);
 
-    // Player (top-down bike placeholder)
+    // Player (top-down bike placeholder), in its lane, rotating through a
+    // real turn-around rather than an instant flip.
     const px = toScreenX(this.worldX);
+    const py = roadY + this.currentLaneOffset();
     ctx.save();
-    ctx.translate(px, roadY);
-    ctx.scale(this.facing, 1);
+    ctx.translate(px, py);
+    ctx.rotate(this.currentAngle());
     ctx.fillStyle = "#ffd23f";
     ctx.fillRect(-18, -9, 36, 18);
     ctx.fillStyle = "#111";
