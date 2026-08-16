@@ -1,13 +1,16 @@
 // Jump Rope training minigame (Section 4, Endurance stat): 16 beats at a
 // fixed rhythm, tap in sync without breaking stride. Graded per beat
-// (Perfect/Good/Miss) — but unlike a hidden timing window, the grade is
-// read directly off what's on screen: the ball's center Y vs. the dashed
-// line's Y, measured in ball radii.
-//   Perfect: center has JUST cleared the line by one full radius — a
-//     narrow band right at that moment, not the whole rest of the descent
-//   Good: center has passed the line, but not within the Perfect band
-//     (either not quite a full radius past yet, or well past it)
-//   Miss: center hasn't reached the line yet (tapped too early), or no tap at all
+// (Perfect/Good/Miss) — purely by the ball's position at the moment of
+// tap, no clock and no decay over time. The grade is read directly off
+// what's on screen: the ball's center Y vs. the dashed line's Y, measured
+// in ball radii.
+//   Perfect: the ball is fully clear of the line (center >= 1 radius
+//     past it). This holds for as long as the ball stays fully clear —
+//     tapping early or late within that whole window is equally Perfect.
+//   Good: the ball is touching/overlapping the line — center has passed
+//     it, but by less than 1 radius.
+//   Miss: center hasn't reached the line at all (more than half the
+//     circle still above it), or no tap before the beat's window closes.
 
 export type JumpRopeResult = "perfect" | "good" | "miss";
 export type JumpRopePhase = "countdown" | "active" | "summary";
@@ -17,9 +20,6 @@ const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
 const BALL_RADIUS = 22;
-// How far past the 1-radius threshold still counts as Perfect — deliberately
-// tight so it takes real precision, not just tapping anytime after clearing.
-const PERFECT_TOLERANCE = 10;
 
 export class JumpRopeScene {
   private phase: JumpRopePhase = "countdown";
@@ -61,13 +61,13 @@ export class JumpRopeScene {
   /**
    * Grades instantly against the ball's current position vs. the line —
    * tapping before the ball has reached the line is a Miss, same as not
-   * tapping at all, per the spec's position-based rule.
+   * tapping at all. No time-based decay: Perfect holds for the ball's
+   * entire fully-clear window, not just the instant it crosses.
    */
   handleTap(height: number) {
     if (this.phase !== "active" || this.scoredThisBeat) return;
     const { diff } = this.geometry(height);
-    const isPerfect = diff >= BALL_RADIUS && diff <= BALL_RADIUS + PERFECT_TOLERANCE;
-    const result: JumpRopeResult = isPerfect ? "perfect" : diff > 0 ? "good" : "miss";
+    const result: JumpRopeResult = diff >= BALL_RADIUS ? "perfect" : diff > 0 ? "good" : "miss";
     this.recordBeat(result);
   }
 
