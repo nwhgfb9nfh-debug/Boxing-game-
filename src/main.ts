@@ -4,11 +4,14 @@ import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
+import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
+import { createPlayerState } from "./game/playerState";
+import { EnergyStar } from "./game/energyStar";
 import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -29,7 +32,48 @@ const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
 const tapZone = createTapZone(app);
+const actionMenu = createActionMenu(app);
 const street = new StreetScene(controls);
+
+const playerState = createPlayerState();
+const energy = new EnergyStar();
+
+// The Phone (Section 5): usable anywhere, starting with the street. Opens
+// a generic action menu — Post on Social Media for now, more to come.
+const phoneBtn = document.createElement("button");
+phoneBtn.type = "button";
+phoneBtn.className = "btn btn--phone";
+phoneBtn.textContent = "📱";
+app.appendChild(phoneBtn);
+phoneBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  actionMenu.open(buildPhoneMenu, handleSleep);
+});
+
+function buildPhoneMenu(): MenuData {
+  return {
+    title: "📱 Phone",
+    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}`,
+    actions: [
+      {
+        id: "post",
+        label: "Post on Social Media",
+        cost: 10,
+        run: () => {
+          if (!energy.spend(10)) return "Not enough energy to post.";
+          playerState.fame += 2;
+          return "Posted! Fame +2.";
+        },
+      },
+    ],
+  };
+}
+
+function handleSleep() {
+  const banked = energy.sleep();
+  playerState.hpBuffer += banked;
+  actionMenu.setMessage(`😴 Slept. Banked ${banked} as HP buffer. Energy refilled to 100/100.`);
+}
 
 tapZone.onTap((x, y) => {
   if (scene.type === "reflexdots") scene.game.handleTap(x, y);
@@ -113,6 +157,10 @@ let last = performance.now();
 function loop(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+
+  // The Phone is usable anywhere on the street; hidden inside
+  // interiors/minigames where it would clutter/compete with their own UI.
+  phoneBtn.style.display = scene.type === "street" && !actionMenu.isOpen() ? "flex" : "none";
 
   if (scene.type === "street") {
     street.update(dt);
