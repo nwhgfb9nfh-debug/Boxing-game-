@@ -11,11 +11,14 @@ export interface EnterTarget {
 
 export interface BuildingUI {
   setEnterPrompt: (target: EnterTarget | null, onEnter: () => void) => void;
-  showLockedToast: (message: string) => void;
+  showLockedToast: (message: string, anchor: EnterTarget, row: "top" | "bottom") => void;
   destroy: () => void;
 }
 
 const LOCKED_TOAST_DURATION_MS = 2600;
+// Vertical gap from the ENTER button's anchor point to the near edge of
+// the toast, so it stacks fully clear of the button instead of clipping it.
+const TOAST_GAP = 30;
 
 export function createBuildingUI(container: HTMLElement): BuildingUI {
   const enterBtn = document.createElement("button");
@@ -48,8 +51,19 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
       enterBtn.style.top = `${target.y}px`;
       enterBtn.style.display = "flex";
     },
-    showLockedToast: (message) => {
+    showLockedToast: (message, anchor, row) => {
       toast.textContent = message;
+      toast.style.left = `${anchor.x}px`;
+      if (row === "top") {
+        // Building's entrance (and its ENTER button) sits on the upper
+        // half of the road — stack the message fully above the button.
+        toast.style.top = `${anchor.y - TOAST_GAP}px`;
+        toast.style.transform = "translate(-50%, -100%)";
+      } else {
+        // Bottom-row building — stack the message fully below the button.
+        toast.style.top = `${anchor.y + TOAST_GAP}px`;
+        toast.style.transform = "translate(-50%, 0)";
+      }
       toast.classList.add("is-visible");
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {

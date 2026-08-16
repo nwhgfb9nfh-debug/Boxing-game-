@@ -163,10 +163,7 @@ canvas {
 
 .locked-toast {
   position: absolute;
-  left: 50%;
-  top: 30%;
-  transform: translate(-50%, -50%);
-  max-width: min(320px, 80vw);
+  max-width: min(280px, 72vw);
   text-align: center;
   background: rgba(20, 12, 12, 0.9);
   border: 1px solid rgba(255, 140, 140, 0.4);
