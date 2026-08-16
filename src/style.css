@@ -107,21 +107,31 @@ canvas {
   opacity: 0.55;
 }
 
-.btn--hold {
+.btn--action {
   position: absolute;
-  left: 50%;
-  bottom: max(28px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: 120px;
-  height: 120px;
-  font-size: 16px;
-  background: radial-gradient(circle at 35% 30%, #ff6b4a, #c22b1e);
-  box-shadow: 0 6px 18px rgba(194, 43, 30, 0.45);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 96px;
+  height: 96px;
+  font-size: 14px;
+  padding: 0 6px;
+  text-align: center;
 }
 
-.btn--hold.is-active {
-  transform: translateX(-50%) scale(0.94);
-  filter: brightness(1.25);
+.btn--action:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.btn--action-left {
+  left: max(20px, env(safe-area-inset-left));
+  background: radial-gradient(circle at 35% 30%, #4a9dff, #1e5fc2);
+  box-shadow: 0 6px 18px rgba(30, 95, 194, 0.45);
+}
+
+.btn--action-right {
+  right: max(20px, env(safe-area-inset-right));
+  background: radial-gradient(circle at 35% 30%, #ff6b4a, #c22b1e);
+  box-shadow: 0 6px 18px rgba(194, 43, 30, 0.45);
 }
 
 .btn--enter {

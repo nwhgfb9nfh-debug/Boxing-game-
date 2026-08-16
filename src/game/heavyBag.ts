@@ -1,37 +1,32 @@
-// Heavy Bag training minigame (Section 4, Power stat): hold to charge a
-// meter, release inside the sweet-spot zone. 5 reps. Too early = weak hit,
-// too late = overswing. Intensity/Energy Star/stat persistence aren't
-// wired up yet — this piece just proves the core mechanic feels right.
+// Heavy Bag training minigame (Section 4, Power stat): the meter charges
+// on its own once started, release inside the sweet-spot zone. 5 reps.
+// Too early = weak hit, too late = overswing. Driven by two discrete taps
+// (start / release) rather than a press-and-hold, so it's always visually
+// clear which action is available — see ui/actionButtons.ts. Intensity/
+// Energy Star/stat persistence aren't wired up yet — this piece just
+// proves the core mechanic feels right.
 
 export type HeavyBagResult = "weak" | "perfect" | "overswing";
+export type HeavyBagPhase = "ready" | "charging" | "result" | "summary";
 
 const REPS = 5;
 const FILL_DURATION = 1.1; // seconds for the meter to go 0 -> 1
-const SWEET_START = 0.62;
-const SWEET_END = 0.78;
+const SWEET_START = 0.68;
+const SWEET_END = 0.76; // an 8%-wide window — a real timing test, not a freebie
 const RESULT_PAUSE = 0.9; // seconds to show the per-rep result before continuing
 
-type Phase = "ready" | "charging" | "result" | "summary";
-
 export class HeavyBagScene {
-  private phase: Phase = "ready";
+  private phase: HeavyBagPhase = "ready";
   private meter = 0;
   private rep = 0;
   private results: HeavyBagResult[] = [];
   private resultTimer = 0;
-  private lastHeld = false;
 
-  update(dt: number, held: boolean) {
-    if (this.phase === "ready") {
-      if (held && !this.lastHeld) {
-        this.phase = "charging";
-        this.meter = 0;
-      }
-    } else if (this.phase === "charging") {
+  /** Advances timers/animation only — input is event-driven via startCharge()/release(). */
+  update(dt: number) {
+    if (this.phase === "charging") {
       this.meter += dt / FILL_DURATION;
-      if (!held) {
-        this.finishRep(this.grade(this.meter));
-      } else if (this.meter >= 1) {
+      if (this.meter >= 1) {
         this.meter = 1;
         this.finishRep("overswing");
       }
@@ -43,7 +38,21 @@ export class HeavyBagScene {
         this.phase = this.rep >= REPS ? "summary" : "ready";
       }
     }
-    this.lastHeld = held;
+  }
+
+  startCharge() {
+    if (this.phase !== "ready") return;
+    this.phase = "charging";
+    this.meter = 0;
+  }
+
+  release() {
+    if (this.phase !== "charging") return;
+    this.finishRep(this.grade(this.meter));
+  }
+
+  getPhase(): HeavyBagPhase {
+    return this.phase;
   }
 
   private grade(m: number): HeavyBagResult {
@@ -76,7 +85,7 @@ export class HeavyBagScene {
 
     ctx.fillStyle = "#fff";
     ctx.font = "bold 26px sans-serif";
-    ctx.fillText("Heavy Bag", width / 2, 70);
+    ctx.fillText("Heavy Bag", width / 2, 60);
 
     if (this.phase === "summary") {
       this.renderSummary(ctx, width, height);
@@ -86,28 +95,28 @@ export class HeavyBagScene {
 
     ctx.font = "16px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillText(`Rep ${Math.min(this.rep + 1, REPS)}/${REPS}`, width / 2, 104);
+    ctx.fillText(`Rep ${Math.min(this.rep + 1, REPS)}/${REPS}`, width / 2, 92);
 
     // Placeholder bag, swaying gently
     const bagX = width / 2;
-    const bagY = height * 0.32;
+    const bagY = height * 0.28;
     const sway = Math.sin(performance.now() / 500) * 6;
     ctx.save();
     ctx.translate(bagX + sway, bagY);
     ctx.fillStyle = "#5a4a3a";
     ctx.beginPath();
-    ctx.ellipse(0, 0, 46, 70, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 42, 62, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.2)";
     ctx.lineWidth = 3;
     ctx.stroke();
     ctx.restore();
 
-    // Power meter
-    const meterW = 60;
-    const meterH = height * 0.32;
+    // Power meter — centered, well clear of the left/right action buttons
+    const meterW = 64;
+    const meterH = height * 0.4;
     const meterX = width / 2 - meterW / 2;
-    const meterY = height * 0.56;
+    const meterY = height * 0.46;
 
     ctx.fillStyle = "#2a2f3a";
     ctx.fillRect(meterX, meterY, meterW, meterH);
@@ -115,7 +124,7 @@ export class HeavyBagScene {
     // Sweet-spot band
     const sweetTop = meterY + meterH * (1 - SWEET_END);
     const sweetH = meterH * (SWEET_END - SWEET_START);
-    ctx.fillStyle = "rgba(63, 191, 107, 0.35)";
+    ctx.fillStyle = "rgba(63, 191, 107, 0.5)";
     ctx.fillRect(meterX, sweetTop, meterW, sweetH);
 
     // Fill
@@ -130,12 +139,16 @@ export class HeavyBagScene {
     if (this.phase === "ready") {
       ctx.font = "15px sans-serif";
       ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.fillText("Hold to charge", width / 2, meterY + meterH + 40);
+      ctx.fillText("Tap PUNCH to start", width / 2, meterY + meterH + 36);
+    } else if (this.phase === "charging") {
+      ctx.font = "15px sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.fillText("Tap RELEASE in the green zone", width / 2, meterY + meterH + 36);
     } else if (this.phase === "result") {
       const last = this.results[this.results.length - 1];
       ctx.font = "bold 24px sans-serif";
       ctx.fillStyle = resultColor(last);
-      ctx.fillText(resultLabel(last), width / 2, meterY + meterH + 44);
+      ctx.fillText(resultLabel(last), width / 2, meterY + meterH + 40);
     }
 
     ctx.restore();

@@ -2,7 +2,7 @@ import "./style.css";
 import { createDriveControls } from "./ui/controls";
 import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
-import { createHoldButton } from "./ui/holdButton";
+import { createActionButtons } from "./ui/actionButtons";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
@@ -24,7 +24,7 @@ app.appendChild(hud);
 const controls = createDriveControls(app);
 const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
-const holdButton = createHoldButton(app, "HOLD");
+const actionButtons = createActionButtons(app);
 const street = new StreetScene(controls);
 
 // Stations placed inside specific buildings' interiors — walk up to one
@@ -65,12 +65,11 @@ function startHeavyBag(lot: LotInstance, interior: InteriorScene) {
   scene = { type: "heavybag", lot, interior, game: new HeavyBagScene() };
   joystick.setActive(false);
   buildingUI.setEnterPrompt(null, () => {});
-  holdButton.setActive(true);
 }
 
 function finishHeavyBag(lot: LotInstance, interior: InteriorScene) {
   scene = { type: "interior", lot, interior };
-  holdButton.setActive(false);
+  actionButtons.hideAll();
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
 }
@@ -124,12 +123,20 @@ function loop(now: number) {
     }
   } else {
     const { lot, interior, game } = scene;
-    game.update(dt, holdButton.isHeld());
+    game.update(dt);
     game.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = "Heavy Bag";
 
+    const phase = game.getPhase();
+    if (phase === "ready") {
+      actionButtons.showLeft("PUNCH", () => game.startCharge());
+    } else if (phase === "charging") {
+      actionButtons.showRight("RELEASE", () => game.release());
+    } else {
+      actionButtons.hideAll();
+    }
+
     if (game.isDone()) {
-      holdButton.setActive(false);
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
         () => finishHeavyBag(lot, interior),
