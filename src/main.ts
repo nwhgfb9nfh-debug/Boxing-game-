@@ -126,6 +126,25 @@ function openWorkoutClipMenu() {
   }));
 }
 
+function openDinerMenu() {
+  locationMenu.open(() => ({
+    title: "🍔 Diner",
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
+    actions: [
+      {
+        id: "order",
+        label: "Order Menu",
+        cost: 10,
+        run: () => {
+          if (!energy.spend(10)) return "Not enough energy to order.";
+          playerState.hp += 5;
+          return `Order's up! HP +5 (now ${playerState.hp}).`;
+        },
+      },
+    ],
+  }));
+}
+
 function sleepAtBed(anchor: { x: number; y: number }) {
   const leftover = energy.sleep();
   const hpGain = Math.floor(leftover / 2);
@@ -168,6 +187,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
     { id: "workoutclip", label: "Workout Clip", nx: 0.5, ny: 0.6 },
   ],
+  Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
 };
 
 type Scene =
@@ -293,6 +313,7 @@ function loop(now: number) {
       let onTrigger: () => void;
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
+      else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else onTrigger = () => startStation(lot, interior, nearStation.id, pos);
       buildingUI.setEnterPrompt(pos, onTrigger, nearStation.label.toUpperCase());
     } else {
