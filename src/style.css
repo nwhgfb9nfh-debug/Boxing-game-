@@ -107,6 +107,23 @@ canvas {
   opacity: 0.55;
 }
 
+.btn--hold {
+  position: absolute;
+  left: 50%;
+  bottom: max(28px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: 120px;
+  height: 120px;
+  font-size: 16px;
+  background: radial-gradient(circle at 35% 30%, #ff6b4a, #c22b1e);
+  box-shadow: 0 6px 18px rgba(194, 43, 30, 0.45);
+}
+
+.btn--hold.is-active {
+  transform: translateX(-50%) scale(0.94);
+  filter: brightness(1.25);
+}
+
 .btn--enter {
   position: absolute;
   transform: translate(-50%, -50%);

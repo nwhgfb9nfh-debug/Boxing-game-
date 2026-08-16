@@ -1,19 +1,27 @@
 import type { LotInstance } from "./world";
 
 // Placeholder interior: a walled room the player free-roams with the
-// virtual joystick (Section 12's second control scheme). No furniture or
-// interactions yet — that comes with each system (Training, Private
-// Life, ...) as it's wired in on top of this. Walking into the door
-// (bottom-center, the same spot you walked in from) exits back to the
+// virtual joystick (Section 12's second control scheme). Walking into the
+// door (bottom-center, the same spot you walked in from) exits back to the
 // street automatically, the same way approaching any other interactive
-// point on the street surfaces its action.
+// point on the street surfaces its action. Some buildings also place
+// "stations" in the room — walk up to one (e.g. the Gym's Heavy Bag) and
+// its prompt surfaces the same way.
 //
 // Only ever constructed for unlocked buildings — locked ones short-circuit
 // to a toast message on the street instead (see main.ts / buildingUI.ts).
 
+export interface Station {
+  id: string;
+  label: string;
+  nx: number; // normalized position within the room, 0..1
+  ny: number;
+}
+
 const PLAYER_SPEED = 260; // px/sec
 const PLAYER_RADIUS = 12;
 const DOOR_HALF_WIDTH = 45;
+const STATION_RADIUS = 55;
 
 // Margin just for the HUD pill up top and the walls themselves — the
 // joystick floats wherever the player touches, so nothing needs to be
@@ -22,13 +30,20 @@ const MARGIN_TOP = 90;
 const MARGIN_BOTTOM = 40;
 const MARGIN_SIDE = 30;
 
+export interface InteriorUpdateResult {
+  atDoor: boolean;
+  nearStation: Station | null;
+}
+
 export class InteriorScene {
   private lot: LotInstance;
+  private stations: Station[];
   private px = 0.5; // normalized position within the room, 0..1
   private py = 0.7; // start a bit above the door so walking in doesn't instantly trigger an exit
 
-  constructor(lot: LotInstance) {
+  constructor(lot: LotInstance, stations: Station[] = []) {
     this.lot = lot;
+    this.stations = stations;
   }
 
   private roomBounds(width: number, height: number) {
@@ -40,8 +55,7 @@ export class InteriorScene {
     };
   }
 
-  /** Returns true the frame the player walks into the door — caller should exit the building. */
-  update(dt: number, vector: { x: number; y: number }, width: number, height: number): boolean {
+  update(dt: number, vector: { x: number; y: number }, width: number, height: number): InteriorUpdateResult {
     const bounds = this.roomBounds(width, height);
     const roomW = bounds.right - bounds.left;
     const roomH = bounds.bottom - bounds.top;
@@ -58,7 +72,26 @@ export class InteriorScene {
     const doorCenterX = bounds.left + roomW / 2;
     const atDoor =
       y >= bounds.bottom - PLAYER_RADIUS - 6 && Math.abs(x - doorCenterX) <= DOOR_HALF_WIDTH;
-    return atDoor;
+
+    let nearStation: Station | null = null;
+    for (const s of this.stations) {
+      const sx = bounds.left + s.nx * roomW;
+      const sy = bounds.top + s.ny * roomH;
+      if (Math.hypot(x - sx, y - sy) <= STATION_RADIUS) {
+        nearStation = s;
+        break;
+      }
+    }
+
+    return { atDoor, nearStation };
+  }
+
+  getStationScreenPos(station: Station, width: number, height: number): { x: number; y: number } {
+    const bounds = this.roomBounds(width, height);
+    return {
+      x: bounds.left + station.nx * (bounds.right - bounds.left),
+      y: bounds.top + station.ny * (bounds.bottom - bounds.top),
+    };
   }
 
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -85,6 +118,23 @@ export class InteriorScene {
     ctx.moveTo(width / 2 - doorW / 2, bounds.bottom);
     ctx.lineTo(width / 2 + doorW / 2, bounds.bottom);
     ctx.stroke();
+
+    // Station markers
+    for (const s of this.stations) {
+      const pos = this.getStationScreenPos(s, width, height);
+      ctx.fillStyle = "#8a6a3a";
+      ctx.beginPath();
+      ctx.ellipse(pos.x, pos.y, 30, 44, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(s.label, pos.x, pos.y + 60);
+    }
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

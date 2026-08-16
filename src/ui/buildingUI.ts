@@ -1,8 +1,9 @@
-// The ENTER prompt, anchored to the actual building it belongs to on the
-// street, and a brief toast for locked buildings (which never open an
-// interior scene at all — no room, so no exit mechanic is needed for them).
-// Unlocked buildings exit by walking into the door inside the interior
-// scene itself.
+// The generic "walk up, tap to act" prompt — used for the street's ENTER
+// button and, inside interiors, interactive stations like the Gym's Heavy
+// Bag (label configurable per use). Also owns the brief toast for locked
+// buildings (which never open an interior scene at all — no room, so no
+// exit mechanic is needed for them). Unlocked buildings exit by walking
+// into the door inside the interior scene itself.
 
 export interface EnterTarget {
   x: number;
@@ -10,7 +11,7 @@ export interface EnterTarget {
 }
 
 export interface BuildingUI {
-  setEnterPrompt: (target: EnterTarget | null, onEnter: () => void) => void;
+  setEnterPrompt: (target: EnterTarget | null, onEnter: () => void, label?: string) => void;
   showLockedToast: (message: string, anchor: EnterTarget, row: "top" | "bottom") => void;
   destroy: () => void;
 }
@@ -40,13 +41,14 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
   });
 
   return {
-    setEnterPrompt: (target, onEnter) => {
+    setEnterPrompt: (target, onEnter, label = "ENTER") => {
       if (!target) {
         enterBtn.style.display = "none";
         currentEnterHandler = null;
         return;
       }
       currentEnterHandler = onEnter;
+      enterBtn.textContent = label;
       enterBtn.style.left = `${target.x}px`;
       enterBtn.style.top = `${target.y}px`;
       enterBtn.style.display = "flex";

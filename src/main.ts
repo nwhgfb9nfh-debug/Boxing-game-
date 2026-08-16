@@ -2,8 +2,10 @@ import "./style.css";
 import { createDriveControls } from "./ui/controls";
 import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
+import { createHoldButton } from "./ui/holdButton";
 import { StreetScene } from "./game/street";
-import { InteriorScene } from "./game/interior";
+import { InteriorScene, type Station } from "./game/interior";
+import { HeavyBagScene } from "./game/heavyBag";
 import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -22,11 +24,19 @@ app.appendChild(hud);
 const controls = createDriveControls(app);
 const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
+const holdButton = createHoldButton(app, "HOLD");
 const street = new StreetScene(controls);
+
+// Stations placed inside specific buildings' interiors — walk up to one
+// and its prompt surfaces the same way the street's ENTER prompt does.
+const STATIONS_BY_BUILDING: Record<string, Station[]> = {
+  Gym: [{ id: "heavybag", label: "Heavy Bag", nx: 0.5, ny: 0.32 }],
+};
 
 type Scene =
   | { type: "street" }
-  | { type: "interior"; lot: LotInstance; interior: InteriorScene };
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene }
+  | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene };
 let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
@@ -38,7 +48,8 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     );
     return; // stay on the street; no room, so no exit mechanic is needed
   }
-  scene = { type: "interior", lot, interior: new InteriorScene(lot) };
+  const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
+  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
@@ -48,6 +59,20 @@ function exitBuilding() {
   scene = { type: "street" };
   controls.root.style.display = "flex";
   joystick.setActive(false);
+}
+
+function startHeavyBag(lot: LotInstance, interior: InteriorScene) {
+  scene = { type: "heavybag", lot, interior, game: new HeavyBagScene() };
+  joystick.setActive(false);
+  buildingUI.setEnterPrompt(null, () => {});
+  holdButton.setActive(true);
+}
+
+function finishHeavyBag(lot: LotInstance, interior: InteriorScene) {
+  scene = { type: "interior", lot, interior };
+  holdButton.setActive(false);
+  buildingUI.setEnterPrompt(null, () => {});
+  joystick.setActive(true);
 }
 
 function resize() {
@@ -83,11 +108,34 @@ function loop(now: number) {
     } else {
       buildingUI.setEnterPrompt(null, () => {});
     }
+  } else if (scene.type === "interior") {
+    const { lot, interior } = scene;
+    const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
+    interior.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = lot.building.name;
+
+    if (atDoor) {
+      exitBuilding();
+    } else if (nearStation) {
+      const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
+      buildingUI.setEnterPrompt(pos, () => startHeavyBag(lot, interior), nearStation.label.toUpperCase());
+    } else {
+      buildingUI.setEnterPrompt(null, () => {});
+    }
   } else {
-    const atDoor = scene.interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
-    scene.interior.render(ctx, window.innerWidth, window.innerHeight);
-    hudLabel.textContent = scene.lot.building.name;
-    if (atDoor) exitBuilding();
+    const { lot, interior, game } = scene;
+    game.update(dt, holdButton.isHeld());
+    game.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = "Heavy Bag";
+
+    if (game.isDone()) {
+      holdButton.setActive(false);
+      buildingUI.setEnterPrompt(
+        { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
+        () => finishHeavyBag(lot, interior),
+        "DONE",
+      );
+    }
   }
 
   requestAnimationFrame(loop);
