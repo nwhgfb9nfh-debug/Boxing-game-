@@ -124,17 +124,18 @@ canvas {
 
 .joystick {
   position: absolute;
-  left: 26px;
-  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
   display: none;
 }
 
 .joystick__base {
-  width: 130px;
-  height: 130px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.18);
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
   position: relative;
@@ -144,24 +145,13 @@ canvas {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 56px;
-  height: 56px;
-  margin-left: -28px;
-  margin-top: -28px;
+  width: 50px;
+  height: 50px;
+  margin-left: -25px;
+  margin-top: -25px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffd23f, #b9910a);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 210, 63, 0.55), rgba(185, 145, 10, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
   transition: transform 0.05s linear;
-}
-
-.btn--exit {
-  position: absolute;
-  left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  border-radius: 10px;
-  padding: 14px 32px;
-  font-size: 16px;
-  background: linear-gradient(180deg, #ff5a5a, #b52b2b);
-  box-shadow: 0 6px 16px rgba(181, 43, 43, 0.5);
 }

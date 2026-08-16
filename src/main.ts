@@ -33,14 +33,12 @@ function enterBuilding(lot: LotInstance) {
   scene = { type: "interior", lot, interior: new InteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
-  buildingUI.showExit(exitBuilding);
   joystick.root.style.display = "block";
 }
 
 function exitBuilding() {
   scene = { type: "street" };
   controls.root.style.display = "flex";
-  buildingUI.hideExit();
   joystick.root.style.display = "none";
 }
 
@@ -78,9 +76,10 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else {
-    scene.interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
+    const atDoor = scene.interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     scene.interior.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = scene.lot.building.name;
+    if (atDoor) exitBuilding();
   }
 
   requestAnimationFrame(loop);
