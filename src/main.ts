@@ -145,6 +145,26 @@ function openDinerMenu() {
   }));
 }
 
+function openPodcastMenu() {
+  locationMenu.open(() => ({
+    title: "🎙️ Podcast Appearance",
+    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+    actions: [
+      {
+        id: "podcast",
+        label: "Go On the Show",
+        cost: 15,
+        run: () => {
+          if (!energy.spend(15)) return "Not enough energy for a podcast appearance.";
+          playerState.fame += 4;
+          playerState.image += 2;
+          return `Great interview! Fame +4, Image +2.`;
+        },
+      },
+    ],
+  }));
+}
+
 function openSunbatheMenu() {
   locationMenu.open(() => ({
     title: "☀️ Sunbathe",
@@ -672,6 +692,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
     { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
   ],
+  "Press Building": [{ id: "podcast", label: "Podcast Appearance", nx: 0.5, ny: 0.4 }],
 };
 
 type Scene =
@@ -805,6 +826,7 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
+      else if (nearStation.id === "podcast") onTrigger = openPodcastMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
