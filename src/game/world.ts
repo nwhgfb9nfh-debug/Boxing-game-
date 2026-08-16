@@ -147,6 +147,13 @@ export function nearbyLots(worldX: number): LotInstance[] {
   return ENTERABLE_LOTS.filter((lot) => Math.abs(lot.worldX - worldX) <= ENTRY_PROXIMITY);
 }
 
+// Right-hand-drive convention (matches the lane the car actually drives
+// in): facing toward the Arena (+1) puts the right-hand side on the
+// bottom row; facing back toward the housing frame (-1) puts it on top.
+export function rowForFacing(facing: 1 | -1): "top" | "bottom" {
+  return facing === 1 ? "bottom" : "top";
+}
+
 export function frameAt(worldX: number): { index: number; label: string } {
   const idx = Math.min(
     TOTAL_FRAMES - 1,

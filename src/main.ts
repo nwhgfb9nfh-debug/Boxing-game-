@@ -3,7 +3,7 @@ import { createDriveControls } from "./ui/controls";
 import { createBuildingUI } from "./ui/buildingUI";
 import { StreetScene } from "./game/street";
 import { renderInterior } from "./game/interior";
-import { nearbyLots, type LotInstance } from "./game/world";
+import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -61,7 +61,11 @@ function loop(now: number) {
     street.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = street.getCurrentFrameLabel();
 
-    const lots = street.isStopped() ? nearbyLots(street.getWorldX()) : [];
+    // Only the building on the player's current right-hand side is
+    // enterable — reaching the other side means U-turning first.
+    const lots = street.isStopped()
+      ? nearbyLots(street.getWorldX()).filter((l) => l.row === rowForFacing(street.getFacing()))
+      : [];
     const key = lots.map((l) => l.building.name).join("|");
     if (key !== lastPromptKey) {
       lastPromptKey = key;

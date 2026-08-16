@@ -125,6 +125,10 @@ export class StreetScene {
     return this.worldX;
   }
 
+  getFacing(): 1 | -1 {
+    return this.facing;
+  }
+
   isStopped(): boolean {
     return !this.isUTurning && Math.abs(this.speed) < STOPPED_EPS;
   }
