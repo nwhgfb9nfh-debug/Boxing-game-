@@ -32,6 +32,9 @@ export class JumpRopeScene {
   private activeElapsed = 0; // resets to 0 when "active" begins — the ball starts at the top here
   private beatIndex = 0;
   private results: JumpRopeResult[] = [];
+  // True once the current drop has been resolved (tapped or timed out) —
+  // stays locked until the ball swings all the way back to the top and a
+  // new drop begins, even though the ball itself keeps moving the whole time.
   private scoredThisBeat = false;
   private flash: { result: JumpRopeResult; timer: number } | null = null;
   // Set only on a tap (not a timeout) — while active, activeElapsed
@@ -51,10 +54,7 @@ export class JumpRopeScene {
 
     if (this.freeze) {
       this.freeze.timer -= dt;
-      if (this.freeze.timer <= 0) {
-        this.freeze = null;
-        this.activeElapsed = 0; // freeze over — fresh drop from the top for the next beat
-      }
+      if (this.freeze.timer <= 0) this.freeze = null; // unpauses — the ball just continues from here, no reset
       return;
     }
 
@@ -67,15 +67,17 @@ export class JumpRopeScene {
       return;
     }
 
+    // The ball's motion is one continuous, uninterrupted bounce (aside
+    // from freeze pauses) — it's never reset mid-game. Once tapped (or
+    // missed by timeout), it stays locked out until it swings all the
+    // way back to the top and starts a fresh drop; only then can the
+    // next beat be tapped. "Top" = every whole-BEAT_INTERVAL crossing.
+    const prevElapsed = this.activeElapsed;
     this.activeElapsed += dt;
-
-    // A beat's opportunity closes once the ball has swung all the way
-    // back to the top (half a cycle after its peak) — if it wasn't
-    // tapped by then, that's a Miss by timeout (no freeze — there's no
-    // tapped position to hold on).
-    const closeTime = (this.beatIndex + 1) * BEAT_INTERVAL;
-    if (!this.scoredThisBeat && this.activeElapsed >= closeTime) {
-      this.recordBeat("miss");
+    const crossedTop = Math.floor(this.activeElapsed / BEAT_INTERVAL) > Math.floor(prevElapsed / BEAT_INTERVAL);
+    if (crossedTop) {
+      if (!this.scoredThisBeat) this.recordBeat("miss"); // this beat's whole drop went by untapped
+      this.scoredThisBeat = false; // unlocked — the new drop that just started is tappable
     }
   }
 
@@ -85,12 +87,14 @@ export class JumpRopeScene {
    * tapping at all. No time-based decay: Perfect holds for the ball's
    * entire fully-clear window, not just the instant it crosses. Freezes
    * the ball in place for FREEZE_DURATION so the feedback shown always
-   * matches exactly what got graded.
+   * matches exactly what got graded, then locks out further taps until
+   * the ball has gone all the way back to the top and is falling again.
    */
   handleTap(height: number) {
     if (this.phase !== "active" || this.scoredThisBeat || this.freeze) return;
     const { diff } = this.geometry(height);
     const result: JumpRopeResult = diff >= BALL_RADIUS ? "perfect" : diff > 0 ? "good" : "miss";
+    this.scoredThisBeat = true;
     this.recordBeat(result);
     this.freeze = { timer: FREEZE_DURATION };
   }
@@ -99,7 +103,6 @@ export class JumpRopeScene {
     this.results.push(result);
     this.flash = { result, timer: FLASH_DURATION };
     this.beatIndex++;
-    this.scoredThisBeat = false;
     if (this.beatIndex >= BEATS) this.phase = "summary";
   }
 
@@ -196,7 +199,7 @@ export class JumpRopeScene {
 
     ctx.font = "14px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText("Tap as it crosses the line", width / 2, centerY + amplitude + BALL_RADIUS + 40);
+    ctx.fillText("Tap when the ball is below the line", width / 2, centerY + amplitude + BALL_RADIUS + 40);
 
     ctx.restore();
   }
