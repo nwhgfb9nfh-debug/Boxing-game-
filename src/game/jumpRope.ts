@@ -3,8 +3,10 @@
 // (Perfect/Good/Miss) — but unlike a hidden timing window, the grade is
 // read directly off what's on screen: the ball's center Y vs. the dashed
 // line's Y, measured in ball radii.
-//   Perfect: center has cleared the line by >= 1 full radius (whole ball past it)
-//   Good: center has passed the line, but by less than 1 radius
+//   Perfect: center has JUST cleared the line by one full radius — a
+//     narrow band right at that moment, not the whole rest of the descent
+//   Good: center has passed the line, but not within the Perfect band
+//     (either not quite a full radius past yet, or well past it)
 //   Miss: center hasn't reached the line yet (tapped too early), or no tap at all
 
 export type JumpRopeResult = "perfect" | "good" | "miss";
@@ -15,6 +17,9 @@ const BEAT_INTERVAL = 0.62; // seconds per bounce cycle — the fixed rhythm
 const COUNTDOWN_DURATION = 1.2; // seconds the ball sits still at the top before the first drop
 const FLASH_DURATION = 0.25; // seconds the marker holds its result color
 const BALL_RADIUS = 22;
+// How far past the 1-radius threshold still counts as Perfect — deliberately
+// tight so it takes real precision, not just tapping anytime after clearing.
+const PERFECT_TOLERANCE = 10;
 
 export class JumpRopeScene {
   private phase: JumpRopePhase = "countdown";
@@ -61,7 +66,8 @@ export class JumpRopeScene {
   handleTap(height: number) {
     if (this.phase !== "active" || this.scoredThisBeat) return;
     const { diff } = this.geometry(height);
-    const result: JumpRopeResult = diff >= BALL_RADIUS ? "perfect" : diff > 0 ? "good" : "miss";
+    const isPerfect = diff >= BALL_RADIUS && diff <= BALL_RADIUS + PERFECT_TOLERANCE;
+    const result: JumpRopeResult = isPerfect ? "perfect" : diff > 0 ? "good" : "miss";
     this.recordBeat(result);
   }
 
