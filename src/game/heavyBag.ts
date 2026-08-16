@@ -6,12 +6,13 @@
 // mechanic feels right.
 //
 // The meter is graded in 5 zones, bottom (early) to top (late):
-//   Red (too early) -> Yellow (slightly early, still a Weak Hit) ->
-//   Green (Perfect, deliberately narrow) -> Yellow (slightly late, still
-//   a Weak Hit) -> Red (too late, Overswing). Only the two yellows and
-//   the green award something other than the two red extremes' outcome.
+//   Red (too early, Weak) -> Yellow (slightly early, Good) -> Green
+//   (Perfect, deliberately narrow) -> Yellow (slightly late, Good) -> Red
+//   (too late, Overswing). The two yellows are each kept narrower than
+//   green, and the two reds — the real "miss" zones — take up most of
+//   the track.
 
-export type HeavyBagResult = "weak" | "perfect" | "overswing";
+export type HeavyBagResult = "weak" | "good" | "perfect" | "overswing";
 export type HeavyBagPhase = "ready" | "charging" | "result" | "summary";
 
 const REPS = 5;
@@ -19,10 +20,10 @@ const FILL_DURATION = 1.1; // seconds for the meter to go 0 -> 1
 const RESULT_PAUSE = 0.9; // seconds to show the per-rep result before continuing
 
 // Zone boundaries, as fractions of the meter (0 = start, 1 = fully charged).
-const YELLOW_EARLY_START = 0.3;
+const YELLOW_EARLY_START = 0.46;
 const SWEET_START = 0.5;
-const SWEET_END = 0.56; // a 6%-wide window — deliberately harder than before
-const YELLOW_LATE_END = 0.76;
+const SWEET_END = 0.56; // a 6%-wide window
+const YELLOW_LATE_END = 0.6; // yellow bands (4% each) stay narrower than green (6%)
 
 export class HeavyBagScene {
   private phase: HeavyBagPhase = "ready";
@@ -66,9 +67,9 @@ export class HeavyBagScene {
 
   private grade(m: number): HeavyBagResult {
     if (m < YELLOW_EARLY_START) return "weak"; // red, too early
-    if (m < SWEET_START) return "weak"; // yellow, slightly early
+    if (m < SWEET_START) return "good"; // yellow, slightly early
     if (m <= SWEET_END) return "perfect"; // green
-    if (m <= YELLOW_LATE_END) return "weak"; // yellow, slightly late
+    if (m <= YELLOW_LATE_END) return "good"; // yellow, slightly late
     return "overswing"; // red, too late
   }
 
@@ -180,7 +181,7 @@ export class HeavyBagScene {
   }
 
   private renderSummary(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    const counts = { perfect: 0, weak: 0, overswing: 0 };
+    const counts = { perfect: 0, good: 0, weak: 0, overswing: 0 };
     for (const r of this.results) counts[r]++;
 
     ctx.font = "18px sans-serif";
@@ -189,7 +190,8 @@ export class HeavyBagScene {
 
     const lines = [
       { label: "Perfect", value: counts.perfect, color: resultColor("perfect") },
-      { label: "Weak hit", value: counts.weak, color: resultColor("weak") },
+      { label: "Good", value: counts.good, color: resultColor("good") },
+      { label: "Weak", value: counts.weak, color: resultColor("weak") },
       { label: "Overswing", value: counts.overswing, color: resultColor("overswing") },
     ];
     lines.forEach((l, i) => {
@@ -210,12 +212,14 @@ export class HeavyBagScene {
 
 function resultLabel(r: HeavyBagResult): string {
   if (r === "perfect") return "PERFECT!";
-  if (r === "weak") return "WEAK HIT";
+  if (r === "good") return "GOOD";
+  if (r === "weak") return "WEAK";
   return "OVERSWING";
 }
 
 function resultColor(r: HeavyBagResult): string {
   if (r === "perfect") return "#3fbf6b";
-  if (r === "weak") return "#ffd23f";
+  if (r === "good") return "#ffd23f";
+  if (r === "weak") return "#ff8c42";
   return "#ff5a5a";
 }
