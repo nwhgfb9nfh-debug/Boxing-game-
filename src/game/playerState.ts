@@ -30,6 +30,15 @@ export interface GymLevels {
   endurance: number;
 }
 
+// A signed sponsorship deal (Section 5): pays out per fight for a fixed
+// contract length instead of a lump sum. fightsRemaining only ticks down
+// once the Fight system can report a completed bout — until then it just
+// sits at the value the contract was signed for.
+export interface SponsorshipContract {
+  dealId: string;
+  fightsRemaining: number;
+}
+
 export interface PlayerState {
   fame: number;
   image: number;
@@ -41,9 +50,11 @@ export interface PlayerState {
   // starts (not implemented yet — no fight system).
   hp: number;
   training: TrainingStats;
-  // Office reception (Section 5): staff levels all start at 1 (already on
-  // staff), rising to 2 or 3 as higher tiers are hired for money.
-  // managerLevel also gates which Office elevator floors are reachable.
+  // Office reception (Section 5): coach/cutman levels are cumulative
+  // (buying Lvl 3 keeps Lvl 1/2 unlocked). managerLevel is exclusive —
+  // only one manager is on staff at a time, and hiring a different tier
+  // replaces it, which is also what gates Office elevator floor access
+  // (see openElevatorMenu/openManagerDeskMenu in main.ts).
   managerLevel: number;
   coachLevel: number;
   cutmanLevel: number;
@@ -53,7 +64,10 @@ export interface PlayerState {
   // fightScheduled just gates Cash Advance and re-selecting Set Next Fight.
   fightScheduled: boolean;
   cashAdvanceTaken: boolean;
-  sponsorships: string[]; // ids of signed sponsorship deals
+  sponsorships: SponsorshipContract[];
+  // Manager Lvl 2+'s "Invest in Portfolio" — a placeholder money sink until
+  // a real returns system exists.
+  portfolioInvested: number;
 }
 
 function freshStat(): StatProgress {
@@ -74,5 +88,6 @@ export function createPlayerState(): PlayerState {
     fightScheduled: false,
     cashAdvanceTaken: false,
     sponsorships: [],
+    portfolioInvested: 0,
   };
 }

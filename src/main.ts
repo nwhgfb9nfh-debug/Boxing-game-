@@ -229,93 +229,134 @@ const GYM_CATEGORIES: GymCategory[] = [
 // of the street — see the "interior" scene branch below.
 const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
   1: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
+  2: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
+  3: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
 };
 
-const CASH_ADVANCE_AMOUNT = 1000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
+const CASH_ADVANCE_AMOUNT = 20000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
+const PORTFOLIO_INVEST_AMOUNT = 5000; // placeholder — returns arrive once a real investment system exists
 
 interface SponsorshipDeal {
   id: string;
   name: string;
-  payout: number; // placeholder signing bonus — recurring payouts arrive with a real sponsorship economy
+  perFightPayout: number; // paid out per completed fight while the contract is active
+  contractFights: number; // deal length, in fights
 }
 const SPONSORSHIP_DEALS: SponsorshipDeal[] = [
-  { id: "local-gym", name: "Local Gym Co-Sponsor", payout: 500 },
-  { id: "sportswear", name: "Sportswear Brand", payout: 1500 },
-  { id: "energy-drink", name: "Energy Drink Co.", payout: 3000 },
+  { id: "local-gym", name: "Local Gym Co-Sponsor", perFightPayout: 500, contractFights: 3 },
+  { id: "sportswear", name: "Sportswear Brand", perFightPayout: 1500, contractFights: 5 },
+  { id: "energy-drink", name: "Energy Drink Co.", perFightPayout: 3000, contractFights: 8 },
 ];
 
 type ManagerDeskView = "main" | "sponsorships";
 let managerDeskView: ManagerDeskView = "main";
 
-function buildManagerDeskMenu(): MenuData {
+function buildManagerDeskMenu(floor: number): MenuData {
   if (managerDeskView === "sponsorships") return buildSponsorshipsMenu();
+  const actions: MenuData["actions"] = [
+    {
+      id: "set-next-fight",
+      label: "Set Next Fight",
+      cost: 0,
+      costLabel: playerState.fightScheduled ? "SCHEDULED" : "SET",
+      disabled: playerState.fightScheduled,
+      run: () => {
+        if (playerState.fightScheduled) return "You already have a fight scheduled.";
+        playerState.fightScheduled = true;
+        return "Fight scheduled! (Full matchmaking arrives with the Promotion system.)";
+      },
+    },
+    {
+      id: "sponsorships",
+      label: "Sponsorships",
+      cost: 0,
+      costLabel: "›",
+      run: () => {
+        managerDeskView = "sponsorships";
+        return "";
+      },
+    },
+    {
+      id: "cash-advance",
+      label: "Request Cash Advance",
+      cost: 0,
+      costLabel: !playerState.fightScheduled
+        ? "NEED FIGHT"
+        : playerState.cashAdvanceTaken
+          ? "TAKEN"
+          : `+$${CASH_ADVANCE_AMOUNT}`,
+      disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
+      run: () => {
+        if (!playerState.fightScheduled) return "Schedule a fight first.";
+        if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
+        playerState.money += CASH_ADVANCE_AMOUNT;
+        playerState.cashAdvanceTaken = true;
+        return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
+      },
+    },
+    {
+      id: "media-training",
+      label: "Media Training",
+      cost: 10,
+      run: () => {
+        if (!energy.spend(10)) return "Not enough energy for media training.";
+        playerState.image += 2;
+        return `Image +2 (now ${playerState.image}).`;
+      },
+    },
+    {
+      id: "charity-event",
+      label: "Charity Event",
+      cost: 15,
+      run: () => {
+        if (!energy.spend(15)) return "Not enough energy for a charity event.";
+        if (playerState.hp < 5) return "Not enough HP for a charity event.";
+        playerState.hp -= 5;
+        playerState.image += 5;
+        return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
+      },
+    },
+  ];
+
+  // Manager Lvl 2+ desk options.
+  if (floor >= 2) {
+    actions.push({
+      id: "invest-portfolio",
+      label: "Invest in Portfolio",
+      cost: 0,
+      costLabel: `-$${PORTFOLIO_INVEST_AMOUNT}`,
+      disabled: playerState.money < PORTFOLIO_INVEST_AMOUNT,
+      run: () => {
+        if (playerState.money < PORTFOLIO_INVEST_AMOUNT) {
+          return `Not enough money — need $${PORTFOLIO_INVEST_AMOUNT}, have $${playerState.money}.`;
+        }
+        playerState.money -= PORTFOLIO_INVEST_AMOUNT;
+        playerState.portfolioInvested += PORTFOLIO_INVEST_AMOUNT;
+        return `Invested $${PORTFOLIO_INVEST_AMOUNT} (total $${playerState.portfolioInvested}). Returns arrive once a real investment system exists.`;
+      },
+    });
+  }
+
+  // Manager Lvl 3 desk option.
+  if (floor >= 3) {
+    actions.push({
+      id: "networking-event",
+      label: "Networking Event",
+      cost: 20,
+      run: () => {
+        if (!energy.spend(20)) return "Not enough energy for a networking event.";
+        if (playerState.hp < 8) return "Not enough HP for a networking event.";
+        playerState.hp -= 8;
+        playerState.fame += 5;
+        return `Fame +5 (now ${playerState.fame}), HP -8 (now ${playerState.hp}).`;
+      },
+    });
+  }
+
   return {
-    title: "🗄️ Manager Desk",
+    title: `🗄️ Manager Desk — Lvl ${floor}`,
     energyText: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}`,
-    actions: [
-      {
-        id: "set-next-fight",
-        label: "Set Next Fight",
-        cost: 0,
-        costLabel: playerState.fightScheduled ? "SCHEDULED" : "SET",
-        disabled: playerState.fightScheduled,
-        run: () => {
-          if (playerState.fightScheduled) return "You already have a fight scheduled.";
-          playerState.fightScheduled = true;
-          return "Fight scheduled! (Full matchmaking arrives with the Promotion system.)";
-        },
-      },
-      {
-        id: "sponsorships",
-        label: "Sponsorships",
-        cost: 0,
-        costLabel: "›",
-        run: () => {
-          managerDeskView = "sponsorships";
-          return "";
-        },
-      },
-      {
-        id: "cash-advance",
-        label: "Request Cash Advance",
-        cost: 0,
-        costLabel: !playerState.fightScheduled
-          ? "NEED FIGHT"
-          : playerState.cashAdvanceTaken
-            ? "TAKEN"
-            : `+$${CASH_ADVANCE_AMOUNT}`,
-        disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
-        run: () => {
-          if (!playerState.fightScheduled) return "Schedule a fight first.";
-          if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
-          playerState.money += CASH_ADVANCE_AMOUNT;
-          playerState.cashAdvanceTaken = true;
-          return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
-        },
-      },
-      {
-        id: "media-training",
-        label: "Media Training",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy for media training.";
-          playerState.image += 2;
-          return `Image +2 (now ${playerState.image}).`;
-        },
-      },
-      {
-        id: "charity-event",
-        label: "Charity Event",
-        cost: 15,
-        run: () => {
-          if (!energy.spend(15)) return "Not enough energy for a charity event.";
-          if (playerState.hp < 5) return "Not enough HP for a charity event.";
-          playerState.hp -= 5;
-          playerState.image += 5;
-          return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
-        },
-      },
-    ],
+    actions,
   };
 }
 
@@ -335,18 +376,17 @@ function buildSponsorshipsMenu(): MenuData {
         },
       },
       ...SPONSORSHIP_DEALS.map((deal) => {
-        const signed = playerState.sponsorships.includes(deal.id);
+        const running = playerState.sponsorships.find((s) => s.dealId === deal.id);
         return {
           id: `sponsor-${deal.id}`,
-          label: `${deal.name} (+$${deal.payout})`,
+          label: `${deal.name} — $${deal.perFightPayout}/fight × ${deal.contractFights}`,
           cost: 0,
-          costLabel: signed ? "RUNNING" : "SIGN",
-          disabled: signed,
+          costLabel: running ? `${running.fightsRemaining} LEFT` : "SIGN",
+          disabled: !!running,
           run: () => {
-            if (signed) return `${deal.name} is already running.`;
-            playerState.sponsorships.push(deal.id);
-            playerState.money += deal.payout;
-            return `Signed with ${deal.name}! +$${deal.payout}.`;
+            if (running) return `${deal.name} is already running.`;
+            playerState.sponsorships.push({ dealId: deal.id, fightsRemaining: deal.contractFights });
+            return `Signed with ${deal.name}! $${deal.perFightPayout}/fight for the next ${deal.contractFights} fights.`;
           },
         };
       }),
@@ -354,9 +394,9 @@ function buildSponsorshipsMenu(): MenuData {
   };
 }
 
-function openManagerDeskMenu() {
+function openManagerDeskMenu(floor: number) {
   managerDeskView = "main";
-  locationMenu.open(buildManagerDeskMenu);
+  locationMenu.open(() => buildManagerDeskMenu(floor));
 }
 
 type ReceptionView = "main" | "staff" | "staff-role" | "gym" | "gym-category";
@@ -429,6 +469,11 @@ function buildStaffMenu(): MenuData {
 
 function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
   const role = STAFF_ROLES.find((r) => r.id === roleId)!;
+  // The Manager is exclusive — only one tier is on staff at a time, and
+  // hiring a different one replaces him, locking the Office elevator floor
+  // that matched his old tier until he's hired again (see openElevatorMenu).
+  // Coach/Cutman are cumulative — once hired, a tier stays unlocked.
+  const exclusive = role.id === "manager";
   return {
     title: `${role.icon} ${role.name}`,
     energyText: `Money: $${playerState.money}`,
@@ -445,22 +490,24 @@ function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
       },
       ...[1, 2, 3].map((level) => {
         const current = getStaffLevel(role.id);
-        const owned = current >= level;
+        const owned = exclusive ? current === level : current >= level;
         const price = level === 1 ? 0 : role.prices[level - 2];
         return {
           id: `${role.id}-lvl${level}`,
           label: `${role.name} Lvl ${level}`,
           cost: 0,
-          costLabel: owned ? "HIRED" : `$${price}`,
+          costLabel: owned ? (exclusive ? "ACTIVE" : "HIRED") : `$${price}`,
           disabled: owned,
           run: () => {
-            if (owned) return `${role.name} Lvl ${level} already hired.`;
+            if (owned) return `${role.name} Lvl ${level} already ${exclusive ? "active" : "hired"}.`;
             if (playerState.money < price) {
               return `Not enough money — need $${price}, have $${playerState.money}.`;
             }
             playerState.money -= price;
             setStaffLevel(role.id, level);
-            return `${role.name} promoted to Lvl ${level}!`;
+            return exclusive
+              ? `${role.name} Lvl ${level} is now on staff.`
+              : `${role.name} promoted to Lvl ${level}!`;
           },
         };
       }),
@@ -549,15 +596,17 @@ function openElevatorMenu(lot: LotInstance) {
     title: "🛗 Elevator",
     energyText: `Manager Level: ${playerState.managerLevel}/3`,
     actions: [1, 2, 3].map((floor) => {
-      const unlocked = playerState.managerLevel >= floor;
+      // Exclusive manager tier — the elevator only reaches whichever floor
+      // matches the manager currently on staff (see buildStaffRoleMenu).
+      const unlocked = playerState.managerLevel === floor;
       return {
         id: `floor-${floor}`,
-        label: `Floor ${floor}${floor === 1 ? " — Manager's Office" : ""}`,
+        label: `Floor ${floor} — Manager's Office`,
         cost: 0,
         costLabel: unlocked ? "GO" : "LOCKED",
         disabled: !unlocked,
         run: () => {
-          if (!unlocked) return `Hire the Floor ${floor} manager at Reception first.`;
+          if (!unlocked) return `Hire the Lvl ${floor} manager at Reception first.`;
           locationMenu.close();
           scene = {
             type: "interior",
@@ -756,7 +805,7 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "managerdesk") onTrigger = openManagerDeskMenu;
+      else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
