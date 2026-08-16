@@ -200,7 +200,18 @@ function exitBuilding() {
   joystick.setActive(false);
 }
 
-function startStation(lot: LotInstance, interior: InteriorScene, stationId: string) {
+const TRAINING_STATION_IDS = new Set(["heavybag", "reflexdots", "jumprope"]);
+
+function startStation(lot: LotInstance, interior: InteriorScene, stationId: string, anchor: { x: number; y: number }) {
+  // Each Training minigame costs the full 100 Energy Star (Section 4) —
+  // only one per session, and it leaves nothing for Private Life actions
+  // until you sleep, which is the mechanism that actually keeps training
+  // and private-life days separated.
+  if (TRAINING_STATION_IDS.has(stationId) && !energy.spend(100)) {
+    buildingUI.showToast("Not enough energy left to train today — sleep to refill first.", anchor, "bottom");
+    return;
+  }
+
   joystick.setActive(false);
   buildingUI.setEnterPrompt(null, () => {});
   if (stationId === "heavybag") {
@@ -282,7 +293,7 @@ function loop(now: number) {
       let onTrigger: () => void;
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
-      else onTrigger = () => startStation(lot, interior, nearStation.id);
+      else onTrigger = () => startStation(lot, interior, nearStation.id, pos);
       buildingUI.setEnterPrompt(pos, onTrigger, nearStation.label.toUpperCase());
     } else {
       buildingUI.setEnterPrompt(null, () => {});
