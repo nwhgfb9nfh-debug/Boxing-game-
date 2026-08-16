@@ -183,9 +183,30 @@ function openSwimMenu() {
   }));
 }
 
-function openOfficeMenu() {
+// Office reception (Section 5): a manager (Lvl 1) is already on staff for
+// free; Lvl 2/3 cost money and each one unlocks the matching elevator floor.
+interface ManagerTier {
+  level: number;
+  name: string;
+  price: number;
+}
+const MANAGER_TIERS: ManagerTier[] = [
+  { level: 1, name: "Manager — Lvl 1", price: 0 },
+  { level: 2, name: "Manager — Lvl 2", price: 2000 },
+  { level: 3, name: "Manager — Lvl 3", price: 5000 },
+];
+
+// Office is a multi-room building: Lobby (Reception + Elevator) -> Floor
+// 1-3 (each floor's manager's office). Floor rooms reuse InteriorScene like
+// any other room, but walking out their door returns to the Lobby instead
+// of the street — see the "interior" scene branch below.
+const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
+  1: [{ id: "charity", label: "Charity Appearance", nx: 0.5, ny: 0.4 }],
+};
+
+function openCharityMenu() {
   locationMenu.open(() => ({
-    title: "🏢 Office",
+    title: "🏢 Manager's Office",
     energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
     actions: [
       {
@@ -200,6 +221,60 @@ function openOfficeMenu() {
         },
       },
     ],
+  }));
+}
+
+function openReceptionMenu() {
+  locationMenu.open(() => ({
+    title: "🛎️ Reception",
+    energyText: `Money: $${playerState.money}`,
+    actions: MANAGER_TIERS.map((tier) => {
+      const owned = playerState.managerLevel >= tier.level;
+      return {
+        id: `hire-${tier.level}`,
+        label: tier.name,
+        cost: 0,
+        costLabel: owned ? "HIRED" : `$${tier.price}`,
+        disabled: owned,
+        run: () => {
+          if (owned) return `${tier.name} already hired.`;
+          if (playerState.money < tier.price) {
+            return `Not enough money — need $${tier.price}, have $${playerState.money}.`;
+          }
+          playerState.money -= tier.price;
+          playerState.managerLevel = tier.level;
+          return `${tier.name} hired! Floor ${tier.level} unlocked.`;
+        },
+      };
+    }),
+  }));
+}
+
+function openElevatorMenu(lot: LotInstance) {
+  locationMenu.open(() => ({
+    title: "🛗 Elevator",
+    energyText: `Manager Level: ${playerState.managerLevel}/3`,
+    actions: [1, 2, 3].map((floor) => {
+      const unlocked = playerState.managerLevel >= floor;
+      return {
+        id: `floor-${floor}`,
+        label: `Floor ${floor}${floor === 1 ? " — Manager's Office" : ""}`,
+        cost: 0,
+        costLabel: unlocked ? "GO" : "LOCKED",
+        disabled: !unlocked,
+        run: () => {
+          if (!unlocked) return `Hire the Floor ${floor} manager at Reception first.`;
+          locationMenu.close();
+          scene = {
+            type: "interior",
+            lot,
+            interior: new InteriorScene(lot, OFFICE_FLOOR_STATIONS[floor] ?? []),
+            officeFloor: floor,
+          };
+          return "";
+        },
+      };
+    }),
   }));
 }
 
@@ -246,7 +321,10 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "workoutclip", label: "Workout Clip", nx: 0.5, ny: 0.6 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
-  Office: [{ id: "charity", label: "Charity Appearance", nx: 0.5, ny: 0.4 }],
+  Office: [
+    { id: "reception", label: "Reception", nx: 0.3, ny: 0.4 },
+    { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
+  ],
   Beach: [
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
     { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
@@ -255,7 +333,9 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
 
 type Scene =
   | { type: "street" }
-  | { type: "interior"; lot: LotInstance; interior: InteriorScene }
+  // officeFloor is set only while inside an Office elevator floor room —
+  // its door returns to the Lobby instead of the street (see below).
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
@@ -364,20 +444,27 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
-    const { lot, interior } = scene;
+    const { lot, interior, officeFloor } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);
-    hudLabel.textContent = lot.building.name;
+    hudLabel.textContent = officeFloor ? `${lot.building.name} — Floor ${officeFloor}` : lot.building.name;
 
     if (atDoor) {
-      exitBuilding();
+      if (officeFloor) {
+        // Elevator floors exit back to the Lobby, not the street.
+        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office) };
+      } else {
+        exitBuilding();
+      }
     } else if (nearStation) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
       let onTrigger: () => void;
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "charity") onTrigger = openOfficeMenu;
+      else if (nearStation.id === "charity") onTrigger = openCharityMenu;
+      else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
+      else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;
       else onTrigger = () => startStation(lot, interior, nearStation.id, pos);

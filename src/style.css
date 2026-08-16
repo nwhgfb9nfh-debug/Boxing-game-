@@ -361,6 +361,10 @@ canvas {
   background: #2f3440;
 }
 
+.action-menu__item:disabled {
+  opacity: 0.5;
+}
+
 .action-menu__cost {
   color: #ffd23f;
   font-size: 12px;

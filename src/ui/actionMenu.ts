@@ -6,7 +6,11 @@
 export interface MenuAction {
   id: string;
   label: string;
-  cost: number; // Energy Star cost, shown next to the label
+  cost: number; // Energy Star cost, shown next to the label (ignored if costLabel is set)
+  /** Override the auto "N EN" badge — e.g. "$2000" or "HIRED" for money-costed actions like Reception. */
+  costLabel?: string;
+  /** Greys out and disables the row (e.g. an already-owned tier) — run() still guards itself as a fallback. */
+  disabled?: boolean;
   /** Perform the action (or reject it, e.g. insufficient energy) and return a short result message. */
   run: () => string;
 }
@@ -66,9 +70,12 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "action-menu__item";
-      btn.innerHTML = `<span>${action.label}</span><span class="action-menu__cost">${action.cost} EN</span>`;
+      const costText = action.costLabel ?? `${action.cost} EN`;
+      btn.innerHTML = `<span>${action.label}</span><span class="action-menu__cost">${costText}</span>`;
+      if (action.disabled) btn.disabled = true;
       btn.addEventListener("pointerdown", (e) => {
         e.preventDefault();
+        if (action.disabled) return;
         message = action.run();
         render();
       });
