@@ -1,22 +1,23 @@
 // Reflex Dots training minigame (Section 4, Speed stat): 5 dots flash
 // briefly at random positions; tap before they vanish. Graded by
-// reaction speed — Green (0-0.40 of the window) = Perfect, Yellow
-// (0.40-0.80) = Good, Red (0.80 and beyond, including not tapping at
-// all before it vanishes) = Miss.
+// reaction speed — Green (0-0.50 of the window) = Perfect, Yellow
+// (0.50-0.90) = Good. The dot vanishes right at 0.90 — there's no
+// "still tappable but too late" red zone. Miss only happens by not
+// tapping it at all before it's gone, never from a late-but-landed tap.
 
 export type ReflexResult = "perfect" | "good" | "miss";
 export type ReflexPhase = "waiting" | "active" | "result" | "summary";
 
 const ROUNDS = 5;
-const DOT_LIFETIME = 0.85; // seconds a dot stays tappable
+const DOT_LIFETIME = 0.85; // seconds the zone timings are fractions of
 const HIT_RADIUS = 44;
 const RESULT_PAUSE = 0.7;
 const MIN_WAIT = 0.4; // pause before a dot appears, randomized so it can't be anticipated
 const MAX_WAIT = 1.0;
 
 // Speed thresholds, as a fraction of DOT_LIFETIME elapsed at tap time.
-const PERFECT_BY = 0.4;
-const GOOD_BY = 0.8; // anything at or past this (or a full timeout) is a Miss
+const PERFECT_BY = 0.5;
+const GOOD_BY = 0.9; // the dot vanishes exactly here — tapping past this is impossible, only a timeout Miss
 
 // Keep dots clear of the HUD pill and the bottom UI band.
 const MARGIN_TOP = 110;
@@ -46,7 +47,7 @@ export class ReflexDotsScene {
       if (this.timer <= 0) this.spawnDot(width, height);
     } else if (this.phase === "active") {
       this.activeElapsed += dt;
-      if (this.activeElapsed >= DOT_LIFETIME) {
+      if (this.activeElapsed >= DOT_LIFETIME * GOOD_BY) {
         this.finishRound("miss");
       }
     } else if (this.phase === "result") {
@@ -75,8 +76,11 @@ export class ReflexDotsScene {
     if (this.phase !== "active") return;
     if (Math.hypot(x - this.dotX, y - this.dotY) > HIT_RADIUS) return;
 
+    // A tap only ever reaches here while active, i.e. before the vanish
+    // point (GOOD_BY) — so a landed tap is always Perfect or Good, never
+    // Miss. Miss only happens via the timeout above.
     const frac = this.activeElapsed / DOT_LIFETIME;
-    const result: ReflexResult = frac < PERFECT_BY ? "perfect" : frac < GOOD_BY ? "good" : "miss";
+    const result: ReflexResult = frac < PERFECT_BY ? "perfect" : "good";
     this.finishRound(result);
   }
 
@@ -117,14 +121,16 @@ export class ReflexDotsScene {
 
     if (this.phase === "active") {
       const frac = this.activeElapsed / DOT_LIFETIME;
-      const color = frac < PERFECT_BY ? "#3fbf6b" : frac < GOOD_BY ? "#ffd23f" : "#ff5a5a";
+      const color = frac < PERFECT_BY ? "#3fbf6b" : "#ffd23f";
 
-      // Shrinking ring shows the vanish countdown
-      const ringR = 30 * (1 - frac) + 6;
+      // Shrinking ring shows the vanish countdown — reaches zero exactly
+      // when the dot actually disappears (at GOOD_BY), not at frac=1.
+      const vanishFrac = Math.min(1, frac / GOOD_BY);
+      const ringR = 30 * (1 - vanishFrac) + 6;
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(this.dotX, this.dotY, ringR + 20, 0, Math.PI * 2 * (1 - frac));
+      ctx.arc(this.dotX, this.dotY, ringR + 20, 0, Math.PI * 2 * (1 - vanishFrac));
       ctx.stroke();
 
       ctx.fillStyle = color;
