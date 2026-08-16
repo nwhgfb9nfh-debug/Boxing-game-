@@ -1,20 +1,25 @@
-import type { LotInstance } from "../game/world";
+// The ENTER prompt (anchored to the actual building it belongs to, on the
+// street) and the EXIT button (shown while inside a placeholder interior).
 
-// The "ENTER <building>" prompt (shown when stopped near a lot on the
-// street) and the "EXIT" button (shown while inside a placeholder interior).
+export interface EnterTarget {
+  x: number;
+  y: number;
+}
 
 export interface BuildingUI {
-  showEnterPrompts: (lots: LotInstance[], onEnter: (lot: LotInstance) => void) => void;
-  hideEnterPrompts: () => void;
+  setEnterPrompt: (target: EnterTarget | null, onEnter: () => void) => void;
   showExit: (onExit: () => void) => void;
   hideExit: () => void;
   destroy: () => void;
 }
 
 export function createBuildingUI(container: HTMLElement): BuildingUI {
-  const enterRoot = document.createElement("div");
-  enterRoot.className = "enter-prompts";
-  container.appendChild(enterRoot);
+  const enterBtn = document.createElement("button");
+  enterBtn.type = "button";
+  enterBtn.className = "btn btn--enter";
+  enterBtn.textContent = "ENTER";
+  enterBtn.style.display = "none";
+  container.appendChild(enterBtn);
 
   const exitBtn = document.createElement("button");
   exitBtn.type = "button";
@@ -23,6 +28,12 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
   exitBtn.style.display = "none";
   container.appendChild(exitBtn);
 
+  let currentEnterHandler: (() => void) | null = null;
+  enterBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    currentEnterHandler?.();
+  });
+
   let currentExitHandler: (() => void) | null = null;
   exitBtn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -30,24 +41,16 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
   });
 
   return {
-    showEnterPrompts: (lots, onEnter) => {
-      enterRoot.innerHTML = "";
-      for (const lot of lots) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn btn--enter";
-        btn.textContent = `ENTER ${lot.building.name.toUpperCase()}`;
-        btn.addEventListener("pointerdown", (e) => {
-          e.preventDefault();
-          onEnter(lot);
-        });
-        enterRoot.appendChild(btn);
+    setEnterPrompt: (target, onEnter) => {
+      if (!target) {
+        enterBtn.style.display = "none";
+        currentEnterHandler = null;
+        return;
       }
-      enterRoot.style.display = lots.length ? "flex" : "none";
-    },
-    hideEnterPrompts: () => {
-      enterRoot.style.display = "none";
-      enterRoot.innerHTML = "";
+      currentEnterHandler = onEnter;
+      enterBtn.style.left = `${target.x}px`;
+      enterBtn.style.top = `${target.y}px`;
+      enterBtn.style.display = "flex";
     },
     showExit: (onExit) => {
       currentExitHandler = onExit;
@@ -58,7 +61,7 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
       currentExitHandler = null;
     },
     destroy: () => {
-      enterRoot.remove();
+      enterBtn.remove();
       exitBtn.remove();
     },
   };

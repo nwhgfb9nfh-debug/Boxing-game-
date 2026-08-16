@@ -107,25 +107,19 @@ canvas {
   opacity: 0.55;
 }
 
-.enter-prompts {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 110px);
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-}
-
 .btn--enter {
-  pointer-events: auto;
+  position: absolute;
+  transform: translate(-50%, -50%);
   border-radius: 10px;
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 8px 18px;
+  font-size: 13px;
   background: linear-gradient(180deg, #3fbf6b, #22803f);
   box-shadow: 0 6px 16px rgba(34, 128, 63, 0.5);
+  z-index: 2;
+}
+
+.btn--enter:active {
+  transform: translate(-50%, -50%) scale(0.94);
 }
 
 .btn--exit {

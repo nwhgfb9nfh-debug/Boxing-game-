@@ -24,13 +24,11 @@ const street = new StreetScene(controls);
 
 type Scene = { type: "street" } | { type: "interior"; lot: LotInstance };
 let scene: Scene = { type: "street" };
-let lastPromptKey = "";
 
 function enterBuilding(lot: LotInstance) {
   scene = { type: "interior", lot };
   controls.root.style.display = "none";
-  buildingUI.hideEnterPrompts();
-  lastPromptKey = "";
+  buildingUI.setEnterPrompt(null, () => {});
   buildingUI.showExit(exitBuilding);
 }
 
@@ -63,13 +61,15 @@ function loop(now: number) {
 
     // Only the building on the player's current right-hand side is
     // enterable — reaching the other side means U-turning first.
-    const lots = street.isStopped()
+    const [lot] = street.isStopped()
       ? nearbyLots(street.getWorldX()).filter((l) => l.row === rowForFacing(street.getFacing()))
       : [];
-    const key = lots.map((l) => l.building.name).join("|");
-    if (key !== lastPromptKey) {
-      lastPromptKey = key;
-      buildingUI.showEnterPrompts(lots, enterBuilding);
+
+    if (lot) {
+      const pos = street.getEntranceScreenPos(lot, window.innerWidth, window.innerHeight);
+      buildingUI.setEnterPrompt(pos, () => enterBuilding(lot));
+    } else {
+      buildingUI.setEnterPrompt(null, () => {});
     }
   } else {
     renderInterior(ctx, window.innerWidth, window.innerHeight, scene.lot);

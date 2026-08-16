@@ -14,6 +14,7 @@ import {
   START_WORLD_X,
   frameAt,
   type BuildingDef,
+  type LotInstance,
 } from "./world";
 import type { DriveControls } from "../ui/controls";
 
@@ -131,6 +132,22 @@ export class StreetScene {
 
   isStopped(): boolean {
     return !this.isUTurning && Math.abs(this.speed) < STOPPED_EPS;
+  }
+
+  // Screen-space point at a lot's entrance (where it meets the road), so
+  // UI like the ENTER button can be anchored to the actual building.
+  getEntranceScreenPos(lot: LotInstance, width: number, height: number): { x: number; y: number } {
+    const camX = Math.max(width / 2, Math.min(WORLD_WIDTH - width / 2, this.worldX));
+    const roadY = height / 2;
+    const x = lot.worldX - camX + width / 2;
+
+    if (lot.building === ARENA) return { x, y: roadY };
+
+    const y =
+      lot.row === "bottom"
+        ? roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN
+        : roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN;
+    return { x, y };
   }
 
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
