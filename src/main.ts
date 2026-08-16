@@ -8,6 +8,7 @@ import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
+import { JumpRopeScene } from "./game/jumpRope";
 import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -32,14 +33,16 @@ const street = new StreetScene(controls);
 
 tapZone.onTap((x, y) => {
   if (scene.type === "reflexdots") scene.game.handleTap(x, y);
+  else if (scene.type === "jumprope") scene.game.handleTap();
 });
 
 // Stations placed inside specific buildings' interiors — walk up to one
 // and its prompt surfaces the same way the street's ENTER prompt does.
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Gym: [
-    { id: "heavybag", label: "Heavy Bag", nx: 0.3, ny: 0.3 },
-    { id: "reflexdots", label: "Reflex Dots", nx: 0.7, ny: 0.3 },
+    { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
+    { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
+    { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
   ],
 };
 
@@ -47,7 +50,8 @@ type Scene =
   | { type: "street" }
   | { type: "interior"; lot: LotInstance; interior: InteriorScene }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
-  | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene };
+  | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
+  | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
 let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
@@ -79,6 +83,9 @@ function startStation(lot: LotInstance, interior: InteriorScene, stationId: stri
     scene = { type: "heavybag", lot, interior, game: new HeavyBagScene() };
   } else if (stationId === "reflexdots") {
     scene = { type: "reflexdots", lot, interior, game: new ReflexDotsScene() };
+    tapZone.setActive(true);
+  } else if (stationId === "jumprope") {
+    scene = { type: "jumprope", lot, interior, game: new JumpRopeScene() };
     tapZone.setActive(true);
   }
 }
@@ -160,11 +167,25 @@ function loop(now: number) {
         "DONE",
       );
     }
-  } else {
+  } else if (scene.type === "reflexdots") {
     const { lot, interior, game } = scene;
     game.update(dt, window.innerWidth, window.innerHeight);
     game.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = "Reflex Dots";
+
+    if (game.isDone()) {
+      tapZone.setActive(false);
+      buildingUI.setEnterPrompt(
+        { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
+        () => finishMinigame(lot, interior),
+        "DONE",
+      );
+    }
+  } else {
+    const { lot, interior, game } = scene;
+    game.update(dt);
+    game.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = "Jump Rope";
 
     if (game.isDone()) {
       tapZone.setActive(false);
