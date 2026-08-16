@@ -30,16 +30,22 @@ type Scene =
 let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance) {
+  if (lot.building.locked) {
+    buildingUI.showLockedToast(
+      "LOCKED — you need to purchase this building first via the Real Estate App.",
+    );
+    return; // stay on the street; no room, so no exit mechanic is needed
+  }
   scene = { type: "interior", lot, interior: new InteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
-  joystick.root.style.display = "block";
+  joystick.setActive(true);
 }
 
 function exitBuilding() {
   scene = { type: "street" };
   controls.root.style.display = "flex";
-  joystick.root.style.display = "none";
+  joystick.setActive(false);
 }
 
 function resize() {

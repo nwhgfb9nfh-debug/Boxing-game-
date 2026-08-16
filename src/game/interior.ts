@@ -7,14 +7,17 @@ import type { LotInstance } from "./world";
 // (bottom-center, the same spot you walked in from) exits back to the
 // street automatically, the same way approaching any other interactive
 // point on the street surfaces its action.
+//
+// Only ever constructed for unlocked buildings — locked ones short-circuit
+// to a toast message on the street instead (see main.ts / buildingUI.ts).
 
 const PLAYER_SPEED = 260; // px/sec
 const PLAYER_RADIUS = 12;
 const DOOR_HALF_WIDTH = 45;
 
 // Margin just for the HUD pill up top and the walls themselves — the
-// joystick now overlays the room (semi-transparent) instead of pushing it
-// out of the way, so the play area stays as large and visible as possible.
+// joystick floats wherever the player touches, so nothing needs to be
+// reserved for it and the play area stays as large as possible.
 const MARGIN_TOP = 90;
 const MARGIN_BOTTOM = 40;
 const MARGIN_SIDE = 30;
@@ -39,8 +42,6 @@ export class InteriorScene {
 
   /** Returns true the frame the player walks into the door — caller should exit the building. */
   update(dt: number, vector: { x: number; y: number }, width: number, height: number): boolean {
-    // Locked buildings still need to be walkable so the player can reach
-    // the door — there's no other way out now that Exit isn't a button.
     const bounds = this.roomBounds(width, height);
     const roomW = bounds.right - bounds.left;
     const roomH = bounds.bottom - bounds.top;
@@ -61,7 +62,6 @@ export class InteriorScene {
   }
 
   render(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    const locked = !!this.lot.building.locked;
     const bounds = this.roomBounds(width, height);
 
     ctx.save();
@@ -69,11 +69,11 @@ export class InteriorScene {
     ctx.fillRect(0, 0, width, height);
 
     // Floor
-    ctx.fillStyle = locked ? "#1c1e24" : "#241d38";
+    ctx.fillStyle = "#241d38";
     ctx.fillRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
 
     // Walls
-    ctx.strokeStyle = locked ? "#3a3d45" : "#4a3d6b";
+    ctx.strokeStyle = "#4a3d6b";
     ctx.lineWidth = 8;
     ctx.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
 
@@ -91,12 +91,6 @@ export class InteriorScene {
     ctx.fillStyle = "#fff";
     ctx.font = "bold 26px sans-serif";
     ctx.fillText(this.lot.building.name, width / 2, bounds.top - 36);
-
-    if (locked) {
-      ctx.font = "16px sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.75)";
-      ctx.fillText("🔒 Locked — purchase not available yet", width / 2, bounds.top + 34);
-    }
 
     ctx.font = "12px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.45)";

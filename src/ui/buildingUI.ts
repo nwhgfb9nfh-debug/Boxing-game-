@@ -1,6 +1,8 @@
 // The ENTER prompt, anchored to the actual building it belongs to on the
-// street. Exiting a building is handled inside the interior scene itself
-// (walk into the door) rather than through a persistent UI button.
+// street, and a brief toast for locked buildings (which never open an
+// interior scene at all — no room, so no exit mechanic is needed for them).
+// Unlocked buildings exit by walking into the door inside the interior
+// scene itself.
 
 export interface EnterTarget {
   x: number;
@@ -9,8 +11,11 @@ export interface EnterTarget {
 
 export interface BuildingUI {
   setEnterPrompt: (target: EnterTarget | null, onEnter: () => void) => void;
+  showLockedToast: (message: string) => void;
   destroy: () => void;
 }
+
+const LOCKED_TOAST_DURATION_MS = 2600;
 
 export function createBuildingUI(container: HTMLElement): BuildingUI {
   const enterBtn = document.createElement("button");
@@ -19,6 +24,11 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
   enterBtn.textContent = "ENTER";
   enterBtn.style.display = "none";
   container.appendChild(enterBtn);
+
+  const toast = document.createElement("div");
+  toast.className = "locked-toast";
+  container.appendChild(toast);
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   let currentEnterHandler: (() => void) | null = null;
   enterBtn.addEventListener("pointerdown", (e) => {
@@ -38,8 +48,19 @@ export function createBuildingUI(container: HTMLElement): BuildingUI {
       enterBtn.style.top = `${target.y}px`;
       enterBtn.style.display = "flex";
     },
+    showLockedToast: (message) => {
+      toast.textContent = message;
+      toast.classList.add("is-visible");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove("is-visible");
+        toastTimer = null;
+      }, LOCKED_TOAST_DURATION_MS);
+    },
     destroy: () => {
+      if (toastTimer) clearTimeout(toastTimer);
       enterBtn.remove();
+      toast.remove();
     },
   };
 }
