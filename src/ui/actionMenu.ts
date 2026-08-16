@@ -1,7 +1,7 @@
-// A generic location action menu — energy-costed actions plus Sleep,
-// shown as an overlay. Built for the Phone first, but meant to be reused
-// for every other Private Life location's menu (Gym, Diner, Beach,
-// Lounge, ...) as those come online.
+// A generic location action menu — a list of energy-costed actions, shown
+// as an overlay. Used for other Private Life locations (Gym, Diner,
+// Beach, Lounge, ...) as those come online. Sleeping isn't here — that's
+// its own interaction at a bed, not a menu action (see main.ts).
 
 export interface MenuAction {
   id: string;
@@ -19,8 +19,7 @@ export interface MenuData {
 
 export interface ActionMenu {
   root: HTMLDivElement;
-  open: (builder: () => MenuData, onSleep: () => void) => void;
-  setMessage: (text: string) => void;
+  open: (builder: () => MenuData) => void;
   close: () => void;
   isOpen: () => boolean;
   destroy: () => void;
@@ -37,7 +36,6 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
   container.appendChild(overlay);
 
   let builder: (() => MenuData) | null = null;
-  let sleepHandler: (() => void) | null = null;
   let message = "";
 
   function render() {
@@ -78,16 +76,6 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
     }
     panel.appendChild(list);
 
-    const sleepBtn = document.createElement("button");
-    sleepBtn.type = "button";
-    sleepBtn.className = "action-menu__sleep";
-    sleepBtn.textContent = "😴 Sleep";
-    sleepBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      sleepHandler?.();
-    });
-    panel.appendChild(sleepBtn);
-
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "action-menu__close";
@@ -102,21 +90,15 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
   function close() {
     overlay.style.display = "none";
     builder = null;
-    sleepHandler = null;
     message = "";
   }
 
   return {
     root: overlay,
-    open: (b, onSleep) => {
+    open: (b) => {
       builder = b;
-      sleepHandler = onSleep;
       message = "";
       overlay.style.display = "flex";
-      render();
-    },
-    setMessage: (text) => {
-      message = text;
       render();
     },
     close,

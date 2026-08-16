@@ -16,6 +16,7 @@ export interface BuildingDef {
   name: string;
   kind?: LotKind; // "building" (default) or "path" (Beach: a walkway, not a structure)
   locked?: boolean;
+  price?: number; // purchase price via the Real Estate App, for locked housing
 }
 
 // A specific enterable building/path placed in the world, used for
@@ -52,13 +53,13 @@ export const FRAMES: FrameDef[] = [
     index: 0,
     bottom: [
       { name: "Trailer" }, // start location — already owned
-      { name: "Apartment", locked: true },
-      { name: "Penthouse Apartment", locked: true },
+      { name: "Apartment", locked: true, price: 500 },
+      { name: "Penthouse Apartment", locked: true, price: 2000 },
     ],
     top: [
-      { name: "Mansion", locked: true },
-      { name: "Suburban House", locked: true },
-      { name: "Townhouse", locked: true },
+      { name: "Mansion", locked: true, price: 5000 },
+      { name: "Suburban House", locked: true, price: 1200 },
+      { name: "Townhouse", locked: true, price: 1800 },
     ],
   },
   {
@@ -145,6 +146,15 @@ export const ENTERABLE_LOTS: LotInstance[] = computeEnterableLots();
 
 export function nearbyLots(worldX: number): LotInstance[] {
   return ENTERABLE_LOTS.filter((lot) => Math.abs(lot.worldX - worldX) <= ENTRY_PROXIMITY);
+}
+
+// The actual housing BuildingDef objects (same references used for
+// rendering and entry) — the Real Estate App reads and mutates these
+// directly, so unlocking a house takes effect everywhere instantly.
+export function getHousingBuildings(): BuildingDef[] {
+  const housing = FRAMES[0];
+  if (housing.kind !== "housing") return [];
+  return [...housing.bottom, ...housing.top];
 }
 
 // Right-hand-drive convention (matches the lane the car actually drives

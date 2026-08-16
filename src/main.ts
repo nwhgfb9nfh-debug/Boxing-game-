@@ -4,15 +4,15 @@ import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
-import { createActionMenu, type MenuData } from "./ui/actionMenu";
+import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
-import { createPlayerState } from "./game/playerState";
+import { createPlayerState, type TrainingStats } from "./game/playerState";
 import { EnergyStar } from "./game/energyStar";
-import { nearbyLots, rowForFacing, type LotInstance } from "./game/world";
+import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -32,14 +32,54 @@ const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
 const tapZone = createTapZone(app);
-const actionMenu = createActionMenu(app);
 const street = new StreetScene(controls);
 
 const playerState = createPlayerState();
 const energy = new EnergyStar();
 
-// The Phone (Section 5): usable anywhere, starting with the street. Opens
-// a generic action menu — Post on Social Media for now, more to come.
+// Energy Star + HP (Section 3 & 7) — always visible outside minigames.
+const statusHud = document.createElement("div");
+statusHud.className = "status-hud";
+const energyPill = document.createElement("div");
+energyPill.className = "status-hud__pill status-hud__pill--energy";
+const hpPill = document.createElement("div");
+hpPill.className = "status-hud__pill status-hud__pill--hp";
+statusHud.appendChild(energyPill);
+statusHud.appendChild(hpPill);
+app.appendChild(statusHud);
+
+// The Phone (Section 5) — only usable inside a building, not while
+// driving. Home screen of apps: Contacts, Stats, Real Estate, Buzzer
+// (Twitter), Imagestar (Instagram, not v1 yet).
+function getHouseListings(): HouseListing[] {
+  return getHousingBuildings().map((b) => ({ name: b.name, locked: !!b.locked, price: b.price }));
+}
+
+const phoneApi: PhoneApi = {
+  getEnergy: () => energy.remaining,
+  getFame: () => playerState.fame,
+  getMoney: () => playerState.money,
+  getTraining: () => playerState.training,
+  getHouses: getHouseListings,
+  buyHouse: (name) => {
+    const house = getHousingBuildings().find((h) => h.name === name);
+    if (!house) return "Not found.";
+    if (!house.locked) return `${name} is already owned.`;
+    const price = house.price ?? 0;
+    if (playerState.money < price) return `Not enough money — need $${price}.`;
+    playerState.money -= price;
+    house.locked = false;
+    return `Purchased ${name}!`;
+  },
+  post: () => {
+    if (!energy.spend(10)) return "Not enough energy to post.";
+    playerState.fame += 2;
+    return "Posted! Fame +2.";
+  },
+};
+
+const phoneUI = createPhoneUI(app, phoneApi);
+
 const phoneBtn = document.createElement("button");
 phoneBtn.type = "button";
 phoneBtn.className = "btn btn--phone";
@@ -47,32 +87,28 @@ phoneBtn.textContent = "📱";
 app.appendChild(phoneBtn);
 phoneBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
-  actionMenu.open(buildPhoneMenu, handleSleep);
+  phoneUI.open();
 });
 
-function buildPhoneMenu(): MenuData {
-  return {
-    title: "📱 Phone",
-    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}`,
-    actions: [
-      {
-        id: "post",
-        label: "Post on Social Media",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy to post.";
-          playerState.fame += 2;
-          return "Posted! Fame +2.";
-        },
-      },
-    ],
-  };
+function sleepAtBed(anchor: { x: number; y: number }) {
+  const leftover = energy.sleep();
+  const hpGain = Math.floor(leftover / 2);
+  playerState.hp += hpGain;
+  buildingUI.showToast(
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to 100/100.`,
+    anchor,
+    "bottom",
+  );
 }
 
-function handleSleep() {
-  const banked = energy.sleep();
-  playerState.hpBuffer += banked;
-  actionMenu.setMessage(`😴 Slept. Banked ${banked} as HP buffer. Energy refilled to 100/100.`);
+/** Perfect = +2, Good = +1, everything else = +0 — banked into the matching training stat. */
+function applyTraining(stat: keyof TrainingStats, results: string[]) {
+  let bonus = 0;
+  for (const r of results) {
+    if (r === "perfect") bonus += 2;
+    else if (r === "good") bonus += 1;
+  }
+  playerState.training[stat] += bonus;
 }
 
 tapZone.onTap((x, y) => {
@@ -83,6 +119,7 @@ tapZone.onTap((x, y) => {
 // Stations placed inside specific buildings' interiors — walk up to one
 // and its prompt surfaces the same way the street's ENTER prompt does.
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
+  Trailer: [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }],
   Gym: [
     { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
     { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
@@ -100,7 +137,7 @@ let scene: Scene = { type: "street" };
 
 function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
   if (lot.building.locked) {
-    buildingUI.showLockedToast(
+    buildingUI.showToast(
       "LOCKED — you need to purchase this building first via the Real Estate App.",
       anchor,
       lot.row,
@@ -158,9 +195,15 @@ function loop(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  // The Phone is usable anywhere on the street; hidden inside
-  // interiors/minigames where it would clutter/compete with their own UI.
-  phoneBtn.style.display = scene.type === "street" && !actionMenu.isOpen() ? "flex" : "none";
+  const outOfMinigame = scene.type === "street" || scene.type === "interior";
+  statusHud.style.display = outOfMinigame ? "flex" : "none";
+  if (outOfMinigame) {
+    energyPill.textContent = `⚡ ${energy.remaining}/100`;
+    hpPill.textContent = `❤ ${playerState.hp} HP`;
+  }
+
+  // The Phone only works inside a building, not while driving.
+  phoneBtn.style.display = scene.type === "interior" && !phoneUI.isOpen() ? "flex" : "none";
 
   if (scene.type === "street") {
     street.update(dt);
@@ -189,7 +232,9 @@ function loop(now: number) {
       exitBuilding();
     } else if (nearStation) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
-      buildingUI.setEnterPrompt(pos, () => startStation(lot, interior, nearStation.id), nearStation.label.toUpperCase());
+      const onTrigger =
+        nearStation.id === "bed" ? () => sleepAtBed(pos) : () => startStation(lot, interior, nearStation.id);
+      buildingUI.setEnterPrompt(pos, onTrigger, nearStation.label.toUpperCase());
     } else {
       buildingUI.setEnterPrompt(null, () => {});
     }
@@ -211,7 +256,10 @@ function loop(now: number) {
     if (game.isDone()) {
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
-        () => finishMinigame(lot, interior),
+        () => {
+          applyTraining("power", game.getResults());
+          finishMinigame(lot, interior);
+        },
         "DONE",
       );
     }
@@ -225,7 +273,10 @@ function loop(now: number) {
       tapZone.setActive(false);
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
-        () => finishMinigame(lot, interior),
+        () => {
+          applyTraining("speed", game.getResults());
+          finishMinigame(lot, interior);
+        },
         "DONE",
       );
     }
@@ -239,7 +290,10 @@ function loop(now: number) {
       tapZone.setActive(false);
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
-        () => finishMinigame(lot, interior),
+        () => {
+          applyTraining("endurance", game.getResults());
+          finishMinigame(lot, interior);
+        },
         "DONE",
       );
     }
