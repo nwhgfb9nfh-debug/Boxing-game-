@@ -252,27 +252,48 @@ canvas {
   color: #ff6b6b;
 }
 
-.status-hud__pill--money {
-  color: #3fbf6b;
+/* Money — its own HUD, top-left, separate from Energy/HP. */
+.money-hud {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 16px;
+  display: none;
+  pointer-events: none;
 }
 
-/* Phone — only usable inside a building, so it sits below the status HUD
-   rather than competing with it on the street. */
+.money-hud__pill {
+  background: rgba(0, 0, 0, 0.55);
+  color: #3fbf6b;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  white-space: nowrap;
+}
+
+/* Phone — only usable inside a building. Bottom-right, bigger than the
+   status pills so it reads as a real button, not another readout. */
 .btn--phone {
   position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+  bottom: max(18px, env(safe-area-inset-bottom));
   right: 16px;
-  width: 50px;
-  height: 50px;
-  font-size: 22px;
+  width: 66px;
+  height: 66px;
+  font-size: 30px;
   background: radial-gradient(circle at 35% 30%, #4a4f5c, #23262e);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   display: none;
 }
 
+/* Full-screen overlays (Phone, and other location action menus) must sit
+   above every other button/prompt on screen — including .btn--enter's
+   z-index — until closed. */
 .action-menu-overlay {
   position: absolute;
   inset: 0;
+  z-index: 50;
   display: none;
   align-items: center;
   justify-content: center;

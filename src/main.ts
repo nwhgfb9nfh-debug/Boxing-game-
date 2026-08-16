@@ -37,19 +37,24 @@ const street = new StreetScene(controls);
 const playerState = createPlayerState();
 const energy = new EnergyStar();
 
-// Energy Star + HP + Money (Section 3, 5 & 7) — always visible outside minigames.
+// Energy Star + HP (Section 3 & 7) — top-right, always visible outside minigames.
 const statusHud = document.createElement("div");
 statusHud.className = "status-hud";
 const energyPill = document.createElement("div");
 energyPill.className = "status-hud__pill status-hud__pill--energy";
 const hpPill = document.createElement("div");
 hpPill.className = "status-hud__pill status-hud__pill--hp";
-const moneyPill = document.createElement("div");
-moneyPill.className = "status-hud__pill status-hud__pill--money";
 statusHud.appendChild(energyPill);
 statusHud.appendChild(hpPill);
-statusHud.appendChild(moneyPill);
 app.appendChild(statusHud);
+
+// Money (Section 5) — its own HUD, top-left.
+const moneyHud = document.createElement("div");
+moneyHud.className = "money-hud";
+const moneyPill = document.createElement("div");
+moneyPill.className = "money-hud__pill";
+moneyHud.appendChild(moneyPill);
+app.appendChild(moneyHud);
 
 // The Phone (Section 5) — only usable inside a building, not while
 // driving. Home screen of apps: Contacts, Stats, Real Estate, Buzzer
@@ -200,6 +205,7 @@ function loop(now: number) {
 
   const outOfMinigame = scene.type === "street" || scene.type === "interior";
   statusHud.style.display = outOfMinigame ? "flex" : "none";
+  moneyHud.style.display = outOfMinigame ? "block" : "none";
   if (outOfMinigame) {
     energyPill.textContent = `⚡ ${energy.remaining}/100`;
     hpPill.textContent = `❤ ${playerState.hp} HP`;
