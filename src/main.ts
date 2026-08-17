@@ -1282,7 +1282,10 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   if (useBonus) playerState.vacationEnergyBonusUses -= 1;
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
-  playerState.hp += hpGain;
+  // Sleeping out of After Fight fully restores HP (cosmetic — you're 0/0
+  // there, not banking a leftover-energy buffer like every other sleep).
+  if (campCycle.current.type === "afterfight") playerState.hp = 100;
+  else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
   // HP banked above 100 is pure pre-fight insurance — it never carries
@@ -1331,7 +1334,8 @@ function openVacationMenu() {
             playerState.money -= VACATION_COST;
             playerState.vacationEnergyBonusUses = 2;
             playerState.justFinishedFight = false;
-            return "Vacation booked! Both Private Life stages this camp will refill Energy to 110 instead of 100.";
+            playerState.hp = 100;
+            return "Vacation booked! HP restored to 100 (Energy stays 0 until you sleep). Both Private Life stages this camp will refill Energy to 110 instead of 100.";
           },
         },
       ],
@@ -1360,9 +1364,10 @@ function openSimulateFightMenu() {
           run: () => {
             if (!isFightNight) return "It's not fight night yet.";
             energy.spend(energy.remaining);
+            playerState.hp = 0;
             playerState.justFinishedFight = true;
             const nextStage = campCycle.advance();
-            return `Fight simulated! You're exhausted (0 Energy). Next: ${nextStage.label}.`;
+            return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
           },
         },
       ],
