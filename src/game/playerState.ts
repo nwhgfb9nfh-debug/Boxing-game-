@@ -88,6 +88,12 @@ export interface PlayerState {
   // Set by vacation, consumed by the next sleepAtBed() call, which refills
   // Energy Star to 110 instead of 100 for that one refill.
   vacationEnergyBonus: boolean;
+  // Mall (Section 5): mostly cosmetic, money-only purchases. Vehicle/Pet
+  // are one-time owned collectibles; gifts are bought here but given away
+  // once the NPC/romance system exists to receive them.
+  vehicleOwned: string | null;
+  petOwned: string | null;
+  giftsOwned: number;
 }
 
 function freshStat(): StatProgress {
@@ -119,5 +125,8 @@ export function createPlayerState(): PlayerState {
     purseMultiplier: 1.0,
     justFinishedFight: false,
     vacationEnergyBonus: false,
+    vehicleOwned: null,
+    petOwned: null,
+    giftsOwned: 0,
   };
 }

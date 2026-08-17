@@ -1184,6 +1184,152 @@ function openVacationMenu() {
   });
 }
 
+// Mall (Section 5): mostly money-only, cosmetic — the spec flags the whole
+// section "not v1" but it's being built now anyway. Vehicle/Pet are
+// one-time owned collectibles with no stat effect yet; Clothes is a
+// repeatable Image-for-money buy; Gift Shop stocks items with nowhere to
+// go until the NPC/romance system exists; Furniture is browse-only per
+// spec, purchases deferred to the Phone.
+interface ShopItem {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const VEHICLE_OPTIONS: ShopItem[] = [
+  { id: "sedan", name: "Sedan", price: 3000 },
+  { id: "sports-car", name: "Sports Car", price: 8000 },
+  { id: "luxury-suv", name: "Luxury SUV", price: 15000 },
+];
+
+function openVehicleMenu() {
+  locationMenu.open(() => ({
+    title: "🚗 Vehicle Dealer",
+    energyText: `Money: $${playerState.money}  ·  Owned: ${playerState.vehicleOwned ?? "None"}`,
+    actions: VEHICLE_OPTIONS.map((v) => {
+      const owned = playerState.vehicleOwned === v.id;
+      return {
+        id: v.id,
+        label: v.name,
+        cost: 0,
+        costLabel: owned ? "OWNED" : `$${v.price}`,
+        disabled: owned,
+        run: () => {
+          if (owned) return `You already own the ${v.name}.`;
+          if (playerState.money < v.price) return `Not enough money — need $${v.price}, have $${playerState.money}.`;
+          playerState.money -= v.price;
+          playerState.vehicleOwned = v.id;
+          return `Purchased the ${v.name}! (Cosmetic for now.)`;
+        },
+      };
+    }),
+  }));
+}
+
+interface OutfitOption extends ShopItem {
+  imageGain: number;
+}
+const OUTFIT_OPTIONS: OutfitOption[] = [
+  { id: "casual", name: "Casual Outfit", price: 200, imageGain: 2 },
+  { id: "designer", name: "Designer Outfit", price: 800, imageGain: 5 },
+  { id: "luxury", name: "Luxury Outfit", price: 2000, imageGain: 10 },
+];
+
+function openClothesMenu() {
+  locationMenu.open(() => ({
+    title: "👗 Clothing Store",
+    energyText: `Money: $${playerState.money}  ·  Image: ${playerState.image}`,
+    actions: OUTFIT_OPTIONS.map((o) => ({
+      id: o.id,
+      label: `${o.name} (Image +${o.imageGain})`,
+      cost: 0,
+      costLabel: `$${o.price}`,
+      run: () => {
+        if (playerState.money < o.price) return `Not enough money — need $${o.price}, have $${playerState.money}.`;
+        playerState.money -= o.price;
+        playerState.image += o.imageGain;
+        return `Bought the ${o.name}! Image +${o.imageGain} (now ${playerState.image}).`;
+      },
+    })),
+  }));
+}
+
+const GIFT_OPTIONS: ShopItem[] = [
+  { id: "flowers", name: "Flowers", price: 50 },
+  { id: "jewelry", name: "Jewelry", price: 500 },
+  { id: "ring", name: "Ring", price: 3000 },
+];
+
+function openGiftShopMenu() {
+  locationMenu.open(() => ({
+    title: "🎁 Gift Shop",
+    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${playerState.giftsOwned}`,
+    actions: GIFT_OPTIONS.map((g) => ({
+      id: g.id,
+      label: g.name,
+      cost: 0,
+      costLabel: `$${g.price}`,
+      run: () => {
+        if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
+        playerState.money -= g.price;
+        playerState.giftsOwned += 1;
+        return `Bought ${g.name}! (Give it to someone once the NPC/romance system exists.)`;
+      },
+    })),
+  }));
+}
+
+const PET_OPTIONS: ShopItem[] = [
+  { id: "dog", name: "Dog", price: 500 },
+  { id: "cat", name: "Cat", price: 400 },
+  { id: "exotic-bird", name: "Exotic Bird", price: 1500 },
+];
+
+function openPetStoreMenu() {
+  locationMenu.open(() => ({
+    title: "🐾 Pet Store",
+    energyText: `Money: $${playerState.money}  ·  Owned: ${playerState.petOwned ?? "None"}`,
+    actions: PET_OPTIONS.map((p) => {
+      const owned = playerState.petOwned === p.id;
+      return {
+        id: p.id,
+        label: p.name,
+        cost: 0,
+        costLabel: owned ? "OWNED" : `$${p.price}`,
+        disabled: owned,
+        run: () => {
+          if (owned) return `You already own a ${p.name}.`;
+          if (playerState.money < p.price) return `Not enough money — need $${p.price}, have $${playerState.money}.`;
+          playerState.money -= p.price;
+          playerState.petOwned = p.id;
+          return `Adopted a ${p.name}! (Cosmetic for now.)`;
+        },
+      };
+    }),
+  }));
+}
+
+const FURNITURE_ITEMS: ShopItem[] = [
+  { id: "sofa", name: "Sofa", price: 400 },
+  { id: "bed-frame", name: "Bed Frame", price: 600 },
+  { id: "tv-stand", name: "TV Stand", price: 300 },
+];
+
+function openFurnitureMenu() {
+  locationMenu.open(() => ({
+    title: "🛋️ Furniture Store",
+    energyText: "Browsing only — purchases happen via the Phone once that's supported.",
+    actions: FURNITURE_ITEMS.map((f) => ({
+      id: f.id,
+      label: f.name,
+      cost: 0,
+      costLabel: `$${f.price}`,
+      disabled: true,
+      run: () => "",
+    })),
+  }));
+}
+
 /**
  * Perfect = +2, Good = +1, everything else = +0 — banked into the matching
  * training stat. Marks the stat as trained regardless of the bonus earned,
@@ -1239,6 +1385,13 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "bottle", label: "Buy a Bottle", nx: 0.85, ny: 0.15 },
   ],
   Airport: [{ id: "vacation", label: "Go on Vacation", nx: 0.5, ny: 0.4 }],
+  Mall: [
+    { id: "vehicles", label: "Vehicle Dealer", nx: 0.25, ny: 0.25 },
+    { id: "clothes", label: "Clothing Store", nx: 0.75, ny: 0.25 },
+    { id: "giftshop", label: "Gift Shop", nx: 0.5, ny: 0.5 },
+    { id: "petstore", label: "Pet Store", nx: 0.25, ny: 0.75 },
+    { id: "furniture", label: "Furniture Store", nx: 0.75, ny: 0.75 },
+  ],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
     { id: "fanevent", label: "Marketing Expert", nx: 0.75, ny: 0.25 },
@@ -1385,6 +1538,11 @@ function loop(now: number) {
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "vacation") onTrigger = openVacationMenu;
+      else if (nearStation.id === "vehicles") onTrigger = openVehicleMenu;
+      else if (nearStation.id === "clothes") onTrigger = openClothesMenu;
+      else if (nearStation.id === "giftshop") onTrigger = openGiftShopMenu;
+      else if (nearStation.id === "petstore") onTrigger = openPetStoreMenu;
+      else if (nearStation.id === "furniture") onTrigger = openFurnitureMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
