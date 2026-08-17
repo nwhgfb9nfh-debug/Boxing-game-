@@ -443,12 +443,13 @@ function openFanEventMenu() {
   locationMenu.open(buildFanEventMenu);
 }
 
-// Lounge (Section 5): a second room behind a velvet rope, same sub-room
-// pattern as Office's elevator floors (see the "loungeVip" scene branch
-// below) — its door returns to the main floor instead of the street.
-// Exchange Numbers / Selfie with Celebrity land here later with the NPC
-// system; the Bar is live now.
-const LOUNGE_VIP_STATIONS: Station[] = [{ id: "bar", label: "Bar", nx: 0.5, ny: 0.4 }];
+// Lounge (Section 5): the Bar is out on the regular floor. VIP is a
+// separate room behind a velvet rope, same sub-room pattern as Office's
+// elevator floors (see the "loungeVip" scene branch below) — its door
+// returns to the main floor instead of the street. Exchange Numbers /
+// Selfie with Celebrity land here later with the NPC system; Buy a
+// Bottle is live now.
+const LOUNGE_VIP_STATIONS: Station[] = [{ id: "bottle", label: "Buy a Bottle", nx: 0.5, ny: 0.4 }];
 const VIP_FAME_REQUIREMENT = 20; // placeholder — spec says Fame-gated, no exact number given
 const VIP_ENTRY_ENERGY = 10;
 const VIP_ENTRY_HP_COST = 5; // spec: "guaranteed HP damage", flat per entry
@@ -516,6 +517,29 @@ function openBarMenu() {
           playerState.hp -= BAR_ROUND.hpCost;
           playerState.image += BAR_ROUND.imageGain;
           return `Image +${BAR_ROUND.imageGain}, HP -${BAR_ROUND.hpCost} (now Image ${playerState.image}, HP ${playerState.hp}).`;
+        },
+      },
+    ],
+  }));
+}
+
+const VIP_BOTTLE = { energyCost: 30, hpCost: 8, fameGain: 6 };
+
+function openBottleMenu() {
+  locationMenu.open(() => ({
+    title: "🍾 Buy a Bottle",
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Fame: ${playerState.fame}`,
+    actions: [
+      {
+        id: "bottle",
+        label: "Buy a Bottle",
+        cost: VIP_BOTTLE.energyCost,
+        run: () => {
+          if (!energy.spend(VIP_BOTTLE.energyCost)) return "Not enough energy for a bottle.";
+          if (playerState.hp < VIP_BOTTLE.hpCost) return "Not enough HP for a bottle.";
+          playerState.hp -= VIP_BOTTLE.hpCost;
+          playerState.fame += VIP_BOTTLE.fameGain;
+          return `Fame +${VIP_BOTTLE.fameGain}, HP -${VIP_BOTTLE.hpCost} (now Fame ${playerState.fame}, HP ${playerState.hp}).`;
         },
       },
     ],
@@ -1146,7 +1170,10 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
     { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
   ],
-  Lounge: [{ id: "vip-entrance", label: "VIP Entrance", nx: 0.5, ny: 0.4 }],
+  Lounge: [
+    { id: "bar", label: "Bar", nx: 0.3, ny: 0.4 },
+    { id: "vip-entrance", label: "VIP Entrance", nx: 0.7, ny: 0.4 },
+  ],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
     { id: "fanevent", label: "Marketing Expert", nx: 0.75, ny: 0.25 },
@@ -1296,6 +1323,7 @@ function loop(now: number) {
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-entrance") onTrigger = () => openVipEntranceMenu(lot);
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
+      else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
