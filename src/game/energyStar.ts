@@ -4,13 +4,19 @@
 // next) isn't wired up yet — for now, sleeping just refills to 100 so
 // the resource loop itself is testable on its own.
 
-const MAX_ENERGY = 100;
+export const MAX_ENERGY = 100;
 
 export class EnergyStar {
   private value = MAX_ENERGY;
+  private cap = MAX_ENERGY;
 
   get remaining(): number {
     return this.value;
+  }
+
+  /** The refill amount the last sleep() used (e.g. 110 with the Airport vacation bonus). */
+  get maxValue(): number {
+    return this.cap;
   }
 
   canAfford(cost: number): boolean {
@@ -23,10 +29,11 @@ export class EnergyStar {
     return true;
   }
 
-  /** Ends the stage: returns the leftover amount to bank as HP buffer, then refills. */
-  sleep(): number {
+  /** Ends the stage: returns the leftover amount to bank as HP buffer, then refills to cap. */
+  sleep(cap: number = MAX_ENERGY): number {
     const leftover = this.value;
-    this.value = MAX_ENERGY;
+    this.cap = cap;
+    this.value = cap;
     return leftover;
   }
 }

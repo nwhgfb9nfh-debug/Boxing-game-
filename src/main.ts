@@ -12,7 +12,7 @@ import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
 import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
-import { EnergyStar } from "./game/energyStar";
+import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -1133,14 +1133,55 @@ function openElevatorMenu(lot: LotInstance) {
 }
 
 function sleepAtBed(anchor: { x: number; y: number }) {
-  const leftover = energy.sleep();
+  const cap = playerState.vacationEnergyBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
+  const bonusUsed = playerState.vacationEnergyBonus;
+  playerState.vacationEnergyBonus = false;
+  const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to 100/100.`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}.`,
     anchor,
     "bottom",
   );
+}
+
+// Airport (Section 5): "Go on Vacation" — $1000, only available right
+// after a fight (no Fight system exists yet to ever flip
+// justFinishedFight true, so this stays locked for now — see
+// playerState.ts). Booking it boosts the next sleep's Energy Star refill
+// to 110 instead of 100.
+const VACATION_COST = 1000;
+
+function openVacationMenu() {
+  locationMenu.open(() => {
+    const available = playerState.justFinishedFight;
+    return {
+      title: "✈️ Go on Vacation",
+      energyText: available
+        ? `Money: $${playerState.money}`
+        : "Available right after a fight (Fight system not built yet).",
+      actions: [
+        {
+          id: "vacation",
+          label: "Go on Vacation",
+          cost: 0,
+          costLabel: available ? `$${VACATION_COST}` : "LOCKED",
+          disabled: !available,
+          run: () => {
+            if (!available) return "You can only go on vacation right after a fight.";
+            if (playerState.money < VACATION_COST) {
+              return `Not enough money — need $${VACATION_COST}, have $${playerState.money}.`;
+            }
+            playerState.money -= VACATION_COST;
+            playerState.vacationEnergyBonus = true;
+            playerState.justFinishedFight = false;
+            return "Vacation booked! Your next sleep refills Energy to 110 instead of 100.";
+          },
+        },
+      ],
+    };
+  });
 }
 
 /**
@@ -1188,6 +1229,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "vip-bouncer", label: "VIP Bouncer", nx: 0.55, ny: 0.32 },
     { id: "bottle", label: "Buy a Bottle", nx: 0.85, ny: 0.15 },
   ],
+  Airport: [{ id: "vacation", label: "Go on Vacation", nx: 0.5, ny: 0.4 }],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
     { id: "fanevent", label: "Marketing Expert", nx: 0.75, ny: 0.25 },
@@ -1284,7 +1326,7 @@ function loop(now: number) {
   statusHud.style.display = outOfMinigame ? "flex" : "none";
   moneyHud.style.display = outOfMinigame ? "block" : "none";
   if (outOfMinigame) {
-    energyPill.textContent = `⚡ ${energy.remaining}/100`;
+    energyPill.textContent = `⚡ ${energy.remaining}/${energy.maxValue}`;
     hpPill.textContent = `❤ ${playerState.hp} HP`;
     moneyPill.textContent = `$${playerState.money}`;
   }
@@ -1333,6 +1375,7 @@ function loop(now: number) {
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
+      else if (nearStation.id === "vacation") onTrigger = openVacationMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;

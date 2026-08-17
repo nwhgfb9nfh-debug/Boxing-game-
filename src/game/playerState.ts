@@ -81,6 +81,13 @@ export interface PlayerState {
   // Starts at 1.0x; Emotional answers at Press Conference/Face-Off add 0.1.
   // Inert until a real purse/Fight system exists to apply it.
   purseMultiplier: number;
+  // Airport "Go on Vacation" (Section 5): only biddable right after a
+  // fight. No Fight system exists yet to ever set this true, so the
+  // station stays locked until then — see openVacationMenu in main.ts.
+  justFinishedFight: boolean;
+  // Set by vacation, consumed by the next sleepAtBed() call, which refills
+  // Energy Star to 110 instead of 100 for that one refill.
+  vacationEnergyBonus: boolean;
 }
 
 function freshStat(): StatProgress {
@@ -110,5 +117,7 @@ export function createPlayerState(): PlayerState {
     fanEventDestination: null,
     fightPrediction: null,
     purseMultiplier: 1.0,
+    justFinishedFight: false,
+    vacationEnergyBonus: false,
   };
 }
