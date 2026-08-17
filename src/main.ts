@@ -199,7 +199,12 @@ function openDebugMenu() {
   locationMenu.open(() => ({
     title: "🛠 Debug: Jump to Stage",
     energyText: `Current: ${campCycle.current.label} (Camp ${campCycle.campNumber})`,
-    actions: CAMP_SEQUENCE.map((stage, i) => {
+    // "After Fight" is excluded — its state (0 Energy, justFinishedFight)
+    // only makes sense as a result of Simulate Fight at the Arena, and
+    // reaching it that way is always one tap from FIGHT NIGHT anyway.
+    actions: CAMP_SEQUENCE.map((stage, i) => ({ stage, i }))
+      .filter(({ stage }) => stage.type !== "afterfight")
+      .map(({ stage, i }) => {
       const here = i === campCycle.currentIndex;
       return {
         id: `stage-${i}`,
@@ -1265,22 +1270,25 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // so by the time this runs it's always safe to advance.
   //
   // The vacation bonus only pays off during a Private Life stage (Training/
-  // Promotion/Fight Night can't use more than 100 anyway), so it stays
-  // pending across as many intervening sleeps as it takes and only applies
-  // — and gets consumed — on the sleep that actually lands on one.
+  // Promotion/Fight Night can't use more than 100 anyway) and covers both
+  // Private Life stages in the camp it was booked for — it isn't consumed
+  // by the first one, only cleared when a fresh camp starts.
   const peekedNextStage = CAMP_SEQUENCE[(campCycle.currentIndex + 1) % CAMP_SEQUENCE.length];
   const useBonus = playerState.vacationEnergyBonus && peekedNextStage.type === "privatelife";
   const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
-  if (useBonus) playerState.vacationEnergyBonus = false;
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
-  // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
+  // HP banked above 100 is pure pre-fight insurance — it never carries
+  // into the fight itself as extra usable HP.
+  if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
+  // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight/vacation state.
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
+    playerState.vacationEnergyBonus = false;
   }
 
   buildingUI.showToast(

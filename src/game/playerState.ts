@@ -104,7 +104,7 @@ export function createPlayerState(): PlayerState {
   return {
     fame: 0,
     image: 0,
-    money: 0,
+    money: 50000, // dev/testing starting budget — revisit before this ships as the real v1 economy
     hp: 100,
     training: { power: freshStat(), speed: freshStat(), endurance: freshStat(), chin: freshStat() },
     managerLevel: 1,
