@@ -7,7 +7,7 @@ import { createTapZone } from "./ui/tapZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { StreetScene } from "./game/street";
-import { InteriorScene, type Station } from "./game/interior";
+import { InteriorScene, type Station, type BlockedZone } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
@@ -443,44 +443,57 @@ function openFanEventMenu() {
   locationMenu.open(buildFanEventMenu);
 }
 
-// Lounge (Section 5): the Bar is out on the regular floor. VIP is a
-// separate room behind a velvet rope, same sub-room pattern as Office's
-// elevator floors (see the "loungeVip" scene branch below) — its door
-// returns to the main floor instead of the street. Exchange Numbers /
-// Selfie with Celebrity land here later with the NPC system; Buy a
+// Lounge (Section 5): VIP is a corner of the same room (top-right),
+// blocked off by an invisible rope until a bouncer NPC waves you through —
+// see LOUNGE_VIP_ZONE and InteriorScene's BlockedZone collision. Exchange
+// Numbers/Selfie with Celebrity land here later with the NPC system; Buy a
 // Bottle is live now.
-const LOUNGE_VIP_STATIONS: Station[] = [{ id: "bottle", label: "Buy a Bottle", nx: 0.5, ny: 0.4 }];
 const VIP_FAME_REQUIREMENT = 20; // placeholder — spec says Fame-gated, no exact number given
 const VIP_ENTRY_ENERGY = 10;
 const VIP_ENTRY_HP_COST = 5; // spec: "guaranteed HP damage", flat per entry
 
-function openVipEntranceMenu(lot: LotInstance) {
+// Resets each time the Lounge is (re)entered — see enterBuilding — so the
+// bouncer has to wave you through again on every visit, matching the old
+// "one-time cost of entry" behavior even though it's no longer a menu gate.
+let loungeVipCheckedIn = false;
+
+const LOUNGE_VIP_ZONE: BlockedZone = {
+  nx0: 0.6,
+  ny0: 0,
+  nx1: 1,
+  ny1: 0.42,
+  isAllowed: () => loungeVipCheckedIn,
+  label: "VIP",
+};
+
+function openVipBouncerMenu() {
   locationMenu.open(() => {
+    if (loungeVipCheckedIn) {
+      return {
+        title: "🕴️ VIP Bouncer",
+        energyText: `"You're on the list — go on in."`,
+        actions: [],
+      };
+    }
     const meetsFame = playerState.fame >= VIP_FAME_REQUIREMENT;
     return {
-      title: "🚪 VIP Entrance",
+      title: "🕴️ VIP Bouncer",
       energyText: `Fame: ${playerState.fame}/${VIP_FAME_REQUIREMENT}  ·  Energy: ${energy.remaining}/100`,
       actions: [
         {
-          id: "enter-vip",
-          label: "Enter VIP",
+          id: "ask-in",
+          label: "Ask to Enter VIP",
           cost: VIP_ENTRY_ENERGY,
           costLabel: meetsFame ? `${VIP_ENTRY_ENERGY} EN` : "LOCKED",
           disabled: !meetsFame,
           run: () => {
             if (!meetsFame) {
-              return `Need ${VIP_FAME_REQUIREMENT} Fame to get past the rope (have ${playerState.fame}).`;
+              return `"Not without more Fame." Need ${VIP_FAME_REQUIREMENT} (have ${playerState.fame}).`;
             }
-            if (!energy.spend(VIP_ENTRY_ENERGY)) return "Not enough energy to enter VIP.";
+            if (!energy.spend(VIP_ENTRY_ENERGY)) return "Not enough energy.";
             playerState.hp -= VIP_ENTRY_HP_COST;
-            locationMenu.close();
-            scene = {
-              type: "interior",
-              lot,
-              interior: new InteriorScene(lot, LOUNGE_VIP_STATIONS),
-              loungeVip: true,
-            };
-            return "";
+            loungeVipCheckedIn = true;
+            return `"Go on in." HP -${VIP_ENTRY_HP_COST} (now ${playerState.hp}).`;
           },
         },
       ],
@@ -1172,7 +1185,8 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Lounge: [
     { id: "bar", label: "Bar", nx: 0.3, ny: 0.4 },
-    { id: "vip-entrance", label: "VIP Entrance", nx: 0.7, ny: 0.4 },
+    { id: "vip-bouncer", label: "VIP Bouncer", nx: 0.55, ny: 0.32 },
+    { id: "bottle", label: "Buy a Bottle", nx: 0.85, ny: 0.15 },
   ],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
@@ -1185,9 +1199,9 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
 
 type Scene =
   | { type: "street" }
-  // officeFloor/loungeVip are set only while inside a building's sub-room —
-  // their door returns to that building's main room instead of the street.
-  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number; loungeVip?: boolean }
+  // officeFloor is set only while inside an Office elevator floor room —
+  // its door returns to the Lobby instead of the street.
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
@@ -1202,8 +1216,10 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     );
     return; // stay on the street; no room, so no exit mechanic is needed
   }
+  if (lot.building.name === "Lounge") loungeVipCheckedIn = false;
   const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
-  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations) };
+  const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
+  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations, blockedZone) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
@@ -1296,22 +1312,15 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
-    const { lot, interior, officeFloor, loungeVip } = scene;
+    const { lot, interior, officeFloor } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);
-    hudLabel.textContent = officeFloor
-      ? `${lot.building.name} — Floor ${officeFloor}`
-      : loungeVip
-        ? `${lot.building.name} — VIP`
-        : lot.building.name;
+    hudLabel.textContent = officeFloor ? `${lot.building.name} — Floor ${officeFloor}` : lot.building.name;
 
     if (atDoor) {
       if (officeFloor) {
         // Elevator floors exit back to the Lobby, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office) };
-      } else if (loungeVip) {
-        // VIP exits back to the main floor, not the street.
-        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Lounge) };
       } else {
         exitBuilding();
       }
@@ -1321,7 +1330,7 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "vip-entrance") onTrigger = () => openVipEntranceMenu(lot);
+      else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;

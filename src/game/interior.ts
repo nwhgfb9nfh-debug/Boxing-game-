@@ -18,6 +18,21 @@ export interface Station {
   ny: number;
 }
 
+// A rectangular sub-area of the room (e.g. Lounge's VIP corner) the player
+// can't walk into until isAllowed() says so — re-checked every frame, so
+// stepping away from an NPC gate and getting waved through opens it live.
+// Always anchored to at least one outer wall (ny0=0 for the top wall,
+// nx1=1 for the right wall) since the collision check only resolves the
+// two inner edges.
+export interface BlockedZone {
+  nx0: number;
+  ny0: number;
+  nx1: number;
+  ny1: number;
+  isAllowed: () => boolean;
+  label: string;
+}
+
 const PLAYER_SPEED = 260; // px/sec
 const PLAYER_RADIUS = 12;
 const DOOR_HALF_WIDTH = 45;
@@ -38,12 +53,14 @@ export interface InteriorUpdateResult {
 export class InteriorScene {
   private lot: LotInstance;
   private stations: Station[];
+  private blockedZone?: BlockedZone;
   private px = 0.5; // normalized position within the room, 0..1
   private py = 0.88; // spawn right above the door — just far enough that walking in doesn't instantly trigger an exit
 
-  constructor(lot: LotInstance, stations: Station[] = []) {
+  constructor(lot: LotInstance, stations: Station[] = [], blockedZone?: BlockedZone) {
     this.lot = lot;
     this.stations = stations;
+    this.blockedZone = blockedZone;
   }
 
   private roomBounds(width: number, height: number) {
@@ -65,6 +82,21 @@ export class InteriorScene {
 
     x = Math.max(bounds.left + PLAYER_RADIUS, Math.min(bounds.right - PLAYER_RADIUS, x));
     y = Math.max(bounds.top + PLAYER_RADIUS, Math.min(bounds.bottom - PLAYER_RADIUS, y));
+
+    if (this.blockedZone && !this.blockedZone.isAllowed()) {
+      const z = this.blockedZone;
+      const zoneLeft = bounds.left + z.nx0 * roomW;
+      const zoneBottom = bounds.top + z.ny1 * roomH;
+      const insideZone = x + PLAYER_RADIUS > zoneLeft && y - PLAYER_RADIUS < zoneBottom;
+      if (insideZone) {
+        // Push back out along whichever edge is closer, so approaching
+        // from either side just stops the player at the boundary.
+        const pushLeft = x + PLAYER_RADIUS - zoneLeft;
+        const pushDown = zoneBottom - (y - PLAYER_RADIUS);
+        if (pushLeft < pushDown) x = zoneLeft - PLAYER_RADIUS;
+        else y = zoneBottom + PLAYER_RADIUS;
+      }
+    }
 
     this.px = (x - bounds.left) / roomW;
     this.py = (y - bounds.top) / roomH;
@@ -109,6 +141,29 @@ export class InteriorScene {
     ctx.strokeStyle = "#4a3d6b";
     ctx.lineWidth = 8;
     ctx.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+
+    // Blocked sub-area (e.g. Lounge's VIP corner) — tinted gold, brighter
+    // once isAllowed() is true so it visibly opens up without a scene change.
+    if (this.blockedZone) {
+      const z = this.blockedZone;
+      const zx = bounds.left + z.nx0 * (bounds.right - bounds.left);
+      const zy = bounds.top + z.ny0 * (bounds.bottom - bounds.top);
+      const zw = (z.nx1 - z.nx0) * (bounds.right - bounds.left);
+      const zh = (z.ny1 - z.ny0) * (bounds.bottom - bounds.top);
+      const allowed = z.isAllowed();
+      ctx.fillStyle = allowed ? "rgba(212, 175, 55, 0.18)" : "rgba(212, 175, 55, 0.10)";
+      ctx.fillRect(zx, zy, zw, zh);
+      ctx.strokeStyle = allowed ? "rgba(212, 175, 55, 0.65)" : "rgba(212, 175, 55, 0.35)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 6]);
+      ctx.strokeRect(zx, zy, zw, zh);
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.font = "bold 13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(z.label.toUpperCase(), zx + zw / 2, zy + 8);
+    }
 
     // Door notch at the bottom center — walk here to leave
     const doorW = DOOR_HALF_WIDTH * 2 - 10;
