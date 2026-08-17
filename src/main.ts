@@ -443,6 +443,85 @@ function openFanEventMenu() {
   locationMenu.open(buildFanEventMenu);
 }
 
+// Lounge (Section 5): a second room behind a velvet rope, same sub-room
+// pattern as Office's elevator floors (see the "loungeVip" scene branch
+// below) — its door returns to the main floor instead of the street.
+// Exchange Numbers / Selfie with Celebrity land here later with the NPC
+// system; the Bar is live now.
+const LOUNGE_VIP_STATIONS: Station[] = [{ id: "bar", label: "Bar", nx: 0.5, ny: 0.4 }];
+const VIP_FAME_REQUIREMENT = 20; // placeholder — spec says Fame-gated, no exact number given
+const VIP_ENTRY_ENERGY = 10;
+const VIP_ENTRY_HP_COST = 5; // spec: "guaranteed HP damage", flat per entry
+
+function openVipEntranceMenu(lot: LotInstance) {
+  locationMenu.open(() => {
+    const meetsFame = playerState.fame >= VIP_FAME_REQUIREMENT;
+    return {
+      title: "🚪 VIP Entrance",
+      energyText: `Fame: ${playerState.fame}/${VIP_FAME_REQUIREMENT}  ·  Energy: ${energy.remaining}/100`,
+      actions: [
+        {
+          id: "enter-vip",
+          label: "Enter VIP",
+          cost: VIP_ENTRY_ENERGY,
+          costLabel: meetsFame ? `${VIP_ENTRY_ENERGY} EN` : "LOCKED",
+          disabled: !meetsFame,
+          run: () => {
+            if (!meetsFame) {
+              return `Need ${VIP_FAME_REQUIREMENT} Fame to get past the rope (have ${playerState.fame}).`;
+            }
+            if (!energy.spend(VIP_ENTRY_ENERGY)) return "Not enough energy to enter VIP.";
+            playerState.hp -= VIP_ENTRY_HP_COST;
+            locationMenu.close();
+            scene = {
+              type: "interior",
+              lot,
+              interior: new InteriorScene(lot, LOUNGE_VIP_STATIONS),
+              loungeVip: true,
+            };
+            return "";
+          },
+        },
+      ],
+    };
+  });
+}
+
+const BAR_DRINK = { energyCost: 10, hpCost: 3 };
+const BAR_ROUND = { energyCost: 20, hpCost: 5, imageGain: 3 };
+
+function openBarMenu() {
+  locationMenu.open(() => ({
+    title: "🍸 Bar",
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Image: ${playerState.image}`,
+    actions: [
+      {
+        id: "drink",
+        label: "Take a Drink",
+        cost: BAR_DRINK.energyCost,
+        run: () => {
+          if (!energy.spend(BAR_DRINK.energyCost)) return "Not enough energy for a drink.";
+          if (playerState.hp < BAR_DRINK.hpCost) return "Not enough HP for a drink.";
+          playerState.hp -= BAR_DRINK.hpCost;
+          return `HP -${BAR_DRINK.hpCost} (now ${playerState.hp}).`;
+        },
+      },
+      {
+        id: "round",
+        label: "Buy a Round",
+        cost: BAR_ROUND.energyCost,
+        run: () => {
+          if (!energy.spend(BAR_ROUND.energyCost)) return "Not enough energy to buy a round.";
+          if (playerState.hp < BAR_ROUND.hpCost) return "Not enough HP to buy a round.";
+          playerState.hp -= BAR_ROUND.hpCost;
+          playerState.image += BAR_ROUND.imageGain;
+          return `Image +${BAR_ROUND.imageGain}, HP -${BAR_ROUND.hpCost} (now Image ${playerState.image}, HP ${playerState.hp}).`;
+        },
+      },
+    ],
+  }));
+}
+
 interface PressFormat {
   name: string;
   icon: string;
@@ -1067,6 +1146,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
     { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
   ],
+  Lounge: [{ id: "vip-entrance", label: "VIP Entrance", nx: 0.5, ny: 0.4 }],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
     { id: "fanevent", label: "Marketing Expert", nx: 0.75, ny: 0.25 },
@@ -1078,9 +1158,9 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
 
 type Scene =
   | { type: "street" }
-  // officeFloor is set only while inside an Office elevator floor room —
-  // its door returns to the Lobby instead of the street (see below).
-  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number }
+  // officeFloor/loungeVip are set only while inside a building's sub-room —
+  // their door returns to that building's main room instead of the street.
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number; loungeVip?: boolean }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
@@ -1189,15 +1269,22 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
-    const { lot, interior, officeFloor } = scene;
+    const { lot, interior, officeFloor, loungeVip } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);
-    hudLabel.textContent = officeFloor ? `${lot.building.name} — Floor ${officeFloor}` : lot.building.name;
+    hudLabel.textContent = officeFloor
+      ? `${lot.building.name} — Floor ${officeFloor}`
+      : loungeVip
+        ? `${lot.building.name} — VIP`
+        : lot.building.name;
 
     if (atDoor) {
       if (officeFloor) {
         // Elevator floors exit back to the Lobby, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office) };
+      } else if (loungeVip) {
+        // VIP exits back to the main floor, not the street.
+        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Lounge) };
       } else {
         exitBuilding();
       }
@@ -1207,6 +1294,8 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
+      else if (nearStation.id === "vip-entrance") onTrigger = () => openVipEntranceMenu(lot);
+      else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
