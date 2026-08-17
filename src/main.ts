@@ -13,7 +13,7 @@ import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
 import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
-import { CampCycle } from "./game/campCycle";
+import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -48,6 +48,60 @@ const campPill = document.createElement("div");
 campPill.className = "camp-hud__pill";
 campHud.appendChild(campPill);
 app.appendChild(campHud);
+
+// Phase gating (Section 2): buildings stay enterable regardless of stage
+// (future NPC dialogue lives there and doesn't cost energy), but any
+// energy-costing action is locked unless its station matches the current
+// stage. Training stations additionally need the stage's specific stat.
+// Money-only actions (Reception, Mall, Sponsorships, Cash Advance,
+// Invest in Portfolio, Vacation) are never phase-gated.
+const TRAINING_STAT_BY_STATION: Record<string, "power" | "speed" | "endurance"> = {
+  heavybag: "power",
+  reflexdots: "speed",
+  jumprope: "endurance",
+};
+const PRIVATE_LIFE_STATIONS = new Set([
+  "workoutclip",
+  "order",
+  "sunbathe",
+  "swim",
+  "bar",
+  "vip-bouncer",
+  "bottle",
+  "pressreception",
+]);
+const PROMOTION_STATIONS = new Set(["pressconf", "photostudio", "faceoff", "fanevent"]);
+
+function requirePrivateLifePhase(): string | null {
+  const stage = campCycle.current;
+  if (stage.type !== "privatelife") {
+    return `Only available during a Private Life phase (currently "${stage.label}").`;
+  }
+  return null;
+}
+
+/** Returns a lock message if this station's activity doesn't match the current camp stage, else null. */
+function getStationPhaseLock(stationId: string): string | null {
+  const stage = campCycle.current;
+  const trainingStat = TRAINING_STAT_BY_STATION[stationId];
+  if (trainingStat) {
+    if (stage.type !== "training") {
+      return `Closed — this is a Training station, but the current phase is "${stage.label}".`;
+    }
+    if (stage.stat !== trainingStat) {
+      return `Closed — this phase trains ${stage.stat}, not ${trainingStat}.`;
+    }
+    return null;
+  }
+  if (PRIVATE_LIFE_STATIONS.has(stationId)) return requirePrivateLifePhase();
+  if (PROMOTION_STATIONS.has(stationId)) {
+    if (stage.type !== "promotion") {
+      return `Closed — only available during a Promotion phase (currently "${stage.label}").`;
+    }
+    return null;
+  }
+  return null;
+}
 
 // Energy Star + HP (Section 3 & 7) — top-right, always visible outside minigames.
 const statusHud = document.createElement("div");
@@ -116,6 +170,40 @@ phoneBtn.addEventListener("pointerdown", (e) => {
 // (Gym's Workout Clip first; Diner/Beach/Office/Lounge/Press reuse this
 // same instance as they come online — only one can be open at a time).
 const locationMenu = createActionMenu(app);
+
+// Dev-only: jump straight to any camp stage without playing through the
+// ones before it. Not part of the real player experience — no polish.
+const debugBtn = document.createElement("button");
+debugBtn.type = "button";
+debugBtn.className = "btn btn--debug";
+debugBtn.textContent = "🛠";
+app.appendChild(debugBtn);
+debugBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  openDebugMenu();
+});
+
+function openDebugMenu() {
+  locationMenu.open(() => ({
+    title: "🛠 Debug: Jump to Stage",
+    energyText: `Current: ${campCycle.current.label} (Camp ${campCycle.campNumber})`,
+    actions: CAMP_SEQUENCE.map((stage, i) => {
+      const here = i === campCycle.currentIndex;
+      return {
+        id: `stage-${i}`,
+        label: stage.label,
+        cost: 0,
+        costLabel: here ? "HERE" : "GO",
+        disabled: here,
+        run: () => {
+          campCycle.jumpTo(i);
+          locationMenu.close();
+          return "";
+        },
+      };
+    }),
+  }));
+}
 
 function openWorkoutClipMenu() {
   locationMenu.open(() => ({
@@ -779,13 +867,14 @@ function buildManagerDeskMenu(floor: number): MenuData {
     {
       id: "set-next-fight",
       label: "Set Next Fight",
-      cost: 0,
-      costLabel: playerState.fightScheduled ? "SCHEDULED" : "SET",
+      cost: 100,
+      costLabel: playerState.fightScheduled ? "SCHEDULED" : "100 EN",
       disabled: playerState.fightScheduled,
       run: () => {
         if (playerState.fightScheduled) return "You already have a fight scheduled.";
+        if (!energy.spend(100)) return "Not enough energy to schedule a fight.";
         playerState.fightScheduled = true;
-        return "Fight scheduled! (Full matchmaking arrives with the Promotion system.)";
+        return "Fight scheduled! Sleep to begin your training camp.";
       },
     },
     {
@@ -820,7 +909,11 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "media-training",
       label: "Media Training",
       cost: 10,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : "10 EN",
+      disabled: !!requirePrivateLifePhase(),
       run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
         if (!energy.spend(10)) return "Not enough energy for media training.";
         playerState.image += 2;
         return `Image +2 (now ${playerState.image}).`;
@@ -830,7 +923,11 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "charity-event",
       label: "Charity Event",
       cost: 15,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : "15 EN",
+      disabled: !!requirePrivateLifePhase(),
       run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
         if (!energy.spend(15)) return "Not enough energy for a charity event.";
         if (playerState.hp < 5) return "Not enough HP for a charity event.";
         playerState.hp -= 5;
@@ -865,7 +962,11 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "networking-event",
       label: "Networking Event",
       cost: 20,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : "20 EN",
+      disabled: !!requirePrivateLifePhase(),
       run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
         if (!energy.spend(20)) return "Not enough energy for a networking event.";
         if (playerState.hp < 8) return "Not enough HP for a networking event.";
         playerState.hp -= 8;
@@ -1150,9 +1251,24 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
-  const nextStage = campCycle.advance();
+
+  // "No Fight Scheduled" only ends once a fight is booked at the Manager
+  // Desk — sleeping before that refills as normal but doesn't advance.
+  const stuckNoFight = campCycle.current.type === "nofight" && !playerState.fightScheduled;
+  const stageText = stuckNoFight
+    ? " No fight scheduled yet — book one at the Office to start your camp."
+    : (() => {
+        const nextStage = campCycle.advance();
+        // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
+        if (nextStage.type === "nofight") {
+          playerState.fightScheduled = false;
+          playerState.cashAdvanceTaken = false;
+        }
+        return ` Next: ${nextStage.label}.`;
+      })();
+
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}.${stageText}`,
     anchor,
     "bottom",
   );
@@ -1532,6 +1648,7 @@ function loop(now: number) {
   // hidden while another location's action menu is already open.
   phoneBtn.style.display =
     scene.type === "interior" && !phoneUI.isOpen() && !locationMenu.isOpen() ? "flex" : "none";
+  debugBtn.style.display = outOfMinigame && !phoneUI.isOpen() && !locationMenu.isOpen() ? "flex" : "none";
 
   if (scene.type === "street") {
     street.update(dt);
@@ -1572,8 +1689,10 @@ function loop(now: number) {
       }
     } else if (nearStation) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
+      const phaseLock = getStationPhaseLock(nearStation.id);
       let onTrigger: () => void;
-      if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
+      if (phaseLock) onTrigger = () => buildingUI.showToast(phaseLock, pos, "bottom");
+      else if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;

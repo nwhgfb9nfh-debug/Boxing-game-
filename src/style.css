@@ -311,6 +311,21 @@ canvas {
   display: none;
 }
 
+/* Dev-only debug button — jump to any camp stage. Top-left, small and
+   understated since it's not part of the real player experience. */
+.btn--debug {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 38px);
+  left: 16px;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  opacity: 0.6;
+  display: none;
+}
+
 /* Full-screen overlays (Phone, and other location action menus) must sit
    above every other button/prompt on screen — including .btn--enter's
    z-index — until closed. */

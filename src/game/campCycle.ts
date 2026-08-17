@@ -1,14 +1,15 @@
 // The Core Loop (Section 2): every fight is preceded by a fixed camp
-// cycle, always the same 9 stages regardless of opponent difficulty —
-//   Training 1 -> Private Life 1 -> Training 2 -> Promotion 1 ->
-//   Training 3 -> Private Life 2 -> Training 4 -> Promotion 2 -> FIGHT
-// This module only tracks and advances the current stage (advanced by
-// sleeping — see sleepAtBed in main.ts). It does not yet restrict which
-// buildings/stations are usable per stage; that's a deliberate follow-up.
-// Training's per-stage stat is informational for the same reason — Sparring
-// (Chin) isn't playable yet, so Training 4 is a label only for now.
+// cycle, always the same stages regardless of opponent difficulty —
+//   No Fight Scheduled -> Training 1 -> Private Life 1 -> Training 2 ->
+//   Promotion 1 -> Training 3 -> Private Life 2 -> Training 4 ->
+//   Promotion 2 -> FIGHT
+// "No Fight Scheduled" only ends once a fight is booked at the Manager
+// Desk (see openManagerDeskMenu in main.ts) — sleeping before that just
+// refills Energy/HP without advancing (see sleepAtBed). Every other stage
+// advances on sleep as normal, looping into a new camp (and back to "No
+// Fight Scheduled") after FIGHT NIGHT.
 
-export type CampStageType = "training" | "privatelife" | "promotion" | "fight";
+export type CampStageType = "nofight" | "training" | "privatelife" | "promotion" | "fight";
 
 export interface CampStage {
   type: CampStageType;
@@ -17,6 +18,7 @@ export interface CampStage {
 }
 
 export const CAMP_SEQUENCE: CampStage[] = [
+  { type: "nofight", label: "No Fight Scheduled" },
   { type: "training", label: "Training 1", stat: "power" },
   { type: "privatelife", label: "Private Life 1" },
   { type: "training", label: "Training 2", stat: "speed" },
@@ -36,6 +38,10 @@ export class CampCycle {
     return CAMP_SEQUENCE[this.index];
   }
 
+  get currentIndex(): number {
+    return this.index;
+  }
+
   get campNumber(): number {
     return this.camp;
   }
@@ -47,6 +53,12 @@ export class CampCycle {
       this.index = 0;
       this.camp += 1;
     }
+    return this.current;
+  }
+
+  /** Debug-only: jump straight to any stage by index, skipping the stages between. Doesn't touch campNumber. */
+  jumpTo(index: number): CampStage {
+    this.index = Math.max(0, Math.min(CAMP_SEQUENCE.length - 1, index));
     return this.current;
   }
 }
