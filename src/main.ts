@@ -1207,8 +1207,17 @@ tapZone.onTap((x, y) => {
 
 // Stations placed inside specific buildings' interiors — walk up to one
 // and its prompt surfaces the same way the street's ENTER prompt does.
+// Every purchasable home (Real Estate App) gets the same bed — not just
+// the starting Trailer.
+const HOUSE_STATIONS: Station[] = [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }];
+
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
-  Trailer: [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }],
+  Trailer: HOUSE_STATIONS,
+  Apartment: HOUSE_STATIONS,
+  "Penthouse Apartment": HOUSE_STATIONS,
+  Mansion: HOUSE_STATIONS,
+  "Suburban House": HOUSE_STATIONS,
+  Townhouse: HOUSE_STATIONS,
   Gym: [
     { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
     { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
