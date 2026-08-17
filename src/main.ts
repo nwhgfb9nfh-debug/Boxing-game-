@@ -209,6 +209,9 @@ function openDebugMenu() {
         disabled: here,
         run: () => {
           campCycle.jumpTo(i);
+          // Every real stage but "No Fight Scheduled" is only reachable
+          // after booking a fight — keep that true when jumping there directly.
+          playerState.fightScheduled = stage.type !== "nofight";
           locationMenu.close();
           return "";
         },
@@ -1260,9 +1263,15 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // Callers must check getBedLock() first — "No Fight Scheduled" and
   // "FIGHT NIGHT" both block sleeping entirely (see the station dispatch),
   // so by the time this runs it's always safe to advance.
-  const cap = playerState.vacationEnergyBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
-  const bonusUsed = playerState.vacationEnergyBonus;
-  playerState.vacationEnergyBonus = false;
+  //
+  // The vacation bonus only pays off during a Private Life stage (Training/
+  // Promotion/Fight Night can't use more than 100 anyway), so it stays
+  // pending across as many intervening sleeps as it takes and only applies
+  // — and gets consumed — on the sleep that actually lands on one.
+  const peekedNextStage = CAMP_SEQUENCE[(campCycle.currentIndex + 1) % CAMP_SEQUENCE.length];
+  const useBonus = playerState.vacationEnergyBonus && peekedNextStage.type === "privatelife";
+  const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
+  if (useBonus) playerState.vacationEnergyBonus = false;
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
@@ -1275,7 +1284,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   }
 
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${useBonus ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
     anchor,
     "bottom",
   );
@@ -1522,6 +1531,14 @@ tapZone.onTap((x, y) => {
 // Every purchasable home (Real Estate App) gets the same bed — not just
 // the starting Trailer.
 const HOUSE_STATIONS: Station[] = [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }];
+const HOUSE_NAMES = new Set([
+  "Trailer",
+  "Apartment",
+  "Penthouse Apartment",
+  "Mansion",
+  "Suburban House",
+  "Townhouse",
+]);
 
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Trailer: HOUSE_STATIONS,
@@ -1605,6 +1622,15 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
       lot.row,
     );
     return; // stay on the street; no room, so no exit mechanic is needed
+  }
+  // Fight night: only home and the Arena are open — everywhere else is closed.
+  if (
+    campCycle.current.type === "fight" &&
+    !HOUSE_NAMES.has(lot.building.name) &&
+    lot.building.name !== "Arena"
+  ) {
+    buildingUI.showToast("Closed for fight night — only your home and the Arena are open.", anchor, lot.row);
+    return;
   }
   if (lot.building.name === "Lounge") loungeVipCheckedIn = false;
   const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
