@@ -103,6 +103,18 @@ function getStationPhaseLock(stationId: string): string | null {
   return null;
 }
 
+/** Sleeping is blocked (not just non-advancing) on the two stages you can't skip past by resting. */
+function getBedLock(): string | null {
+  const stage = campCycle.current;
+  if (stage.type === "nofight" && !playerState.fightScheduled) {
+    return "You need to schedule a fight before you can sleep — head to the Office.";
+  }
+  if (stage.type === "fight") {
+    return "You can't sleep through fight night — head to the Arena.";
+  }
+  return null;
+}
+
 // Energy Star + HP (Section 3 & 7) — top-right, always visible outside minigames.
 const statusHud = document.createElement("div");
 statusHud.className = "status-hud";
@@ -1245,6 +1257,9 @@ function openElevatorMenu(lot: LotInstance) {
 }
 
 function sleepAtBed(anchor: { x: number; y: number }) {
+  // Callers must check getBedLock() first — "No Fight Scheduled" and
+  // "FIGHT NIGHT" both block sleeping entirely (see the station dispatch),
+  // so by the time this runs it's always safe to advance.
   const cap = playerState.vacationEnergyBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
   const bonusUsed = playerState.vacationEnergyBonus;
   playerState.vacationEnergyBonus = false;
@@ -1252,23 +1267,15 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
 
-  // "No Fight Scheduled" only ends once a fight is booked at the Manager
-  // Desk — sleeping before that refills as normal but doesn't advance.
-  const stuckNoFight = campCycle.current.type === "nofight" && !playerState.fightScheduled;
-  const stageText = stuckNoFight
-    ? " No fight scheduled yet — book one at the Office to start your camp."
-    : (() => {
-        const nextStage = campCycle.advance();
-        // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
-        if (nextStage.type === "nofight") {
-          playerState.fightScheduled = false;
-          playerState.cashAdvanceTaken = false;
-        }
-        return ` Next: ${nextStage.label}.`;
-      })();
+  const nextStage = campCycle.advance();
+  // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
+  if (nextStage.type === "nofight") {
+    playerState.fightScheduled = false;
+    playerState.cashAdvanceTaken = false;
+  }
 
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}.${stageText}`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
     anchor,
     "bottom",
   );
@@ -1305,6 +1312,37 @@ function openVacationMenu() {
             playerState.vacationEnergyBonus = true;
             playerState.justFinishedFight = false;
             return "Vacation booked! Your next sleep refills Energy to 110 instead of 100.";
+          },
+        },
+      ],
+    };
+  });
+}
+
+// Arena (Section 8): no Fight system yet, so this is a placeholder that
+// resolves FIGHT NIGHT — draining Energy to 0 (simulating the exhaustion
+// of a real fight) and unlocking the Airport's Vacation for After Fight.
+function openSimulateFightMenu() {
+  locationMenu.open(() => {
+    const isFightNight = campCycle.current.type === "fight";
+    return {
+      title: "🏟️ Simulate Fight",
+      energyText: isFightNight
+        ? "No real Fight system yet — this resolves the night and moves you into recovery."
+        : `Not fight night yet (currently "${campCycle.current.label}").`,
+      actions: [
+        {
+          id: "simulate",
+          label: "Simulate Fight",
+          cost: 0,
+          costLabel: isFightNight ? "GO" : "N/A",
+          disabled: !isFightNight,
+          run: () => {
+            if (!isFightNight) return "It's not fight night yet.";
+            energy.spend(energy.remaining);
+            playerState.justFinishedFight = true;
+            const nextStage = campCycle.advance();
+            return `Fight simulated! You're exhausted (0 Energy). Next: ${nextStage.label}.`;
           },
         },
       ],
@@ -1513,6 +1551,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "bottle", label: "Buy a Bottle", nx: 0.85, ny: 0.15 },
   ],
   Airport: [{ id: "vacation", label: "Go on Vacation", nx: 0.5, ny: 0.4 }],
+  Arena: [{ id: "simulate-fight", label: "Simulate Fight", nx: 0.5, ny: 0.4 }],
   Mall: [
     { id: "vehicles", label: "Vehicle Dealer", nx: 0.05, ny: 0.3 },
     { id: "petstore", label: "Pet Store", nx: 0.05, ny: 0.7 },
@@ -1692,13 +1731,17 @@ function loop(now: number) {
       const phaseLock = getStationPhaseLock(nearStation.id);
       let onTrigger: () => void;
       if (phaseLock) onTrigger = () => buildingUI.showToast(phaseLock, pos, "bottom");
-      else if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
+      else if (nearStation.id === "bed") {
+        const bedLock = getBedLock();
+        onTrigger = bedLock ? () => buildingUI.showToast(bedLock, pos, "bottom") : () => sleepAtBed(pos);
+      }
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "vacation") onTrigger = openVacationMenu;
+      else if (nearStation.id === "simulate-fight") onTrigger = openSimulateFightMenu;
       else if (nearStation.id in MALL_STORE_STATIONS) {
         const storeId = nearStation.id;
         onTrigger = () => {

@@ -2,14 +2,17 @@
 // cycle, always the same stages regardless of opponent difficulty —
 //   No Fight Scheduled -> Training 1 -> Private Life 1 -> Training 2 ->
 //   Promotion 1 -> Training 3 -> Private Life 2 -> Training 4 ->
-//   Promotion 2 -> FIGHT
+//   Promotion 2 -> FIGHT NIGHT -> After Fight
 // "No Fight Scheduled" only ends once a fight is booked at the Manager
-// Desk (see openManagerDeskMenu in main.ts) — sleeping before that just
-// refills Energy/HP without advancing (see sleepAtBed). Every other stage
+// Desk (see openManagerDeskMenu in main.ts) — sleeping is blocked there
+// until then (see getBedLock in main.ts), same as at FIGHT NIGHT itself:
+// there's no Fight system yet, so "Simulate Fight" at the Arena is what
+// actually resolves the night and advances into After Fight (draining
+// Energy to 0 and unlocking the Airport's Vacation). Every other stage
 // advances on sleep as normal, looping into a new camp (and back to "No
-// Fight Scheduled") after FIGHT NIGHT.
+// Fight Scheduled") after After Fight.
 
-export type CampStageType = "nofight" | "training" | "privatelife" | "promotion" | "fight";
+export type CampStageType = "nofight" | "training" | "privatelife" | "promotion" | "fight" | "afterfight";
 
 export interface CampStage {
   type: CampStageType;
@@ -28,6 +31,7 @@ export const CAMP_SEQUENCE: CampStage[] = [
   { type: "training", label: "Training 4", stat: "chin" },
   { type: "promotion", label: "Promotion 2" },
   { type: "fight", label: "FIGHT NIGHT" },
+  { type: "afterfight", label: "After Fight" },
 ];
 
 export class CampCycle {
