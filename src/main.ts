@@ -145,24 +145,110 @@ function openDinerMenu() {
   }));
 }
 
-function openPodcastMenu() {
-  locationMenu.open(() => ({
-    title: "🎙️ Podcast Appearance",
-    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+// Press Building (Section 6, Promotion): the room's other 4 stations
+// (Press Conference, Photo Studio, Face-Off, Fan Event) are the real
+// pre-fight Promotion-camp events from the spec — held off until that
+// system exists, so for now they just show "coming soon". Press Reception
+// is a normal always-available Private Life action, live now.
+function comingSoon(label: string, anchor: { x: number; y: number }) {
+  buildingUI.showToast(`${label} — coming soon!`, anchor, "bottom");
+}
+
+interface PressFormat {
+  name: string;
+  icon: string;
+  energyCost: number;
+  hpCost: number;
+  professional: { fame: number; image: number };
+  confrontational: { fame: number; image: number };
+}
+const PRESS_FORMATS: Record<"podcast" | "tv", PressFormat> = {
+  podcast: {
+    name: "Podcast",
+    icon: "🎙️",
+    energyCost: 15,
+    hpCost: 5,
+    professional: { fame: 2, image: 2 },
+    confrontational: { fame: 5, image: -3 },
+  },
+  tv: {
+    name: "TV Interview",
+    icon: "📺",
+    energyCost: 20,
+    hpCost: 7,
+    professional: { fame: 3, image: 3 },
+    confrontational: { fame: 7, image: -4 },
+  },
+};
+
+type PressReceptionView = "main" | "podcast" | "tv";
+let pressReceptionView: PressReceptionView = "main";
+
+function buildPressChoiceMenu(kind: "podcast" | "tv"): MenuData {
+  const fmt = PRESS_FORMATS[kind];
+  const runTone = (tone: "professional" | "confrontational") => () => {
+    if (!energy.spend(fmt.energyCost)) return `Not enough energy for a ${fmt.name.toLowerCase()}.`;
+    if (playerState.hp < fmt.hpCost) return "Not enough HP.";
+    playerState.hp -= fmt.hpCost;
+    const { fame, image } = fmt[tone];
+    playerState.fame += fame;
+    playerState.image += image;
+    return `Fame +${fame}, Image ${image >= 0 ? "+" : ""}${image}, HP -${fmt.hpCost}.`;
+  };
+  return {
+    title: `${fmt.icon} ${fmt.name}`,
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          pressReceptionView = "main";
+          return "";
+        },
+      },
+      { id: "professional", label: "Professional", cost: fmt.energyCost, run: runTone("professional") },
+      { id: "confrontational", label: "Confrontational", cost: fmt.energyCost, run: runTone("confrontational") },
+    ],
+  };
+}
+
+function buildPressReceptionMenu(): MenuData {
+  if (pressReceptionView === "podcast") return buildPressChoiceMenu("podcast");
+  if (pressReceptionView === "tv") return buildPressChoiceMenu("tv");
+  return {
+    title: "🗞️ Press Reception",
+    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
     actions: [
       {
         id: "podcast",
-        label: "Go On the Show",
-        cost: 15,
+        label: `${PRESS_FORMATS.podcast.icon} Podcast`,
+        cost: 0,
+        costLabel: "›",
         run: () => {
-          if (!energy.spend(15)) return "Not enough energy for a podcast appearance.";
-          playerState.fame += 4;
-          playerState.image += 2;
-          return `Great interview! Fame +4, Image +2.`;
+          pressReceptionView = "podcast";
+          return "";
+        },
+      },
+      {
+        id: "tv",
+        label: `${PRESS_FORMATS.tv.icon} TV Interview`,
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          pressReceptionView = "tv";
+          return "";
         },
       },
     ],
-  }));
+  };
+}
+
+function openPressReceptionMenu() {
+  pressReceptionView = "main";
+  locationMenu.open(buildPressReceptionMenu);
 }
 
 function openSunbatheMenu() {
@@ -692,7 +778,13 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
     { id: "swim", label: "Swim", nx: 0.65, ny: 0.4 },
   ],
-  "Press Building": [{ id: "podcast", label: "Podcast Appearance", nx: 0.5, ny: 0.4 }],
+  "Press Building": [
+    { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
+    { id: "fanevent", label: "Marketing Expert", nx: 0.75, ny: 0.25 },
+    { id: "pressreception", label: "Press Reception", nx: 0.5, ny: 0.5 },
+    { id: "photostudio", label: "Photo Studio", nx: 0.25, ny: 0.75 },
+    { id: "pressconf", label: "Press Conference Room", nx: 0.75, ny: 0.75 },
+  ],
 };
 
 type Scene =
@@ -826,7 +918,11 @@ function loop(now: number) {
       if (nearStation.id === "bed") onTrigger = () => sleepAtBed(pos);
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
-      else if (nearStation.id === "podcast") onTrigger = openPodcastMenu;
+      else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
+      else if (nearStation.id === "pressconf") onTrigger = () => comingSoon("Press Conference", pos);
+      else if (nearStation.id === "photostudio") onTrigger = () => comingSoon("Photo Studio", pos);
+      else if (nearStation.id === "faceoff") onTrigger = () => comingSoon("Face-Off", pos);
+      else if (nearStation.id === "fanevent") onTrigger = () => comingSoon("Fan Event", pos);
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
