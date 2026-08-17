@@ -145,13 +145,220 @@ function openDinerMenu() {
   }));
 }
 
-// Press Building (Section 6, Promotion): the room's other 4 stations
-// (Press Conference, Photo Studio, Face-Off, Fan Event) are the real
-// pre-fight Promotion-camp events from the spec — held off until that
-// system exists, so for now they just show "coming soon". Press Reception
-// is a normal always-available Private Life action, live now.
-function comingSoon(label: string, anchor: { x: number; y: number }) {
-  buildingUI.showToast(`${label} — coming soon!`, anchor, "bottom");
+// Press Building (Section 6, Promotion): the room's other 4 stations are
+// the real pre-fight Promotion-camp events from the spec, playable now as
+// text/menu placeholders — poses and fan-event destinations are just
+// labels until the real graphics/travel/autograph-minigame pieces exist.
+// Each is single-use until a fight-camp cycle exists to reset it.
+type Archetype = "respect" | "dismissive" | "disrespect" | "emotional";
+const ARCHETYPES: { id: Archetype; label: string }[] = [
+  { id: "respect", label: "Respect" },
+  { id: "dismissive", label: "Dismissive" },
+  { id: "disrespect", label: "Disrespect" },
+  { id: "emotional", label: "Emotional" },
+];
+
+function applyArchetype(choice: Archetype): string {
+  if (choice === "respect") {
+    playerState.image += 3;
+    return `Image +3 (now ${playerState.image}).`;
+  }
+  if (choice === "dismissive") {
+    playerState.hp += 3;
+    return `HP +3 (now ${playerState.hp}).`;
+  }
+  if (choice === "disrespect") {
+    playerState.fame += 4;
+    playerState.image -= 3;
+    return `Fame +4, Image -3 (now Fame ${playerState.fame}, Image ${playerState.image}).`;
+  }
+  playerState.purseMultiplier += 0.1;
+  return `Purse multiplier +0.1 (now ${playerState.purseMultiplier.toFixed(1)}x).`;
+}
+
+type PressConfStage = "q1" | "q2" | "q2-round";
+let pressConfStage: PressConfStage = "q1";
+
+function buildPressConfQ1Menu(): MenuData {
+  return {
+    title: "🎤 Press Conference — Q1",
+    energyText: `Energy: ${energy.remaining}/100  ·  "What do you think about your opponent?"`,
+    actions: ARCHETYPES.map((a) => ({
+      id: `q1-${a.id}`,
+      label: a.label,
+      cost: 50,
+      run: () => {
+        if (!energy.spend(50)) return "Not enough energy for a press conference.";
+        const msg = applyArchetype(a.id);
+        pressConfStage = "q2";
+        return msg;
+      },
+    })),
+  };
+}
+
+function buildPressConfQ2Menu(): MenuData {
+  return {
+    title: "🎤 Press Conference — Q2",
+    energyText: `"What's your prediction for the fight?"`,
+    actions: [
+      {
+        id: "no-prediction",
+        label: "Give No Prediction",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          playerState.fame -= 2;
+          playerState.hp += 3;
+          playerState.fightPrediction = "No prediction given";
+          playerState.pressConferenceDone = true;
+          return "Fame -2, HP +3. Press conference done.";
+        },
+      },
+      {
+        id: "promise-victory",
+        label: "Promise Victory",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          pressConfStage = "q2-round";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+const PREDICTION_OPTIONS: { id: string; label: string; value: string }[] = [
+  { id: "r1", label: "KO — Round 1", value: "KO in Round 1" },
+  { id: "r2", label: "KO — Round 2", value: "KO in Round 2" },
+  { id: "r3", label: "KO — Round 3", value: "KO in Round 3" },
+  { id: "r4", label: "KO — Round 4", value: "KO in Round 4" },
+  { id: "decision", label: "Win by Decision", value: "Win by Decision" },
+];
+
+function buildPressConfRoundMenu(): MenuData {
+  return {
+    title: "🎤 Promise Victory",
+    energyText: "Lock in your prediction:",
+    actions: PREDICTION_OPTIONS.map((opt) => ({
+      id: opt.id,
+      label: opt.label,
+      cost: 0,
+      costLabel: "",
+      run: () => {
+        playerState.fightPrediction = opt.value;
+        playerState.pressConferenceDone = true;
+        return `Prediction locked in: ${opt.value}. (Resolved once the Fight system exists.)`;
+      },
+    })),
+  };
+}
+
+function buildPressConfMenu(): MenuData {
+  if (playerState.pressConferenceDone) {
+    return {
+      title: "🎤 Press Conference",
+      energyText: `Done — prediction: ${playerState.fightPrediction}`,
+      actions: [],
+    };
+  }
+  if (pressConfStage === "q2") return buildPressConfQ2Menu();
+  if (pressConfStage === "q2-round") return buildPressConfRoundMenu();
+  return buildPressConfQ1Menu();
+}
+
+function openPressConfMenu() {
+  pressConfStage = "q1";
+  locationMenu.open(buildPressConfMenu);
+}
+
+function buildPhotoShootMenu(): MenuData {
+  if (playerState.photoShootDone) {
+    return {
+      title: "📸 Photo Shoot",
+      energyText: `Pose ${playerState.selectedPose} selected.`,
+      actions: [],
+    };
+  }
+  return {
+    title: "📸 Photo Shoot",
+    energyText: `Energy: ${energy.remaining}/100  ·  Pick a pose`,
+    actions: [1, 2, 3, 4, 5].map((n) => ({
+      id: `pose-${n}`,
+      label: `🖼️ Pose ${n} [image placeholder]`,
+      cost: 50,
+      run: () => {
+        if (!energy.spend(50)) return "Not enough energy for a photo shoot.";
+        playerState.selectedPose = n;
+        playerState.photoShootDone = true;
+        return `Pose ${n} selected! Postable to social media once that system supports photos.`;
+      },
+    })),
+  };
+}
+
+function openPhotoShootMenu() {
+  locationMenu.open(buildPhotoShootMenu);
+}
+
+function buildFaceOffMenu(): MenuData {
+  if (playerState.faceOffDone) {
+    return { title: "🥊 Face-Off", energyText: "Already done for this camp.", actions: [] };
+  }
+  return {
+    title: "🥊 Face-Off",
+    energyText: `Energy: ${energy.remaining}/100  ·  Choose your attitude`,
+    actions: ARCHETYPES.map((a) => ({
+      id: `faceoff-${a.id}`,
+      label: a.label,
+      cost: 50,
+      run: () => {
+        if (!energy.spend(50)) return "Not enough energy for a face-off.";
+        const msg = applyArchetype(a.id);
+        playerState.faceOffDone = true;
+        return msg;
+      },
+    })),
+  };
+}
+
+function openFaceOffMenu() {
+  locationMenu.open(buildFaceOffMenu);
+}
+
+const FAN_EVENT_DESTINATIONS = ["Beach", "Lounge", "Gym", "Airport", "Mall"];
+
+function buildFanEventMenu(): MenuData {
+  if (playerState.fanEventDone) {
+    return {
+      title: "📣 Marketing Expert",
+      energyText: `Fan event booked at the ${playerState.fanEventDestination}.`,
+      actions: [],
+    };
+  }
+  return {
+    title: "📣 Marketing Expert",
+    energyText: `Energy: ${energy.remaining}/100`,
+    actions: [
+      {
+        id: "start-fan-event",
+        label: "Start Fan Event",
+        cost: 50,
+        run: () => {
+          if (!energy.spend(50)) return "Not enough energy to start a fan event.";
+          const dest = FAN_EVENT_DESTINATIONS[Math.floor(Math.random() * FAN_EVENT_DESTINATIONS.length)];
+          playerState.fanEventDestination = dest;
+          playerState.fanEventDone = true;
+          return `Your fan event is set for the ${dest}! (Head there once autograph signing is built.)`;
+        },
+      },
+    ],
+  };
+}
+
+function openFanEventMenu() {
+  locationMenu.open(buildFanEventMenu);
 }
 
 interface PressFormat {
@@ -919,10 +1126,10 @@ function loop(now: number) {
       else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
-      else if (nearStation.id === "pressconf") onTrigger = () => comingSoon("Press Conference", pos);
-      else if (nearStation.id === "photostudio") onTrigger = () => comingSoon("Photo Studio", pos);
-      else if (nearStation.id === "faceoff") onTrigger = () => comingSoon("Face-Off", pos);
-      else if (nearStation.id === "fanevent") onTrigger = () => comingSoon("Fan Event", pos);
+      else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
+      else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
+      else if (nearStation.id === "faceoff") onTrigger = openFaceOffMenu;
+      else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);

@@ -68,6 +68,19 @@ export interface PlayerState {
   // Manager Lvl 2+'s "Invest in Portfolio" — a placeholder money sink until
   // a real returns system exists.
   portfolioInvested: number;
+  // Press Building Promotion-camp events (Section 6): real spec content,
+  // but held to one completion each until a fight-camp cycle exists to
+  // reset them. Graphics (poses, destinations) are text placeholders.
+  pressConferenceDone: boolean;
+  photoShootDone: boolean;
+  faceOffDone: boolean;
+  fanEventDone: boolean;
+  selectedPose: number | null;
+  fanEventDestination: string | null;
+  fightPrediction: string | null;
+  // Starts at 1.0x; Emotional answers at Press Conference/Face-Off add 0.1.
+  // Inert until a real purse/Fight system exists to apply it.
+  purseMultiplier: number;
 }
 
 function freshStat(): StatProgress {
@@ -89,5 +102,13 @@ export function createPlayerState(): PlayerState {
     cashAdvanceTaken: false,
     sponsorships: [],
     portfolioInvested: 0,
+    pressConferenceDone: false,
+    photoShootDone: false,
+    faceOffDone: false,
+    fanEventDone: false,
+    selectedPose: null,
+    fanEventDestination: null,
+    fightPrediction: null,
+    purseMultiplier: 1.0,
   };
 }
