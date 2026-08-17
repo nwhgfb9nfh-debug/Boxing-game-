@@ -19,6 +19,8 @@ export interface MenuData {
   title: string;
   energyText: string;
   actions: MenuAction[];
+  /** Hides the Close button — used for a committed step (energy already spent) that must be resolved by picking an option. */
+  hideClose?: boolean;
 }
 
 export interface ActionMenu {
@@ -44,7 +46,7 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
 
   function render() {
     if (!builder) return;
-    const { title, energyText, actions } = builder();
+    const { title, energyText, actions, hideClose } = builder();
     panel.innerHTML = "";
 
     const titleEl = document.createElement("div");
@@ -83,15 +85,17 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
     }
     panel.appendChild(list);
 
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "action-menu__close";
-    closeBtn.textContent = "Close";
-    closeBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      close();
-    });
-    panel.appendChild(closeBtn);
+    if (!hideClose) {
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "action-menu__close";
+      closeBtn.textContent = "Close";
+      closeBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        close();
+      });
+      panel.appendChild(closeBtn);
+    }
   }
 
   function close() {

@@ -176,19 +176,42 @@ function applyArchetype(choice: Archetype): string {
   return `Purse multiplier +0.1 (now ${playerState.purseMultiplier.toFixed(1)}x).`;
 }
 
-type PressConfStage = "q1" | "q2" | "q2-round";
-let pressConfStage: PressConfStage = "q1";
+// Every event below follows the same shape: a "Start X" screen (closeable,
+// spends the 50 Energy) that hands off to one or more choice screens
+// (hideClose — once you've paid, the only way out is picking an option).
+type PressConfStage = "start" | "q1" | "q2" | "q2-round";
+let pressConfStage: PressConfStage = "start";
+
+function buildPressConfStartMenu(): MenuData {
+  return {
+    title: "🎤 Press Conference",
+    energyText: `Energy: ${energy.remaining}/100`,
+    actions: [
+      {
+        id: "start",
+        label: "Start Press Conference",
+        cost: 50,
+        run: () => {
+          if (!energy.spend(50)) return "Not enough energy for a press conference.";
+          pressConfStage = "q1";
+          return "";
+        },
+      },
+    ],
+  };
+}
 
 function buildPressConfQ1Menu(): MenuData {
   return {
     title: "🎤 Press Conference — Q1",
-    energyText: `Energy: ${energy.remaining}/100  ·  "What do you think about your opponent?"`,
+    energyText: `"What do you think about your opponent?"`,
+    hideClose: true,
     actions: ARCHETYPES.map((a) => ({
       id: `q1-${a.id}`,
       label: a.label,
-      cost: 50,
+      cost: 0,
+      costLabel: "",
       run: () => {
-        if (!energy.spend(50)) return "Not enough energy for a press conference.";
         const msg = applyArchetype(a.id);
         pressConfStage = "q2";
         return msg;
@@ -201,6 +224,7 @@ function buildPressConfQ2Menu(): MenuData {
   return {
     title: "🎤 Press Conference — Q2",
     energyText: `"What's your prediction for the fight?"`,
+    hideClose: true,
     actions: [
       {
         id: "no-prediction",
@@ -241,6 +265,7 @@ function buildPressConfRoundMenu(): MenuData {
   return {
     title: "🎤 Promise Victory",
     energyText: "Lock in your prediction:",
+    hideClose: true,
     actions: PREDICTION_OPTIONS.map((opt) => ({
       id: opt.id,
       label: opt.label,
@@ -263,14 +288,56 @@ function buildPressConfMenu(): MenuData {
       actions: [],
     };
   }
+  if (pressConfStage === "q1") return buildPressConfQ1Menu();
   if (pressConfStage === "q2") return buildPressConfQ2Menu();
   if (pressConfStage === "q2-round") return buildPressConfRoundMenu();
-  return buildPressConfQ1Menu();
+  return buildPressConfStartMenu();
 }
 
 function openPressConfMenu() {
-  pressConfStage = "q1";
+  pressConfStage = "start";
   locationMenu.open(buildPressConfMenu);
+}
+
+type PhotoShootStage = "start" | "pick";
+let photoShootStage: PhotoShootStage = "start";
+
+function buildPhotoShootStartMenu(): MenuData {
+  return {
+    title: "📸 Photo Shoot",
+    energyText: `Energy: ${energy.remaining}/100`,
+    actions: [
+      {
+        id: "start",
+        label: "Start Photo Shoot",
+        cost: 50,
+        run: () => {
+          if (!energy.spend(50)) return "Not enough energy for a photo shoot.";
+          photoShootStage = "pick";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildPhotoShootPickMenu(): MenuData {
+  return {
+    title: "📸 Pick a Pose",
+    energyText: "",
+    hideClose: true,
+    actions: [1, 2, 3, 4, 5].map((n) => ({
+      id: `pose-${n}`,
+      label: `🖼️ Pose ${n} [image placeholder]`,
+      cost: 0,
+      costLabel: "",
+      run: () => {
+        playerState.selectedPose = n;
+        playerState.photoShootDone = true;
+        return `Pose ${n} selected! Postable to social media once that system supports photos.`;
+      },
+    })),
+  };
 }
 
 function buildPhotoShootMenu(): MenuData {
@@ -281,40 +348,47 @@ function buildPhotoShootMenu(): MenuData {
       actions: [],
     };
   }
-  return {
-    title: "📸 Photo Shoot",
-    energyText: `Energy: ${energy.remaining}/100  ·  Pick a pose`,
-    actions: [1, 2, 3, 4, 5].map((n) => ({
-      id: `pose-${n}`,
-      label: `🖼️ Pose ${n} [image placeholder]`,
-      cost: 50,
-      run: () => {
-        if (!energy.spend(50)) return "Not enough energy for a photo shoot.";
-        playerState.selectedPose = n;
-        playerState.photoShootDone = true;
-        return `Pose ${n} selected! Postable to social media once that system supports photos.`;
-      },
-    })),
-  };
+  return photoShootStage === "pick" ? buildPhotoShootPickMenu() : buildPhotoShootStartMenu();
 }
 
 function openPhotoShootMenu() {
+  photoShootStage = "start";
   locationMenu.open(buildPhotoShootMenu);
 }
 
-function buildFaceOffMenu(): MenuData {
-  if (playerState.faceOffDone) {
-    return { title: "🥊 Face-Off", energyText: "Already done for this camp.", actions: [] };
-  }
+type FaceOffStage = "start" | "pick";
+let faceOffStage: FaceOffStage = "start";
+
+function buildFaceOffStartMenu(): MenuData {
   return {
     title: "🥊 Face-Off",
-    energyText: `Energy: ${energy.remaining}/100  ·  Choose your attitude`,
+    energyText: `Energy: ${energy.remaining}/100`,
+    actions: [
+      {
+        id: "start",
+        label: "Start Face-Off",
+        cost: 50,
+        run: () => {
+          if (!energy.spend(50)) return "Not enough energy for a face-off.";
+          faceOffStage = "pick";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildFaceOffPickMenu(): MenuData {
+  return {
+    title: "🥊 Face-Off — Choose Your Attitude",
+    energyText: "",
+    hideClose: true,
     actions: ARCHETYPES.map((a) => ({
       id: `faceoff-${a.id}`,
       label: a.label,
-      cost: 50,
+      cost: 0,
+      costLabel: "",
       run: () => {
-        if (!energy.spend(50)) return "Not enough energy for a face-off.";
         const msg = applyArchetype(a.id);
         playerState.faceOffDone = true;
         return msg;
@@ -323,7 +397,15 @@ function buildFaceOffMenu(): MenuData {
   };
 }
 
+function buildFaceOffMenu(): MenuData {
+  if (playerState.faceOffDone) {
+    return { title: "🥊 Face-Off", energyText: "Already done for this camp.", actions: [] };
+  }
+  return faceOffStage === "pick" ? buildFaceOffPickMenu() : buildFaceOffStartMenu();
+}
+
 function openFaceOffMenu() {
+  faceOffStage = "start";
   locationMenu.open(buildFaceOffMenu);
 }
 
