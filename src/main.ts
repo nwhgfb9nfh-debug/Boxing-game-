@@ -1386,11 +1386,11 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Airport: [{ id: "vacation", label: "Go on Vacation", nx: 0.5, ny: 0.4 }],
   Mall: [
-    { id: "vehicles", label: "Vehicle Dealer", nx: 0.25, ny: 0.25 },
-    { id: "clothes", label: "Clothing Store", nx: 0.75, ny: 0.25 },
-    { id: "giftshop", label: "Gift Shop", nx: 0.5, ny: 0.5 },
-    { id: "petstore", label: "Pet Store", nx: 0.25, ny: 0.75 },
-    { id: "furniture", label: "Furniture Store", nx: 0.75, ny: 0.75 },
+    { id: "vehicles", label: "Vehicle Dealer", nx: 0.05, ny: 0.3 },
+    { id: "petstore", label: "Pet Store", nx: 0.05, ny: 0.7 },
+    { id: "giftshop", label: "Gift Shop", nx: 0.5, ny: 0.08 },
+    { id: "clothes", label: "Clothing Store", nx: 0.95, ny: 0.3 },
+    { id: "furniture", label: "Furniture Store", nx: 0.95, ny: 0.7 },
   ],
   "Press Building": [
     { id: "faceoff", label: "Face-Off Area", nx: 0.25, ny: 0.25 },
@@ -1401,11 +1401,30 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
 };
 
+// Each Mall store is its own room, entered through a wall-side station on
+// the main floor — same sub-room pattern as Office's elevator floors, just
+// triggered by walking up to a door instead of picking from a menu.
+const MALL_STORE_LABELS: Record<string, string> = {
+  vehicles: "Vehicle Dealer",
+  clothes: "Clothing Store",
+  giftshop: "Gift Shop",
+  petstore: "Pet Store",
+  furniture: "Furniture Store",
+};
+
+const MALL_STORE_STATIONS: Record<string, Station[]> = {
+  vehicles: [{ id: "vehicles-counter", label: "Vehicle Dealer", nx: 0.5, ny: 0.4 }],
+  clothes: [{ id: "clothes-counter", label: "Clothing Store", nx: 0.5, ny: 0.4 }],
+  giftshop: [{ id: "giftshop-counter", label: "Gift Shop", nx: 0.5, ny: 0.4 }],
+  petstore: [{ id: "petstore-counter", label: "Pet Store", nx: 0.5, ny: 0.4 }],
+  furniture: [{ id: "furniture-counter", label: "Furniture Store", nx: 0.5, ny: 0.4 }],
+};
+
 type Scene =
   | { type: "street" }
-  // officeFloor is set only while inside an Office elevator floor room —
-  // its door returns to the Lobby instead of the street.
-  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number }
+  // officeFloor/mallStore are set only while inside a building's sub-room —
+  // their door returns to that building's main room instead of the street.
+  | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number; mallStore?: string }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
@@ -1516,15 +1535,22 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
-    const { lot, interior, officeFloor } = scene;
+    const { lot, interior, officeFloor, mallStore } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);
-    hudLabel.textContent = officeFloor ? `${lot.building.name} — Floor ${officeFloor}` : lot.building.name;
+    hudLabel.textContent = officeFloor
+      ? `${lot.building.name} — Floor ${officeFloor}`
+      : mallStore
+        ? `${lot.building.name} — ${MALL_STORE_LABELS[mallStore]}`
+        : lot.building.name;
 
     if (atDoor) {
       if (officeFloor) {
         // Elevator floors exit back to the Lobby, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office) };
+      } else if (mallStore) {
+        // Store rooms exit back to the Mall floor, not the street.
+        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Mall) };
       } else {
         exitBuilding();
       }
@@ -1538,11 +1564,21 @@ function loop(now: number) {
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "vacation") onTrigger = openVacationMenu;
-      else if (nearStation.id === "vehicles") onTrigger = openVehicleMenu;
-      else if (nearStation.id === "clothes") onTrigger = openClothesMenu;
-      else if (nearStation.id === "giftshop") onTrigger = openGiftShopMenu;
-      else if (nearStation.id === "petstore") onTrigger = openPetStoreMenu;
-      else if (nearStation.id === "furniture") onTrigger = openFurnitureMenu;
+      else if (nearStation.id in MALL_STORE_STATIONS) {
+        const storeId = nearStation.id;
+        onTrigger = () => {
+          scene = {
+            type: "interior",
+            lot,
+            interior: new InteriorScene(lot, MALL_STORE_STATIONS[storeId]),
+            mallStore: storeId,
+          };
+        };
+      } else if (nearStation.id === "vehicles-counter") onTrigger = openVehicleMenu;
+      else if (nearStation.id === "clothes-counter") onTrigger = openClothesMenu;
+      else if (nearStation.id === "giftshop-counter") onTrigger = openGiftShopMenu;
+      else if (nearStation.id === "petstore-counter") onTrigger = openPetStoreMenu;
+      else if (nearStation.id === "furniture-counter") onTrigger = openFurnitureMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
