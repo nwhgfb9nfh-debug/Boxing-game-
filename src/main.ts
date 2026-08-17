@@ -1270,12 +1270,16 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // so by the time this runs it's always safe to advance.
   //
   // The vacation bonus only pays off during a Private Life stage (Training/
-  // Promotion/Fight Night can't use more than 100 anyway) and covers both
-  // Private Life stages in the camp it was booked for — it isn't consumed
-  // by the first one, only cleared when a fresh camp starts.
+  // Promotion/Fight Night can't use more than 100 anyway). It's a 2-use
+  // counter — one per Private Life stage in the camp it was booked for —
+  // consumed only when actually spent, not on some later stage boundary
+  // (booking happens during After Fight, and the very next sleep always
+  // lands on the new camp's "No Fight Scheduled", so clearing it there
+  // would wipe it out before it ever got used).
   const peekedNextStage = CAMP_SEQUENCE[(campCycle.currentIndex + 1) % CAMP_SEQUENCE.length];
-  const useBonus = playerState.vacationEnergyBonus && peekedNextStage.type === "privatelife";
+  const useBonus = playerState.vacationEnergyBonusUses > 0 && peekedNextStage.type === "privatelife";
   const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
+  if (useBonus) playerState.vacationEnergyBonusUses -= 1;
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
@@ -1284,11 +1288,10 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
-  // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight/vacation state.
+  // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
-    playerState.vacationEnergyBonus = false;
   }
 
   buildingUI.showToast(
@@ -1326,9 +1329,9 @@ function openVacationMenu() {
               return `Not enough money — need $${VACATION_COST}, have $${playerState.money}.`;
             }
             playerState.money -= VACATION_COST;
-            playerState.vacationEnergyBonus = true;
+            playerState.vacationEnergyBonusUses = 2;
             playerState.justFinishedFight = false;
-            return "Vacation booked! Your next sleep refills Energy to 110 instead of 100.";
+            return "Vacation booked! Both Private Life stages this camp will refill Energy to 110 instead of 100.";
           },
         },
       ],
@@ -1638,6 +1641,15 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     lot.building.name !== "Arena"
   ) {
     buildingUI.showToast("Closed for fight night — only your home and the Arena are open.", anchor, lot.row);
+    return;
+  }
+  // After Fight: only home and the Airport (Vacation) are open.
+  if (
+    campCycle.current.type === "afterfight" &&
+    !HOUSE_NAMES.has(lot.building.name) &&
+    lot.building.name !== "Airport"
+  ) {
+    buildingUI.showToast("Closed after the fight — only your home and the Airport are open.", anchor, lot.row);
     return;
   }
   if (lot.building.name === "Lounge") loungeVipCheckedIn = false;

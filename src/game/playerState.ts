@@ -85,9 +85,10 @@ export interface PlayerState {
   // fight. No Fight system exists yet to ever set this true, so the
   // station stays locked until then — see openVacationMenu in main.ts.
   justFinishedFight: boolean;
-  // Set by vacation, consumed by the next sleepAtBed() call, which refills
-  // Energy Star to 110 instead of 100 for that one refill.
-  vacationEnergyBonus: boolean;
+  // Set by vacation to 2 (one per Private Life stage in the camp it was
+  // booked for). Each sleepAtBed() call that lands on a Private Life stage
+  // consumes one use and refills Energy Star to 110 instead of 100.
+  vacationEnergyBonusUses: number;
   // Mall (Section 5): mostly cosmetic, money-only purchases. Vehicle/Pet
   // are one-time owned collectibles; gifts are bought here but given away
   // once the NPC/romance system exists to receive them.
@@ -124,7 +125,7 @@ export function createPlayerState(): PlayerState {
     fightPrediction: null,
     purseMultiplier: 1.0,
     justFinishedFight: false,
-    vacationEnergyBonus: false,
+    vacationEnergyBonusUses: 0,
     vehicleOwned: null,
     petOwned: null,
     giftsOwned: 0,
