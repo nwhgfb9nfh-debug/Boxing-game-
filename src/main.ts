@@ -13,6 +13,7 @@ import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
 import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
+import { CampCycle } from "./game/campCycle";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -37,6 +38,16 @@ const street = new StreetScene(controls);
 
 const playerState = createPlayerState();
 const energy = new EnergyStar();
+const campCycle = new CampCycle();
+
+// Camp stage (Section 2) — always visible, top-center below the frame/
+// building label. Advances only when you sleep (see sleepAtBed).
+const campHud = document.createElement("div");
+campHud.className = "camp-hud";
+const campPill = document.createElement("div");
+campPill.className = "camp-hud__pill";
+campHud.appendChild(campPill);
+app.appendChild(campHud);
 
 // Energy Star + HP (Section 3 & 7) — top-right, always visible outside minigames.
 const statusHud = document.createElement("div");
@@ -1139,8 +1150,9 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const leftover = energy.sleep(cap);
   const hpGain = Math.floor(leftover / 2);
   playerState.hp += hpGain;
+  const nextStage = campCycle.advance();
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}.`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${bonusUsed ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
     anchor,
     "bottom",
   );
@@ -1506,10 +1518,14 @@ function loop(now: number) {
   const outOfMinigame = scene.type === "street" || scene.type === "interior";
   statusHud.style.display = outOfMinigame ? "flex" : "none";
   moneyHud.style.display = outOfMinigame ? "block" : "none";
+  campHud.style.display = outOfMinigame ? "flex" : "none";
   if (outOfMinigame) {
     energyPill.textContent = `⚡ ${energy.remaining}/${energy.maxValue}`;
     hpPill.textContent = `❤ ${playerState.hp} HP`;
     moneyPill.textContent = `$${playerState.money}`;
+    const stage = campCycle.current;
+    const statSuffix = stage.stat ? ` — ${stage.stat[0].toUpperCase()}${stage.stat.slice(1)}` : "";
+    campPill.textContent = `🥊 Camp ${campCycle.campNumber} · ${stage.label}${statSuffix}`;
   }
 
   // The Phone only works inside a building, not while driving, and stays

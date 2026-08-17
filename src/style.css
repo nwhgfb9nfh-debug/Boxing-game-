@@ -273,6 +273,30 @@ canvas {
   white-space: nowrap;
 }
 
+/* Camp stage (Section 2) — top-center, just below the frame/building
+   label, always visible outside minigames. */
+.camp-hud {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 38px);
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.camp-hud__pill {
+  background: rgba(0, 0, 0, 0.55);
+  color: #ff9f4a;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  white-space: nowrap;
+}
+
 /* Phone — only usable inside a building. Bottom-right, bigger than the
    status pills so it reads as a real button, not another readout. */
 .btn--phone {
