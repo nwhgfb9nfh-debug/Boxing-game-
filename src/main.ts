@@ -236,6 +236,16 @@ function openDebugMenu() {
           // after booking a fight — keep that true when jumping there directly.
           playerState.fightScheduled = stage.type !== "nofight";
           usedThisPhase.clear();
+          // Reset Energy to whatever a real sleep into this stage would
+          // have left it at — same vacation-bonus formula as sleepAtBed,
+          // consuming a use so repeated jumps into Private Life can't
+          // reuse the same charge. Doesn't bank HP from the discarded
+          // leftover — debug jump shouldn't hand out free HP.
+          const useBonus = playerState.vacationEnergyBonusUses > 0 && stage.type === "privatelife";
+          const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
+          if (useBonus) playerState.vacationEnergyBonusUses -= 1;
+          energy.sleep(cap);
+          if (stage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
           locationMenu.close();
           return "";
         },
@@ -245,44 +255,56 @@ function openDebugMenu() {
 }
 
 function openWorkoutClipMenu() {
-  locationMenu.open(() => ({
-    title: "🎥 Workout Clip",
-    energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
-    actions: [
-      {
-        id: "post-workout",
-        label: "Post a Workout Clip",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy to post a clip.";
-          playerState.fame += 2;
-          playerState.image += 2;
-          markUsedThisPhase("workoutclip");
-          return "Posted! Fame +2, Image +2.";
+  locationMenu.open(() => {
+    const used = usedThisPhase.has("workoutclip");
+    return {
+      title: "🎥 Workout Clip",
+      energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+      actions: [
+        {
+          id: "post-workout",
+          label: "Post a Workout Clip",
+          cost: 10,
+          costLabel: used ? "DONE" : "10 EN",
+          disabled: used,
+          run: () => {
+            if (used) return "Already done this Private Life phase.";
+            if (!energy.spend(10)) return "Not enough energy to post a clip.";
+            playerState.fame += 2;
+            playerState.image += 2;
+            markUsedThisPhase("workoutclip");
+            return "Posted! Fame +2, Image +2.";
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 }
 
 function openDinerMenu() {
-  locationMenu.open(() => ({
-    title: "🍔 Diner",
-    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
-    actions: [
-      {
-        id: "order",
-        label: "Order Menu",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy to order.";
-          playerState.hp += 5;
-          markUsedThisPhase("order");
-          return `Order's up! HP +5 (now ${playerState.hp}).`;
+  locationMenu.open(() => {
+    const used = usedThisPhase.has("order");
+    return {
+      title: "🍔 Diner",
+      energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
+      actions: [
+        {
+          id: "order",
+          label: "Order Menu",
+          cost: 10,
+          costLabel: used ? "DONE" : "10 EN",
+          disabled: used,
+          run: () => {
+            if (used) return "Already done this Private Life phase.";
+            if (!energy.spend(10)) return "Not enough energy to order.";
+            playerState.hp += 5;
+            markUsedThisPhase("order");
+            return `Order's up! HP +5 (now ${playerState.hp}).`;
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 }
 
 // Press Building (Section 6, Promotion): the room's other 4 stations are
@@ -605,6 +627,7 @@ const LOUNGE_VIP_ZONE: BlockedZone = {
 
 function openVipBouncerMenu() {
   locationMenu.open(() => {
+    const used = usedThisPhase.has("vip-bouncer");
     const meetsFame = playerState.fame >= VIP_FAME_REQUIREMENT;
     return {
       title: "🕴️ VIP Bouncer",
@@ -614,9 +637,10 @@ function openVipBouncerMenu() {
           id: "ask-in",
           label: "Ask to Enter VIP",
           cost: VIP_ENTRY_ENERGY,
-          costLabel: meetsFame ? `${VIP_ENTRY_ENERGY} EN` : "LOCKED",
-          disabled: !meetsFame,
+          costLabel: used ? "DONE" : meetsFame ? `${VIP_ENTRY_ENERGY} EN` : "LOCKED",
+          disabled: used || !meetsFame,
           run: () => {
+            if (used) return "Already done this Private Life phase.";
             if (!meetsFame) {
               return `"Not without more Fame." Need ${VIP_FAME_REQUIREMENT} (have ${playerState.fame}).`;
             }
@@ -679,7 +703,9 @@ function openBarMenu() {
 const VIP_BOTTLE = { energyCost: 30, hpCost: 8, fameGain: 6 };
 
 function openBottleMenu() {
-  locationMenu.open(() => ({
+  locationMenu.open(() => {
+    const used = usedThisPhase.has("bottle");
+    return {
     title: "🍾 Buy a Bottle",
     energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Fame: ${playerState.fame}`,
     actions: [
@@ -687,7 +713,10 @@ function openBottleMenu() {
         id: "bottle",
         label: "Buy a Bottle",
         cost: VIP_BOTTLE.energyCost,
+        costLabel: used ? "DONE" : `${VIP_BOTTLE.energyCost} EN`,
+        disabled: used,
         run: () => {
+          if (used) return "Already done this Private Life phase.";
           if (!energy.spend(VIP_BOTTLE.energyCost)) return "Not enough energy for a bottle.";
           if (playerState.hp < VIP_BOTTLE.hpCost) return "Not enough HP for a bottle.";
           playerState.hp -= VIP_BOTTLE.hpCost;
@@ -697,7 +726,8 @@ function openBottleMenu() {
         },
       },
     ],
-  }));
+    };
+  });
 }
 
 interface PressFormat {
@@ -803,43 +833,55 @@ function openPressReceptionMenu() {
 }
 
 function openSunbatheMenu() {
-  locationMenu.open(() => ({
-    title: "☀️ Sunbathe",
-    energyText: `Energy: ${energy.remaining}/100  ·  Image: ${playerState.image}`,
-    actions: [
-      {
-        id: "sunbathe",
-        label: "Sunbathe",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy to sunbathe.";
-          playerState.image += 3;
-          markUsedThisPhase("sunbathe");
-          return `Image +3 (now ${playerState.image}).`;
+  locationMenu.open(() => {
+    const used = usedThisPhase.has("sunbathe");
+    return {
+      title: "☀️ Sunbathe",
+      energyText: `Energy: ${energy.remaining}/100  ·  Image: ${playerState.image}`,
+      actions: [
+        {
+          id: "sunbathe",
+          label: "Sunbathe",
+          cost: 10,
+          costLabel: used ? "DONE" : "10 EN",
+          disabled: used,
+          run: () => {
+            if (used) return "Already done this Private Life phase.";
+            if (!energy.spend(10)) return "Not enough energy to sunbathe.";
+            playerState.image += 3;
+            markUsedThisPhase("sunbathe");
+            return `Image +3 (now ${playerState.image}).`;
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 }
 
 function openSwimMenu() {
-  locationMenu.open(() => ({
-    title: "🌊 Swim",
-    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
-    actions: [
-      {
-        id: "swim",
-        label: "Swim",
-        cost: 10,
-        run: () => {
-          if (!energy.spend(10)) return "Not enough energy to swim.";
-          playerState.hp += 3;
-          markUsedThisPhase("swim");
-          return `A little stamina boost. HP +3 (now ${playerState.hp}).`;
+  locationMenu.open(() => {
+    const used = usedThisPhase.has("swim");
+    return {
+      title: "🌊 Swim",
+      energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
+      actions: [
+        {
+          id: "swim",
+          label: "Swim",
+          cost: 10,
+          costLabel: used ? "DONE" : "10 EN",
+          disabled: used,
+          run: () => {
+            if (used) return "Already done this Private Life phase.";
+            if (!energy.spend(10)) return "Not enough energy to swim.";
+            playerState.hp += 3;
+            markUsedThisPhase("swim");
+            return `A little stamina boost. HP +3 (now ${playerState.hp}).`;
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 }
 
 // Office reception (Section 5): each staff role (and each gym section) is
