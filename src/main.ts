@@ -213,6 +213,100 @@ debugBtn.addEventListener("pointerdown", (e) => {
   openDebugMenu();
 });
 
+// Dev-only stat editor — plain number inputs, no polish. Its own overlay
+// (not the shared locationMenu) since MenuAction only renders buttons.
+const debugStatsOverlay = document.createElement("div");
+debugStatsOverlay.className = "action-menu-overlay";
+debugStatsOverlay.style.display = "none";
+const debugStatsPanel = document.createElement("div");
+debugStatsPanel.className = "action-menu";
+debugStatsOverlay.appendChild(debugStatsPanel);
+app.appendChild(debugStatsOverlay);
+
+interface DebugStatField {
+  label: string;
+  get: () => number;
+  set: (n: number) => void;
+}
+
+function getDebugStatFields(): DebugStatField[] {
+  const setTrainingBonus = (stat: keyof TrainingStats) => (n: number) => {
+    playerState.training[stat].bonus = n;
+    playerState.training[stat].trained = true;
+  };
+  return [
+    { label: "Fame", get: () => playerState.fame, set: (n) => (playerState.fame = n) },
+    { label: "Image", get: () => playerState.image, set: (n) => (playerState.image = n) },
+    { label: "HP", get: () => playerState.hp, set: (n) => (playerState.hp = n) },
+    { label: "Money", get: () => playerState.money, set: (n) => (playerState.money = n) },
+    { label: "Power bonus", get: () => playerState.training.power.bonus, set: setTrainingBonus("power") },
+    { label: "Speed bonus", get: () => playerState.training.speed.bonus, set: setTrainingBonus("speed") },
+    {
+      label: "Endurance bonus",
+      get: () => playerState.training.endurance.bonus,
+      set: setTrainingBonus("endurance"),
+    },
+    { label: "Chin bonus", get: () => playerState.training.chin.bonus, set: setTrainingBonus("chin") },
+  ];
+}
+
+function renderDebugStats() {
+  debugStatsPanel.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "action-menu__title";
+  title.textContent = "🛠 Edit Stats";
+  debugStatsPanel.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "debug-stats__list";
+  for (const field of getDebugStatFields()) {
+    const row = document.createElement("div");
+    row.className = "debug-stats__row";
+
+    const label = document.createElement("span");
+    label.className = "debug-stats__label";
+    label.textContent = field.label;
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "debug-stats__input";
+    input.value = String(field.get());
+
+    const setBtn = document.createElement("button");
+    setBtn.type = "button";
+    setBtn.className = "debug-stats__set";
+    setBtn.textContent = "Set";
+    setBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const n = Number(input.value);
+      if (Number.isFinite(n)) field.set(n);
+      renderDebugStats();
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    row.appendChild(setBtn);
+    list.appendChild(row);
+  }
+  debugStatsPanel.appendChild(list);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "action-menu__close";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    debugStatsOverlay.style.display = "none";
+  });
+  debugStatsPanel.appendChild(closeBtn);
+}
+
+function openDebugStatsPanel() {
+  debugStatsOverlay.style.display = "flex";
+  renderDebugStats();
+}
+
 function openDebugMenu() {
   locationMenu.open(() => ({
     title: "🛠 Debug: Jump to Stage",
@@ -220,9 +314,21 @@ function openDebugMenu() {
     // "After Fight" is excluded — its state (0 Energy, justFinishedFight)
     // only makes sense as a result of Simulate Fight at the Arena, and
     // reaching it that way is always one tap from FIGHT NIGHT anyway.
-    actions: CAMP_SEQUENCE.map((stage, i) => ({ stage, i }))
-      .filter(({ stage }) => stage.type !== "afterfight")
-      .map(({ stage, i }) => {
+    actions: [
+      {
+        id: "edit-stats",
+        label: "✏️ Edit Stats",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          locationMenu.close();
+          openDebugStatsPanel();
+          return "";
+        },
+      },
+      ...CAMP_SEQUENCE.map((stage, i) => ({ stage, i }))
+        .filter(({ stage }) => stage.type !== "afterfight")
+        .map(({ stage, i }) => {
       const here = i === campCycle.currentIndex;
       return {
         id: `stage-${i}`,
@@ -251,6 +357,7 @@ function openDebugMenu() {
         },
       };
     }),
+    ],
   }));
 }
 
