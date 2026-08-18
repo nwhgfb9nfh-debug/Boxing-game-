@@ -72,6 +72,17 @@ const PRIVATE_LIFE_STATIONS = new Set([
 ]);
 const PROMOTION_STATIONS = new Set(["pressconf", "photostudio", "faceoff", "fanevent"]);
 
+// Every energy-costing Private Life activity is once-per-phase — cleared
+// in sleepAtBed whenever the stage advances. "bar" and "pressreception"
+// host multiple distinct activities each limited individually inside
+// their own menu builders (bar-drink/bar-round, press-podcast/press-tv),
+// so they're excluded from the blanket per-station check below.
+const usedThisPhase = new Set<string>();
+function markUsedThisPhase(activityId: string) {
+  usedThisPhase.add(activityId);
+}
+const MULTI_ACTIVITY_STATIONS = new Set(["bar", "pressreception"]);
+
 function requirePrivateLifePhase(): string | null {
   const stage = campCycle.current;
   if (stage.type !== "privatelife") {
@@ -80,7 +91,7 @@ function requirePrivateLifePhase(): string | null {
   return null;
 }
 
-/** Returns a lock message if this station's activity doesn't match the current camp stage, else null. */
+/** Returns a lock message if this station's activity doesn't match the current camp stage or was already used this phase. */
 function getStationPhaseLock(stationId: string): string | null {
   const stage = campCycle.current;
   const trainingStat = TRAINING_STAT_BY_STATION[stationId];
@@ -93,7 +104,14 @@ function getStationPhaseLock(stationId: string): string | null {
     }
     return null;
   }
-  if (PRIVATE_LIFE_STATIONS.has(stationId)) return requirePrivateLifePhase();
+  if (PRIVATE_LIFE_STATIONS.has(stationId)) {
+    const lock = requirePrivateLifePhase();
+    if (lock) return lock;
+    if (!MULTI_ACTIVITY_STATIONS.has(stationId) && usedThisPhase.has(stationId)) {
+      return "Already done this Private Life phase.";
+    }
+    return null;
+  }
   if (PROMOTION_STATIONS.has(stationId)) {
     if (stage.type !== "promotion") {
       return `Closed — only available during a Promotion phase (currently "${stage.label}").`;
@@ -217,6 +235,7 @@ function openDebugMenu() {
           // Every real stage but "No Fight Scheduled" is only reachable
           // after booking a fight — keep that true when jumping there directly.
           playerState.fightScheduled = stage.type !== "nofight";
+          usedThisPhase.clear();
           locationMenu.close();
           return "";
         },
@@ -238,6 +257,7 @@ function openWorkoutClipMenu() {
           if (!energy.spend(10)) return "Not enough energy to post a clip.";
           playerState.fame += 2;
           playerState.image += 2;
+          markUsedThisPhase("workoutclip");
           return "Posted! Fame +2, Image +2.";
         },
       },
@@ -257,6 +277,7 @@ function openDinerMenu() {
         run: () => {
           if (!energy.spend(10)) return "Not enough energy to order.";
           playerState.hp += 5;
+          markUsedThisPhase("order");
           return `Order's up! HP +5 (now ${playerState.hp}).`;
         },
       },
@@ -571,29 +592,19 @@ const VIP_FAME_REQUIREMENT = 20; // placeholder — spec says Fame-gated, no exa
 const VIP_ENTRY_ENERGY = 10;
 const VIP_ENTRY_HP_COST = 5; // spec: "guaranteed HP damage", flat per entry
 
-// Resets each time the Lounge is (re)entered — see enterBuilding — so the
-// bouncer has to wave you through again on every visit, matching the old
-// "one-time cost of entry" behavior even though it's no longer a menu gate.
-let loungeVipCheckedIn = false;
-
+// The zone unlocks for the rest of the current Private Life phase once
+// asked in — same clock as every other once-per-phase activity below.
 const LOUNGE_VIP_ZONE: BlockedZone = {
   nx0: 0.6,
   ny0: 0,
   nx1: 1,
   ny1: 0.42,
-  isAllowed: () => loungeVipCheckedIn,
+  isAllowed: () => usedThisPhase.has("vip-bouncer"),
   label: "VIP",
 };
 
 function openVipBouncerMenu() {
   locationMenu.open(() => {
-    if (loungeVipCheckedIn) {
-      return {
-        title: "🕴️ VIP Bouncer",
-        energyText: `"You're on the list — go on in."`,
-        actions: [],
-      };
-    }
     const meetsFame = playerState.fame >= VIP_FAME_REQUIREMENT;
     return {
       title: "🕴️ VIP Bouncer",
@@ -611,7 +622,7 @@ function openVipBouncerMenu() {
             }
             if (!energy.spend(VIP_ENTRY_ENERGY)) return "Not enough energy.";
             playerState.hp -= VIP_ENTRY_HP_COST;
-            loungeVipCheckedIn = true;
+            markUsedThisPhase("vip-bouncer");
             return `"Go on in." HP -${VIP_ENTRY_HP_COST} (now ${playerState.hp}).`;
           },
         },
@@ -624,35 +635,45 @@ const BAR_DRINK = { energyCost: 10, hpCost: 3 };
 const BAR_ROUND = { energyCost: 20, hpCost: 5, imageGain: 3 };
 
 function openBarMenu() {
-  locationMenu.open(() => ({
-    title: "🍸 Bar",
-    energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Image: ${playerState.image}`,
-    actions: [
-      {
-        id: "drink",
-        label: "Take a Drink",
-        cost: BAR_DRINK.energyCost,
-        run: () => {
-          if (!energy.spend(BAR_DRINK.energyCost)) return "Not enough energy for a drink.";
-          if (playerState.hp < BAR_DRINK.hpCost) return "Not enough HP for a drink.";
-          playerState.hp -= BAR_DRINK.hpCost;
-          return `HP -${BAR_DRINK.hpCost} (now ${playerState.hp}).`;
+  locationMenu.open(() => {
+    const drinkUsed = usedThisPhase.has("bar-drink");
+    const roundUsed = usedThisPhase.has("bar-round");
+    return {
+      title: "🍸 Bar",
+      energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Image: ${playerState.image}`,
+      actions: [
+        {
+          id: "drink",
+          label: "Take a Drink",
+          cost: BAR_DRINK.energyCost,
+          costLabel: drinkUsed ? "DONE" : `${BAR_DRINK.energyCost} EN`,
+          disabled: drinkUsed,
+          run: () => {
+            if (!energy.spend(BAR_DRINK.energyCost)) return "Not enough energy for a drink.";
+            if (playerState.hp < BAR_DRINK.hpCost) return "Not enough HP for a drink.";
+            playerState.hp -= BAR_DRINK.hpCost;
+            markUsedThisPhase("bar-drink");
+            return `HP -${BAR_DRINK.hpCost} (now ${playerState.hp}).`;
+          },
         },
-      },
-      {
-        id: "round",
-        label: "Buy a Round",
-        cost: BAR_ROUND.energyCost,
-        run: () => {
-          if (!energy.spend(BAR_ROUND.energyCost)) return "Not enough energy to buy a round.";
-          if (playerState.hp < BAR_ROUND.hpCost) return "Not enough HP to buy a round.";
-          playerState.hp -= BAR_ROUND.hpCost;
-          playerState.image += BAR_ROUND.imageGain;
-          return `Image +${BAR_ROUND.imageGain}, HP -${BAR_ROUND.hpCost} (now Image ${playerState.image}, HP ${playerState.hp}).`;
+        {
+          id: "round",
+          label: "Buy a Round",
+          cost: BAR_ROUND.energyCost,
+          costLabel: roundUsed ? "DONE" : `${BAR_ROUND.energyCost} EN`,
+          disabled: roundUsed,
+          run: () => {
+            if (!energy.spend(BAR_ROUND.energyCost)) return "Not enough energy to buy a round.";
+            if (playerState.hp < BAR_ROUND.hpCost) return "Not enough HP to buy a round.";
+            playerState.hp -= BAR_ROUND.hpCost;
+            playerState.image += BAR_ROUND.imageGain;
+            markUsedThisPhase("bar-round");
+            return `Image +${BAR_ROUND.imageGain}, HP -${BAR_ROUND.hpCost} (now Image ${playerState.image}, HP ${playerState.hp}).`;
+          },
         },
-      },
-    ],
-  }));
+      ],
+    };
+  });
 }
 
 const VIP_BOTTLE = { energyCost: 30, hpCost: 8, fameGain: 6 };
@@ -671,6 +692,7 @@ function openBottleMenu() {
           if (playerState.hp < VIP_BOTTLE.hpCost) return "Not enough HP for a bottle.";
           playerState.hp -= VIP_BOTTLE.hpCost;
           playerState.fame += VIP_BOTTLE.fameGain;
+          markUsedThisPhase("bottle");
           return `Fame +${VIP_BOTTLE.fameGain}, HP -${VIP_BOTTLE.hpCost} (now Fame ${playerState.fame}, HP ${playerState.hp}).`;
         },
       },
@@ -717,6 +739,7 @@ function buildPressChoiceMenu(kind: "podcast" | "tv"): MenuData {
     const { fame, image } = fmt[tone];
     playerState.fame += fame;
     playerState.image += image;
+    markUsedThisPhase(`press-${kind}`);
     return `Fame +${fame}, Image ${image >= 0 ? "+" : ""}${image}, HP -${fmt.hpCost}.`;
   };
   return {
@@ -742,6 +765,8 @@ function buildPressChoiceMenu(kind: "podcast" | "tv"): MenuData {
 function buildPressReceptionMenu(): MenuData {
   if (pressReceptionView === "podcast") return buildPressChoiceMenu("podcast");
   if (pressReceptionView === "tv") return buildPressChoiceMenu("tv");
+  const podcastUsed = usedThisPhase.has("press-podcast");
+  const tvUsed = usedThisPhase.has("press-tv");
   return {
     title: "🗞️ Press Reception",
     energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
@@ -750,7 +775,8 @@ function buildPressReceptionMenu(): MenuData {
         id: "podcast",
         label: `${PRESS_FORMATS.podcast.icon} Podcast`,
         cost: 0,
-        costLabel: "›",
+        costLabel: podcastUsed ? "DONE" : "›",
+        disabled: podcastUsed,
         run: () => {
           pressReceptionView = "podcast";
           return "";
@@ -760,7 +786,8 @@ function buildPressReceptionMenu(): MenuData {
         id: "tv",
         label: `${PRESS_FORMATS.tv.icon} TV Interview`,
         cost: 0,
-        costLabel: "›",
+        costLabel: tvUsed ? "DONE" : "›",
+        disabled: tvUsed,
         run: () => {
           pressReceptionView = "tv";
           return "";
@@ -787,6 +814,7 @@ function openSunbatheMenu() {
         run: () => {
           if (!energy.spend(10)) return "Not enough energy to sunbathe.";
           playerState.image += 3;
+          markUsedThisPhase("sunbathe");
           return `Image +3 (now ${playerState.image}).`;
         },
       },
@@ -806,6 +834,7 @@ function openSwimMenu() {
         run: () => {
           if (!energy.spend(10)) return "Not enough energy to swim.";
           playerState.hp += 3;
+          markUsedThisPhase("swim");
           return `A little stamina boost. HP +3 (now ${playerState.hp}).`;
         },
       },
@@ -929,13 +958,14 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "media-training",
       label: "Media Training",
       cost: 10,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : "10 EN",
-      disabled: !!requirePrivateLifePhase(),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
         if (!energy.spend(10)) return "Not enough energy for media training.";
         playerState.image += 2;
+        markUsedThisPhase("media-training");
         return `Image +2 (now ${playerState.image}).`;
       },
     },
@@ -943,8 +973,8 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "charity-event",
       label: "Charity Event",
       cost: 15,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : "15 EN",
-      disabled: !!requirePrivateLifePhase(),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
@@ -952,6 +982,7 @@ function buildManagerDeskMenu(floor: number): MenuData {
         if (playerState.hp < 5) return "Not enough HP for a charity event.";
         playerState.hp -= 5;
         playerState.image += 5;
+        markUsedThisPhase("charity-event");
         return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
       },
     },
@@ -982,8 +1013,8 @@ function buildManagerDeskMenu(floor: number): MenuData {
       id: "networking-event",
       label: "Networking Event",
       cost: 20,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : "20 EN",
-      disabled: !!requirePrivateLifePhase(),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("networking-event") ? "DONE" : "20 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("networking-event"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
@@ -991,6 +1022,7 @@ function buildManagerDeskMenu(floor: number): MenuData {
         if (playerState.hp < 8) return "Not enough HP for a networking event.";
         playerState.hp -= 8;
         playerState.fame += 5;
+        markUsedThisPhase("networking-event");
         return `Fame +5 (now ${playerState.fame}), HP -8 (now ${playerState.hp}).`;
       },
     });
@@ -1288,6 +1320,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
+  usedThisPhase.clear();
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
@@ -1367,6 +1400,7 @@ function openSimulateFightMenu() {
             playerState.hp = 0;
             playerState.justFinishedFight = true;
             const nextStage = campCycle.advance();
+            usedThisPhase.clear();
             return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
           },
         },
@@ -1657,7 +1691,6 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     buildingUI.showToast("Closed after the fight — only your home and the Airport are open.", anchor, lot.row);
     return;
   }
-  if (lot.building.name === "Lounge") loungeVipCheckedIn = false;
   const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
   const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
   scene = { type: "interior", lot, interior: new InteriorScene(lot, stations, blockedZone) };
