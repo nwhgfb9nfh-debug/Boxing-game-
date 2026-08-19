@@ -451,7 +451,9 @@ canvas {
   background: #262a35;
   color: #fff;
   font-family: inherit;
-  font-size: 14px;
+  /* 16px minimum — iOS Safari auto-zooms on focus for any input below
+     that, ignoring user-scalable=no/maximum-scale in the viewport meta. */
+  font-size: 16px;
 }
 
 .debug-stats__set {
@@ -477,7 +479,9 @@ canvas {
   background: #262a35;
   color: #fff;
   font-family: inherit;
-  font-size: 14px;
+  /* 16px minimum — iOS Safari auto-zooms on focus for any input below
+     that, ignoring user-scalable=no/maximum-scale in the viewport meta. */
+  font-size: 16px;
   margin: 4px 0;
 }
 
