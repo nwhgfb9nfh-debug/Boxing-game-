@@ -3,6 +3,8 @@
 // contacts, which come with the meetup/new-people actions in a later
 // Private Life piece.
 
+import type { BuzzerPostResult } from "./buzzer";
+
 // "trained" tracks whether a session was ever completed for this stat,
 // independent of the bonus it earned — a session that scored all
 // misses is still trained (bonus 0), which is different from never
@@ -37,6 +39,26 @@ export interface GymLevels {
 export interface SponsorshipContract {
   dealId: string;
   fightsRemaining: number;
+}
+
+// A tweet actually sent (Buzzer, Section 5): kept for the phone's feed —
+// only the last 10 (newest first), oldest dropped as new ones come in.
+// Blocked posts never make it here; only real ones.
+export interface BuzzerPostRecord {
+  text: string;
+  result: BuzzerPostResult;
+}
+const BUZZER_HISTORY_LIMIT = 10;
+
+// A photo (Imagestar, Section 5): "photoshoot" comes from Press Building's
+// Photo Shoot event; "selfie" will come from NPC dialogue once that system
+// exists. Taken photos sit in availablePhotos until the player actually
+// posts them (their own deliberate action, same as Buzzer's compose+post),
+// at which point they move to imagestarPosts — the full, uncapped career feed.
+export interface Photo {
+  id: string;
+  caption: string;
+  source: "photoshoot" | "selfie";
 }
 
 export interface PlayerState {
@@ -95,6 +117,15 @@ export interface PlayerState {
   vehicleOwned: string | null;
   petOwned: string | null;
   giftsOwned: number;
+  // Phone app feeds (Section 5).
+  buzzerHistory: BuzzerPostRecord[]; // newest first, capped at BUZZER_HISTORY_LIMIT
+  availablePhotos: Photo[]; // taken but not yet posted to Imagestar
+  imagestarPosts: Photo[]; // posted — the full career feed, uncapped
+}
+
+/** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
+export function addBuzzerPost(state: PlayerState, record: BuzzerPostRecord) {
+  state.buzzerHistory = [record, ...state.buzzerHistory].slice(0, BUZZER_HISTORY_LIMIT);
 }
 
 function freshStat(): StatProgress {
@@ -129,5 +160,8 @@ export function createPlayerState(): PlayerState {
     vehicleOwned: null,
     petOwned: null,
     giftsOwned: 0,
+    buzzerHistory: [],
+    availablePhotos: [],
+    imagestarPosts: [],
   };
 }

@@ -4,7 +4,7 @@
 // state) lives in main.ts and is handed in via PhoneApi; this module only
 // renders and delegates.
 
-import type { TrainingStats } from "../game/playerState";
+import type { TrainingStats, BuzzerPostRecord, Photo } from "../game/playerState";
 import type { BuzzerPostResult } from "../game/buzzer";
 
 export interface HouseListing {
@@ -23,6 +23,10 @@ export interface PhoneApi {
   getHouses: () => HouseListing[];
   buyHouse: (name: string) => string;
   post: (text: string) => BuzzerPostResult;
+  getBuzzerHistory: () => BuzzerPostRecord[];
+  getAvailablePhotos: () => Photo[];
+  getImagestarPosts: () => Photo[];
+  postPhoto: (id: string) => string;
 }
 
 type View = "home" | "contacts" | "stats" | "realestate" | "buzzer" | "imagestar" | "bca";
@@ -63,7 +67,6 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   let view: View = "home";
   let message = "";
   let composeText = "";
-  let lastPost: { text: string; result: BuzzerPostResult } | null = null;
 
   function go(next: View) {
     view = next;
@@ -263,49 +266,54 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
         render();
         return;
       }
-      const text = composeText.trim();
-      const result = api.post(text);
-      lastPost = { text, result };
+      const result = api.post(composeText.trim());
       composeText = "";
-      message = "";
+      message = result.blocked ? (result.blockedReason ?? "That post didn't go through.") : "";
       render();
     });
     list.appendChild(btn);
     panel.appendChild(list);
 
-    if (lastPost) {
+    const feedHeader = document.createElement("div");
+    feedHeader.className = "phone-stats__header";
+    feedHeader.textContent = "Your Feed (last 10)";
+    panel.appendChild(feedHeader);
+
+    const history = api.getBuzzerHistory();
+    if (history.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "phone-empty";
+      empty.textContent = "Nothing posted yet.";
+      panel.appendChild(empty);
+    } else {
       const feed = document.createElement("div");
       feed.className = "buzzer-feed";
+      for (const record of history) {
+        const yourPost = document.createElement("div");
+        yourPost.className = "buzzer-post";
+        yourPost.innerHTML = `<span class="buzzer-post__handle">@you</span><span class="buzzer-post__text"></span>`;
+        yourPost.querySelector(".buzzer-post__text")!.textContent = record.text;
+        feed.appendChild(yourPost);
 
-      const yourPost = document.createElement("div");
-      yourPost.className = "buzzer-post";
-      yourPost.innerHTML = `<span class="buzzer-post__handle">@you</span><span class="buzzer-post__text"></span>`;
-      yourPost.querySelector(".buzzer-post__text")!.textContent = lastPost.text;
-      feed.appendChild(yourPost);
-
-      if (lastPost.result.blocked) {
-        const blocked = document.createElement("div");
-        blocked.className = "buzzer-blocked";
-        blocked.textContent = lastPost.result.blockedReason ?? "That post didn't go through.";
-        feed.appendChild(blocked);
-      } else if (lastPost.result.replies.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "phone-empty";
-        empty.textContent = "No replies yet — tweeting into the void. Build more Fame.";
-        feed.appendChild(empty);
-      } else {
-        for (const reply of lastPost.result.replies) {
-          const row = document.createElement("div");
-          row.className = "buzzer-reply";
-          const handleEl = document.createElement("span");
-          handleEl.className = "buzzer-reply__handle";
-          handleEl.textContent = reply.handle;
-          const textEl = document.createElement("span");
-          textEl.className = "buzzer-reply__text";
-          textEl.textContent = reply.text;
-          row.appendChild(handleEl);
-          row.appendChild(textEl);
-          feed.appendChild(row);
+        if (record.result.replies.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "phone-empty";
+          empty.textContent = "No replies — tweeting into the void.";
+          feed.appendChild(empty);
+        } else {
+          for (const reply of record.result.replies) {
+            const row = document.createElement("div");
+            row.className = "buzzer-reply";
+            const handleEl = document.createElement("span");
+            handleEl.className = "buzzer-reply__handle";
+            handleEl.textContent = reply.handle;
+            const textEl = document.createElement("span");
+            textEl.className = "buzzer-reply__text";
+            textEl.textContent = reply.text;
+            row.appendChild(handleEl);
+            row.appendChild(textEl);
+            feed.appendChild(row);
+          }
         }
       }
       panel.appendChild(feed);
@@ -313,10 +321,64 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   }
 
   function renderImagestar() {
-    const empty = document.createElement("div");
-    empty.className = "phone-empty";
-    empty.textContent = "Imagestar is coming soon.";
-    panel.appendChild(empty);
+    const energyEl = document.createElement("div");
+    energyEl.className = "action-menu__energy";
+    energyEl.textContent = `Energy: ${api.getEnergy()}/100  ·  Image: ${api.getImage()}`;
+    panel.appendChild(energyEl);
+
+    appendMessage();
+
+    const availableHeader = document.createElement("div");
+    availableHeader.className = "phone-stats__header";
+    availableHeader.textContent = "Available to Post";
+    panel.appendChild(availableHeader);
+
+    const available = api.getAvailablePhotos();
+    if (available.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "phone-empty";
+      empty.textContent = "Nothing to post yet — Photo Shoot (Press Building) and NPC selfies add photos here.";
+      panel.appendChild(empty);
+    } else {
+      const list = document.createElement("div");
+      list.className = "action-menu__list";
+      for (const photo of available) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "action-menu__item";
+        btn.innerHTML = `<span>🖼️ ${photo.caption}</span><span class="action-menu__cost">10 EN</span>`;
+        btn.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          message = api.postPhoto(photo.id);
+          render();
+        });
+        list.appendChild(btn);
+      }
+      panel.appendChild(list);
+    }
+
+    const feedHeader = document.createElement("div");
+    feedHeader.className = "phone-stats__header";
+    feedHeader.textContent = "Your Feed";
+    panel.appendChild(feedHeader);
+
+    const posts = api.getImagestarPosts();
+    if (posts.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "phone-empty";
+      empty.textContent = "Nothing posted yet.";
+      panel.appendChild(empty);
+    } else {
+      const feed = document.createElement("div");
+      feed.className = "buzzer-feed";
+      for (const photo of posts) {
+        const row = document.createElement("div");
+        row.className = "buzzer-post";
+        row.innerHTML = `<span class="buzzer-post__handle">@you</span><span class="buzzer-post__text">🖼️ ${photo.caption}</span>`;
+        feed.appendChild(row);
+      }
+      panel.appendChild(feed);
+    }
   }
 
   function renderBCA() {

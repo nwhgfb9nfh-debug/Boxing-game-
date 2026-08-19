@@ -11,7 +11,7 @@ import { InteriorScene, type Station, type BlockedZone } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
-import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
+import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
@@ -186,8 +186,23 @@ const phoneApi: PhoneApi = {
     // Fame stays a flat, fixed gain regardless of what the (fake) replies
     // say — the spec's game-state boundary: flavor text and stats never
     // talk to each other. No gain if the post was blocked.
-    if (!result.blocked) playerState.fame += 2;
+    if (!result.blocked) {
+      playerState.fame += 2;
+      addBuzzerPost(playerState, { text, result });
+    }
     return result;
+  },
+  getBuzzerHistory: () => playerState.buzzerHistory,
+  getAvailablePhotos: () => playerState.availablePhotos,
+  getImagestarPosts: () => playerState.imagestarPosts,
+  postPhoto: (id) => {
+    const idx = playerState.availablePhotos.findIndex((p) => p.id === id);
+    if (idx === -1) return "Photo not found.";
+    if (!energy.spend(10)) return "Not enough energy to post.";
+    const [photo] = playerState.availablePhotos.splice(idx, 1);
+    playerState.imagestarPosts = [photo, ...playerState.imagestarPosts];
+    playerState.image += 3;
+    return `Posted! Image +3 (now ${playerState.image}).`;
   },
 };
 
@@ -610,7 +625,8 @@ function buildPhotoShootPickMenu(): MenuData {
       run: () => {
         playerState.selectedPose = n;
         playerState.photoShootDone = true;
-        return `Pose ${n} selected! Postable to social media once that system supports photos.`;
+        playerState.availablePhotos.push({ id: `pose-${n}-${Date.now()}`, caption: `Photo Shoot — Pose ${n}`, source: "photoshoot" });
+        return `Pose ${n} selected! Available to post on Imagestar.`;
       },
     })),
   };
