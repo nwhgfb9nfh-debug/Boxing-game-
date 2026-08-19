@@ -14,6 +14,7 @@ import { JumpRopeScene } from "./game/jumpRope";
 import { createPlayerState, type TrainingStats, type GymLevels } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
+import { generateBuzzerReplies } from "./game/buzzer";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -177,10 +178,16 @@ const phoneApi: PhoneApi = {
     house.locked = false;
     return `Purchased ${name}!`;
   },
-  post: () => {
-    if (!energy.spend(10)) return "Not enough energy to post.";
-    playerState.fame += 2;
-    return "Posted! Fame +2.";
+  post: (text) => {
+    if (!energy.spend(10)) {
+      return { blocked: true, blockedReason: "Not enough energy to post.", replies: [] };
+    }
+    const result = generateBuzzerReplies(playerState.fame, playerState.image, text);
+    // Fame stays a flat, fixed gain regardless of what the (fake) replies
+    // say — the spec's game-state boundary: flavor text and stats never
+    // talk to each other. No gain if the post was blocked.
+    if (!result.blocked) playerState.fame += 2;
+    return result;
   },
 };
 

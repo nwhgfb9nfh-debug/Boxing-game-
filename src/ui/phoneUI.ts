@@ -5,6 +5,7 @@
 // renders and delegates.
 
 import type { TrainingStats } from "../game/playerState";
+import type { BuzzerPostResult } from "../game/buzzer";
 
 export interface HouseListing {
   name: string;
@@ -21,7 +22,7 @@ export interface PhoneApi {
   getTraining: () => TrainingStats;
   getHouses: () => HouseListing[];
   buyHouse: (name: string) => string;
-  post: () => string;
+  post: (text: string) => BuzzerPostResult;
 }
 
 type View = "home" | "contacts" | "stats" | "realestate" | "buzzer" | "imagestar" | "bca";
@@ -61,6 +62,8 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
 
   let view: View = "home";
   let message = "";
+  let composeText = "";
+  let lastPost: { text: string; result: BuzzerPostResult } | null = null;
 
   function go(next: View) {
     view = next;
@@ -232,24 +235,81 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   function renderBuzzer() {
     const energyEl = document.createElement("div");
     energyEl.className = "action-menu__energy";
-    energyEl.textContent = `Energy: ${api.getEnergy()}/100  ·  Fame: ${api.getFame()}`;
+    energyEl.textContent = `Energy: ${api.getEnergy()}/100  ·  Fame: ${api.getFame()}  ·  Image: ${api.getImage()}`;
     panel.appendChild(energyEl);
 
     appendMessage();
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "buzzer-compose";
+    textarea.placeholder = "What's on your mind?";
+    textarea.value = composeText;
+    textarea.rows = 3;
+    textarea.addEventListener("input", (e) => {
+      composeText = (e.target as HTMLTextAreaElement).value;
+    });
+    panel.appendChild(textarea);
 
     const list = document.createElement("div");
     list.className = "action-menu__list";
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "action-menu__item";
-    btn.innerHTML = `<span>Post on Social Media</span><span class="action-menu__cost">10 EN</span>`;
+    btn.innerHTML = `<span>Post</span><span class="action-menu__cost">10 EN</span>`;
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      message = api.post();
+      if (!composeText.trim()) {
+        message = "Write something first.";
+        render();
+        return;
+      }
+      const text = composeText.trim();
+      const result = api.post(text);
+      lastPost = { text, result };
+      composeText = "";
+      message = "";
       render();
     });
     list.appendChild(btn);
     panel.appendChild(list);
+
+    if (lastPost) {
+      const feed = document.createElement("div");
+      feed.className = "buzzer-feed";
+
+      const yourPost = document.createElement("div");
+      yourPost.className = "buzzer-post";
+      yourPost.innerHTML = `<span class="buzzer-post__handle">@you</span><span class="buzzer-post__text"></span>`;
+      yourPost.querySelector(".buzzer-post__text")!.textContent = lastPost.text;
+      feed.appendChild(yourPost);
+
+      if (lastPost.result.blocked) {
+        const blocked = document.createElement("div");
+        blocked.className = "buzzer-blocked";
+        blocked.textContent = lastPost.result.blockedReason ?? "That post didn't go through.";
+        feed.appendChild(blocked);
+      } else if (lastPost.result.replies.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "phone-empty";
+        empty.textContent = "No replies yet — tweeting into the void. Build more Fame.";
+        feed.appendChild(empty);
+      } else {
+        for (const reply of lastPost.result.replies) {
+          const row = document.createElement("div");
+          row.className = "buzzer-reply";
+          const handleEl = document.createElement("span");
+          handleEl.className = "buzzer-reply__handle";
+          handleEl.textContent = reply.handle;
+          const textEl = document.createElement("span");
+          textEl.className = "buzzer-reply__text";
+          textEl.textContent = reply.text;
+          row.appendChild(handleEl);
+          row.appendChild(textEl);
+          feed.appendChild(row);
+        }
+      }
+      panel.appendChild(feed);
+    }
   }
 
   function renderImagestar() {

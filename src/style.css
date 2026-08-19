@@ -466,6 +466,81 @@ canvas {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Buzzer app — compose box + reply feed */
+.buzzer-compose {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #262a35;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+.buzzer-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.buzzer-post {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(63, 191, 107, 0.12);
+  border: 1px solid rgba(63, 191, 107, 0.3);
+}
+
+.buzzer-post__handle {
+  color: #3fbf6b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.buzzer-post__text {
+  color: #fff;
+  font-size: 14px;
+}
+
+.buzzer-blocked {
+  color: #ff6b6b;
+  font-size: 13px;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.buzzer-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #262a35;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.buzzer-reply__handle {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.buzzer-reply__text {
+  color: #fff;
+  font-size: 13px;
+}
+
 /* Phone home screen + app views */
 .phone-panel {
   width: min(320px, 100%);
