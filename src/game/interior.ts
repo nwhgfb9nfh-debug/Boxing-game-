@@ -19,16 +19,21 @@ export interface Station {
   // "npc" renders as a small player-scale circle instead of the big
   // equipment ellipse — for dialogue-capable NPCs like Priya.
   kind?: "npc";
+  // Overrides STATION_RADIUS — for a station standing behind a blocking
+  // Decoration (a desk), where the default radius wouldn't reach across it.
+  radius?: number;
 }
 
-// Purely decorative — a plain rectangle (e.g. Office's reception desk).
-// Doesn't block movement or interaction, just reads visually.
+// A rectangle drawn in the room (e.g. Office's reception desk). Purely
+// visual unless blocking is set, in which case the player collides with
+// it from any side (unlike BlockedZone, not anchored to an outer wall).
 export interface Decoration {
   nx: number; // center, normalized
   ny: number;
   width: number; // px
   height: number; // px
   color?: string;
+  blocking?: boolean;
 }
 
 // A rectangular sub-area of the room (e.g. Lounge's VIP corner) the player
@@ -118,6 +123,30 @@ export class InteriorScene {
       }
     }
 
+    // Blocking decorations (e.g. Office's reception desk) — a free-standing
+    // rectangle, not anchored to a wall, so all 4 edges need resolving.
+    // Push out along whichever edge requires the smallest correction.
+    for (const d of this.decorations) {
+      if (!d.blocking) continue;
+      const dx = bounds.left + d.nx * roomW;
+      const dy = bounds.top + d.ny * roomH;
+      const left = dx - d.width / 2 - PLAYER_RADIUS;
+      const right = dx + d.width / 2 + PLAYER_RADIUS;
+      const top = dy - d.height / 2 - PLAYER_RADIUS;
+      const bottom = dy + d.height / 2 + PLAYER_RADIUS;
+      if (x > left && x < right && y > top && y < bottom) {
+        const pushLeft = x - left;
+        const pushRight = right - x;
+        const pushTop = y - top;
+        const pushBottom = bottom - y;
+        const minPush = Math.min(pushLeft, pushRight, pushTop, pushBottom);
+        if (minPush === pushLeft) x = left;
+        else if (minPush === pushRight) x = right;
+        else if (minPush === pushTop) y = top;
+        else y = bottom;
+      }
+    }
+
     this.px = (x - bounds.left) / roomW;
     this.py = (y - bounds.top) / roomH;
 
@@ -129,7 +158,7 @@ export class InteriorScene {
     for (const s of this.stations) {
       const sx = bounds.left + s.nx * roomW;
       const sy = bounds.top + s.ny * roomH;
-      if (Math.hypot(x - sx, y - sy) <= STATION_RADIUS) {
+      if (Math.hypot(x - sx, y - sy) <= (s.radius ?? STATION_RADIUS)) {
         nearStation = s;
         break;
       }

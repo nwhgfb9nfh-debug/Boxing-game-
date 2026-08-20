@@ -1938,7 +1938,7 @@ const HOUSE_NAMES = new Set([
 
 // Reception desk — sits between the player's approach and the two
 // receptionists, purely visual (see Decoration in game/interior.ts).
-const OFFICE_DECORATIONS: Decoration[] = [{ nx: 0.3, ny: 0.4, width: 200, height: 36 }];
+const OFFICE_DECORATIONS: Decoration[] = [{ nx: 0.3, ny: 0.4, width: 200, height: 36, blocking: true }];
 
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Trailer: HOUSE_STATIONS,
@@ -1955,8 +1955,8 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
-    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.28, kind: "npc" },
-    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.28, kind: "npc" },
+    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.28, kind: "npc", radius: 90 },
+    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.28, kind: "npc", radius: 90 },
     { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
   ],
   Beach: [
