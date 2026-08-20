@@ -22,6 +22,14 @@ export interface Station {
   // Overrides STATION_RADIUS — for a station standing behind a blocking
   // Decoration (a desk), where the default radius wouldn't reach across it.
   radius?: number;
+  // For NPCs stationed behind a blocking Decoration: the proximity check
+  // (and the prompt trigger) uses this point instead of nx/ny, so the
+  // player has to stand on the near side of the barrier, lined up with
+  // the NPC, rather than just getting close to the NPC's marker from any
+  // angle (which would let you walk around the desk to trigger it).
+  // The marker itself still renders at nx/ny.
+  approachNx?: number;
+  approachNy?: number;
 }
 
 // A rectangle drawn in the room (e.g. Office's reception desk). Purely
@@ -156,8 +164,10 @@ export class InteriorScene {
 
     let nearStation: Station | null = null;
     for (const s of this.stations) {
-      const sx = bounds.left + s.nx * roomW;
-      const sy = bounds.top + s.ny * roomH;
+      const targetNx = s.approachNx ?? s.nx;
+      const targetNy = s.approachNy ?? s.ny;
+      const sx = bounds.left + targetNx * roomW;
+      const sy = bounds.top + targetNy * roomH;
       if (Math.hypot(x - sx, y - sy) <= (s.radius ?? STATION_RADIUS)) {
         nearStation = s;
         break;

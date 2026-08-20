@@ -1955,8 +1955,26 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
-    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.28, kind: "npc", radius: 90 },
-    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.28, kind: "npc", radius: 90 },
+    {
+      id: "reception-priya",
+      label: "Priya",
+      nx: 0.2,
+      ny: 0.28,
+      kind: "npc",
+      radius: 50,
+      approachNx: 0.2,
+      approachNy: 0.5,
+    },
+    {
+      id: "reception-2",
+      label: "Receptionist",
+      nx: 0.4,
+      ny: 0.28,
+      kind: "npc",
+      radius: 50,
+      approachNx: 0.4,
+      approachNy: 0.5,
+    },
     { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
   ],
   Beach: [
