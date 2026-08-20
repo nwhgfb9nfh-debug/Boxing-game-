@@ -6,6 +6,7 @@ import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { createActionMenu, type MenuData } from "./ui/actionMenu";
+import { createDialogueBox, type DialogueOption, type DialogueData } from "./ui/dialogueBox";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station, type BlockedZone } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
@@ -15,6 +16,14 @@ import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels } 
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
+import { SocialBattery } from "./game/socialBattery";
+import {
+  type NpcDef,
+  getRelationshipTier,
+  REACTION_DELTA,
+  TALK_TOPICS,
+  pickResponseLine,
+} from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -40,6 +49,8 @@ const street = new StreetScene(controls);
 const playerState = createPlayerState();
 const energy = new EnergyStar();
 const campCycle = new CampCycle();
+const socialBattery = new SocialBattery();
+const dialogueBox = createDialogueBox(app);
 
 // Camp stage (Section 2) — always visible, top-center below the frame/
 // building label. Advances only when you sleep (see sleepAtBed).
@@ -364,6 +375,7 @@ function openDebugMenu() {
           // after booking a fight — keep that true when jumping there directly.
           playerState.fightScheduled = stage.type !== "nofight";
           usedThisPhase.clear();
+          socialBattery.reset();
           // Reset Energy to whatever a real sleep into this stage would
           // have left it at — same vacation-bonus formula as sleepAtBed,
           // consuming a use so repeated jumps into Private Life can't
@@ -1433,9 +1445,169 @@ function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
   };
 }
 
-function openReceptionMenu() {
-  receptionView = "main";
-  locationMenu.open(buildReceptionMenu);
+// NPC Dialogue system (NPC Dialogue & Office Reception spec): a reusable
+// engine, first wired up here for Office's two receptionists. Relationship
+// score lives in playerState.contacts, keyed by NPC id.
+const PRIYA: NpcDef = {
+  id: "priya",
+  name: "Priya Malhotra",
+  portrait: "🧑🏽‍💼",
+  romanceEligible: true,
+  greetings: {
+    stranger:
+      "Welcome to the Meridian Business Park. I'm Priya Malhotra — I run the front desk here. If you're heading up to see one of the managers, I can point you to the elevator.",
+    acquaintance: "Back again? Elevator's the same as always, in case you forgot.",
+    friend: "Hey — good to see you. What's going on?",
+    close: "There you are. I was hoping you'd stop by.",
+  },
+  // "Likes: Genuine/Respectful. Dislikes: Cocky/Confident" per spec —
+  // Flirty/Small Talk aren't specified ("exact full mapping TBD"), filled
+  // in as neutral to match her "doesn't fall for charm easily" trait.
+  topicReactions: {
+    genuine: "positive",
+    flirty: "neutral",
+    cocky: "negative",
+    smalltalk: "neutral",
+  },
+};
+
+// Not yet designed per spec — a generic placeholder so a real NPC can be
+// slotted into this same interaction point later without rework.
+const RECEPTIONIST_2: NpcDef = {
+  id: "receptionist-2",
+  name: "Receptionist",
+  portrait: "🧑🏻‍💼",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hi there — welcome in. Let me know if you need anything.",
+    acquaintance: "Hey, good to see you again.",
+    friend: "Hey! How's it going?",
+    close: "Hey you — good to see you.",
+  },
+  topicReactions: {
+    genuine: "neutral",
+    flirty: "neutral",
+    cocky: "neutral",
+    smalltalk: "positive",
+  },
+};
+
+function getRelationshipScore(npcId: string): number {
+  return playerState.contacts[npcId] ?? 0;
+}
+
+function bumpRelationship(npcId: string, delta: number) {
+  playerState.contacts[npcId] = Math.max(0, getRelationshipScore(npcId) + delta);
+}
+
+type DialogueView = "main" | "talk-topics" | "talk-response";
+let dialogueView: DialogueView = "main";
+let activeNpc: NpcDef | null = null;
+let lastTalkLine = "";
+
+// "Hire Staff" and "Upgrade Gym" are shared business functions, not tied
+// to either receptionist specifically (per spec for Hire Staff; Upgrade
+// Gym is treated the same way since it's the same kind of desk function
+// and predates this NPC system).
+function receptionSharedOptions(): DialogueOption[] {
+  return [
+    {
+      id: "hire-staff",
+      label: "Hire Staff",
+      onSelect: () => {
+        dialogueBox.close();
+        receptionView = "staff";
+        locationMenu.open(buildReceptionMenu);
+      },
+    },
+    {
+      id: "upgrade-gym",
+      label: "Upgrade Gym",
+      onSelect: () => {
+        dialogueBox.close();
+        receptionView = "gym";
+        locationMenu.open(buildReceptionMenu);
+      },
+    },
+  ];
+}
+
+function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): DialogueData {
+  const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: npc.greetings[tier],
+    options: [
+      {
+        id: "talk",
+        label: "Talk",
+        onSelect: () => {
+          dialogueView = "talk-topics";
+        },
+      },
+      ...extraOptions,
+      { id: "leave", label: "Leave", onSelect: () => dialogueBox.close() },
+    ],
+  };
+}
+
+function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
+  const affordable = socialBattery.canAfford(20);
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Social Battery: ${socialBattery.remaining}/100`,
+    options: [
+      ...TALK_TOPICS.map((topic) => ({
+        id: topic.id,
+        label: topic.label,
+        costLabel: "20 SB",
+        disabled: !affordable,
+        onSelect: () => {
+          if (!socialBattery.spend(20)) return;
+          const reaction = npc.topicReactions[topic.id];
+          bumpRelationship(npc.id, REACTION_DELTA[reaction]);
+          lastTalkLine = pickResponseLine(topic.id, reaction);
+          dialogueView = "talk-response";
+        },
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: lastTalkLine,
+    options: [
+      {
+        id: "continue",
+        label: "Continue",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
+  activeNpc = npc;
+  dialogueView = "main";
+  dialogueBox.open(() => {
+    if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
+    if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
+    return buildDialogueMain(activeNpc!, extraOptions);
+  });
 }
 
 function openElevatorMenu(lot: LotInstance) {
@@ -1493,6 +1665,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
 
   const nextStage = campCycle.advance();
   usedThisPhase.clear();
+  socialBattery.reset();
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
@@ -1573,6 +1746,7 @@ function openSimulateFightMenu() {
             playerState.justFinishedFight = true;
             const nextStage = campCycle.advance();
             usedThisPhase.clear();
+            socialBattery.reset();
             return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
           },
         },
@@ -1777,7 +1951,8 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
-    { id: "reception", label: "Reception", nx: 0.3, ny: 0.4 },
+    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.4 },
+    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.4 },
     { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
   ],
   Beach: [
@@ -1942,8 +2117,11 @@ function loop(now: number) {
   // The Phone only works inside a building, not while driving, and stays
   // hidden while another location's action menu is already open.
   phoneBtn.style.display =
-    scene.type === "interior" && !phoneUI.isOpen() && !locationMenu.isOpen() ? "flex" : "none";
-  debugBtn.style.display = outOfMinigame && !phoneUI.isOpen() && !locationMenu.isOpen() ? "flex" : "none";
+    scene.type === "interior" && !phoneUI.isOpen() && !locationMenu.isOpen() && !dialogueBox.isOpen()
+      ? "flex"
+      : "none";
+  debugBtn.style.display =
+    outOfMinigame && !phoneUI.isOpen() && !locationMenu.isOpen() && !dialogueBox.isOpen() ? "flex" : "none";
 
   if (scene.type === "street") {
     street.update(dt);
@@ -2019,7 +2197,8 @@ function loop(now: number) {
       else if (nearStation.id === "faceoff") onTrigger = openFaceOffMenu;
       else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
-      else if (nearStation.id === "reception") onTrigger = openReceptionMenu;
+      else if (nearStation.id === "reception-priya") onTrigger = () => openNpcDialogue(PRIYA, receptionSharedOptions());
+      else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(RECEPTIONIST_2, receptionSharedOptions());
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;

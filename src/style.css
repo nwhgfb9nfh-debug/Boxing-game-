@@ -297,6 +297,86 @@ canvas {
   white-space: nowrap;
 }
 
+/* GBA/Pokémon-style NPC dialogue box — docked to the bottom of the
+   screen, distinct from the centered ActionMenu overlay card. */
+.dialogue-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(5, 6, 9, 0.35);
+}
+
+.dialogue-box {
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  background: #1c1f27;
+  border-top: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialogue-box__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dialogue-box__portrait {
+  font-size: 32px;
+}
+
+.dialogue-box__name {
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.dialogue-box__text {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.4;
+  min-height: 40px;
+}
+
+.dialogue-box__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialogue-box__option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #262a35;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dialogue-box__option:disabled {
+  opacity: 0.5;
+}
+
+.dialogue-box__cost {
+  color: #ffd23f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 /* Phone — only usable inside a building. Bottom-right, bigger than the
    status pills so it reads as a real button, not another readout. */
 .btn--phone {

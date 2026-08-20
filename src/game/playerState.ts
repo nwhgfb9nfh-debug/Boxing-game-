@@ -1,7 +1,5 @@
-// Persistent player stats (Section 5 & 7): Fame, Image, Money, HP, and
-// training bonuses. Relationship-per-NPC isn't here yet — that needs
-// contacts, which come with the meetup/new-people actions in a later
-// Private Life piece.
+// Persistent player stats (Section 5 & 7): Fame, Image, Money, HP,
+// training bonuses, and per-NPC relationship scores.
 
 import type { BuzzerPostResult } from "./buzzer";
 
@@ -121,6 +119,9 @@ export interface PlayerState {
   buzzerHistory: BuzzerPostRecord[]; // newest first, capped at BUZZER_HISTORY_LIMIT
   availablePhotos: Photo[]; // taken but not yet posted to Imagestar
   imagestarPosts: Photo[]; // posted — the full career feed, uncapped
+  // NPC relationship scores (NPC Dialogue spec), keyed by NPC id. Tier is
+  // derived from the score, not stored directly — see getRelationshipTier.
+  contacts: Record<string, number>;
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -163,5 +164,6 @@ export function createPlayerState(): PlayerState {
     buzzerHistory: [],
     availablePhotos: [],
     imagestarPosts: [],
+    contacts: {},
   };
 }
