@@ -16,6 +16,19 @@ export interface Station {
   label: string;
   nx: number; // normalized position within the room, 0..1
   ny: number;
+  // "npc" renders as a small player-scale circle instead of the big
+  // equipment ellipse — for dialogue-capable NPCs like Priya.
+  kind?: "npc";
+}
+
+// Purely decorative — a plain rectangle (e.g. Office's reception desk).
+// Doesn't block movement or interaction, just reads visually.
+export interface Decoration {
+  nx: number; // center, normalized
+  ny: number;
+  width: number; // px
+  height: number; // px
+  color?: string;
 }
 
 // A rectangular sub-area of the room (e.g. Lounge's VIP corner) the player
@@ -54,13 +67,20 @@ export class InteriorScene {
   private lot: LotInstance;
   private stations: Station[];
   private blockedZone?: BlockedZone;
+  private decorations: Decoration[];
   private px = 0.5; // normalized position within the room, 0..1
   private py = 0.88; // spawn right above the door — just far enough that walking in doesn't instantly trigger an exit
 
-  constructor(lot: LotInstance, stations: Station[] = [], blockedZone?: BlockedZone) {
+  constructor(
+    lot: LotInstance,
+    stations: Station[] = [],
+    blockedZone?: BlockedZone,
+    decorations: Decoration[] = [],
+  ) {
     this.lot = lot;
     this.stations = stations;
     this.blockedZone = blockedZone;
+    this.decorations = decorations;
   }
 
   private roomBounds(width: number, height: number) {
@@ -165,6 +185,17 @@ export class InteriorScene {
       ctx.fillText(z.label.toUpperCase(), zx + zw / 2, zy + 8);
     }
 
+    // Decorations (e.g. Office's reception desk) — plain rectangles, purely visual.
+    for (const d of this.decorations) {
+      const dx = bounds.left + d.nx * (bounds.right - bounds.left);
+      const dy = bounds.top + d.ny * (bounds.bottom - bounds.top);
+      ctx.fillStyle = d.color ?? "#4a3d2a";
+      ctx.fillRect(dx - d.width / 2, dy - d.height / 2, d.width, d.height);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(dx - d.width / 2, dy - d.height / 2, d.width, d.height);
+    }
+
     // Door notch at the bottom center — walk here to leave
     const doorW = DOOR_HALF_WIDTH * 2 - 10;
     ctx.strokeStyle = "#171a21";
@@ -177,18 +208,33 @@ export class InteriorScene {
     // Station markers
     for (const s of this.stations) {
       const pos = this.getStationScreenPos(s, width, height);
-      ctx.fillStyle = "#8a6a3a";
-      ctx.beginPath();
-      ctx.ellipse(pos.x, pos.y, 30, 44, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.25)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      let labelOffset: number;
+      if (s.kind === "npc") {
+        // Player-scale circle, not the big equipment ellipse — reads as
+        // "a person standing here" rather than a giant blob.
+        ctx.fillStyle = "#c98a5a";
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, PLAYER_RADIUS + 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        labelOffset = PLAYER_RADIUS + 20;
+      } else {
+        ctx.fillStyle = "#8a6a3a";
+        ctx.beginPath();
+        ctx.ellipse(pos.x, pos.y, 30, 44, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        labelOffset = 60;
+      }
       ctx.fillStyle = "rgba(255,255,255,0.6)";
       ctx.font = "11px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(s.label, pos.x, pos.y + 60);
+      ctx.fillText(s.label, pos.x, pos.y + labelOffset);
     }
 
     ctx.textAlign = "center";

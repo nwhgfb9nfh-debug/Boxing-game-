@@ -8,7 +8,7 @@ import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { createDialogueBox, type DialogueOption, type DialogueData } from "./ui/dialogueBox";
 import { StreetScene } from "./game/street";
-import { InteriorScene, type Station, type BlockedZone } from "./game/interior";
+import { InteriorScene, type Station, type BlockedZone, type Decoration } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
@@ -1936,6 +1936,10 @@ const HOUSE_NAMES = new Set([
   "Townhouse",
 ]);
 
+// Reception desk — sits between the player's approach and the two
+// receptionists, purely visual (see Decoration in game/interior.ts).
+const OFFICE_DECORATIONS: Decoration[] = [{ nx: 0.3, ny: 0.4, width: 200, height: 36 }];
+
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Trailer: HOUSE_STATIONS,
   Apartment: HOUSE_STATIONS,
@@ -1951,8 +1955,8 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
-    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.4 },
-    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.4 },
+    { id: "reception-priya", label: "Priya", nx: 0.2, ny: 0.28, kind: "npc" },
+    { id: "reception-2", label: "Receptionist", nx: 0.4, ny: 0.28, kind: "npc" },
     { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
   ],
   Beach: [
@@ -2040,7 +2044,8 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
   }
   const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
   const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
-  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations, blockedZone) };
+  const decorations = lot.building.name === "Office" ? OFFICE_DECORATIONS : undefined;
+  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations, blockedZone, decorations) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
@@ -2153,7 +2158,11 @@ function loop(now: number) {
     if (atDoor) {
       if (officeFloor) {
         // Elevator floors exit back to the Lobby, not the street.
-        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office) };
+        scene = {
+          type: "interior",
+          lot,
+          interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office, undefined, OFFICE_DECORATIONS),
+        };
       } else if (mallStore) {
         // Store rooms exit back to the Mall floor, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Mall) };
