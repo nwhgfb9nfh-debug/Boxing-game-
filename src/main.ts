@@ -1098,11 +1098,60 @@ const SPONSORSHIP_DEALS: SponsorshipDeal[] = [
   { id: "energy-drink", name: "Energy Drink Co.", perFightPayout: 3000, contractFights: 8 },
 ];
 
-type ManagerDeskView = "main" | "sponsorships";
+type ManagerDeskView =
+  | "main"
+  | "sponsorships"
+  | "team"
+  | "team-staff"
+  | "team-staff-role"
+  | "team-gym"
+  | "team-gym-category"
+  | "pr";
 let managerDeskView: ManagerDeskView = "main";
+let managerActiveStaffRole: StaffRole["id"] | null = null;
+let managerActiveGymCategory: GymCategory["id"] | null = null;
 
 function buildManagerDeskMenu(floor: number): MenuData {
   if (managerDeskView === "sponsorships") return buildSponsorshipsMenu();
+  if (managerDeskView === "team") return buildTeamFacilitiesMenu();
+  if (managerDeskView === "team-staff") {
+    // Manager isn't offered here — hiring/promoting him stays at Reception
+    // (see buildReceptionMenu), since he's what unlocks Office elevator
+    // floor access in the first place.
+    return buildStaffListMenu(
+      STAFF_ROLES.filter((r) => r.id !== "manager"),
+      (id) => {
+        managerActiveStaffRole = id;
+        managerDeskView = "team-staff-role";
+      },
+      () => {
+        managerDeskView = "team";
+      },
+    );
+  }
+  if (managerDeskView === "team-staff-role" && managerActiveStaffRole) {
+    return buildStaffRoleMenu(managerActiveStaffRole, () => {
+      managerDeskView = "team-staff";
+    });
+  }
+  if (managerDeskView === "team-gym") {
+    return buildGymListMenu(
+      (id) => {
+        managerActiveGymCategory = id;
+        managerDeskView = "team-gym-category";
+      },
+      () => {
+        managerDeskView = "team";
+      },
+    );
+  }
+  if (managerDeskView === "team-gym-category" && managerActiveGymCategory) {
+    return buildGymCategoryMenu(managerActiveGymCategory, () => {
+      managerDeskView = "team-gym";
+    });
+  }
+  if (managerDeskView === "pr") return buildPrFinanceMenu();
+
   const actions: MenuData["actions"] = [
     {
       id: "set-next-fight",
@@ -1118,6 +1167,26 @@ function buildManagerDeskMenu(floor: number): MenuData {
       },
     },
     {
+      id: "team",
+      label: "Team & Facilities",
+      cost: 0,
+      costLabel: "›",
+      run: () => {
+        managerDeskView = "team";
+        return "";
+      },
+    },
+    {
+      id: "pr-finance",
+      label: "PR & Finance",
+      cost: 0,
+      costLabel: "›",
+      run: () => {
+        managerDeskView = "pr";
+        return "";
+      },
+    },
+    {
       id: "sponsorships",
       label: "Sponsorships",
       cost: 0,
@@ -1125,56 +1194,6 @@ function buildManagerDeskMenu(floor: number): MenuData {
       run: () => {
         managerDeskView = "sponsorships";
         return "";
-      },
-    },
-    {
-      id: "cash-advance",
-      label: "Request Cash Advance",
-      cost: 0,
-      costLabel: !playerState.fightScheduled
-        ? "NEED FIGHT"
-        : playerState.cashAdvanceTaken
-          ? "TAKEN"
-          : `+$${CASH_ADVANCE_AMOUNT}`,
-      disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
-      run: () => {
-        if (!playerState.fightScheduled) return "Schedule a fight first.";
-        if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
-        playerState.money += CASH_ADVANCE_AMOUNT;
-        playerState.cashAdvanceTaken = true;
-        return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
-      },
-    },
-    {
-      id: "media-training",
-      label: "Media Training",
-      cost: 10,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
-      run: () => {
-        const lock = requirePrivateLifePhase();
-        if (lock) return lock;
-        if (!energy.spend(10)) return "Not enough energy for media training.";
-        playerState.image += 2;
-        markUsedThisPhase("media-training");
-        return `Image +2 (now ${playerState.image}).`;
-      },
-    },
-    {
-      id: "charity-event",
-      label: "Charity Event",
-      cost: 15,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
-      run: () => {
-        const lock = requirePrivateLifePhase();
-        if (lock) return lock;
-        if (!energy.spend(15)) return "Not enough energy for a charity event.";
-        if (playerState.hp < 5) return "Not enough HP for a charity event.";
-        playerState.hp -= 5;
-        playerState.image += 5;
-        markUsedThisPhase("charity-event");
-        return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
       },
     },
   ];
@@ -1226,6 +1245,114 @@ function buildManagerDeskMenu(floor: number): MenuData {
   };
 }
 
+function buildTeamFacilitiesMenu(): MenuData {
+  return {
+    title: "🧰 Team & Facilities",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          managerDeskView = "main";
+          return "";
+        },
+      },
+      {
+        id: "hire-staff",
+        label: "Hire Staff",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          managerDeskView = "team-staff";
+          return "";
+        },
+      },
+      {
+        id: "upgrade-gym",
+        label: "Upgrade Gym",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          managerDeskView = "team-gym";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildPrFinanceMenu(): MenuData {
+  return {
+    title: "📣 PR & Finance",
+    energyText: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          managerDeskView = "main";
+          return "";
+        },
+      },
+      {
+        id: "cash-advance",
+        label: "Request Cash Advance",
+        cost: 0,
+        costLabel: !playerState.fightScheduled
+          ? "NEED FIGHT"
+          : playerState.cashAdvanceTaken
+            ? "TAKEN"
+            : `+$${CASH_ADVANCE_AMOUNT}`,
+        disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
+        run: () => {
+          if (!playerState.fightScheduled) return "Schedule a fight first.";
+          if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
+          playerState.money += CASH_ADVANCE_AMOUNT;
+          playerState.cashAdvanceTaken = true;
+          return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
+        },
+      },
+      {
+        id: "media-training",
+        label: "Media Training",
+        cost: 10,
+        costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
+        disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
+        run: () => {
+          const lock = requirePrivateLifePhase();
+          if (lock) return lock;
+          if (!energy.spend(10)) return "Not enough energy for media training.";
+          playerState.image += 2;
+          markUsedThisPhase("media-training");
+          return `Image +2 (now ${playerState.image}).`;
+        },
+      },
+      {
+        id: "charity-event",
+        label: "Charity Event",
+        cost: 15,
+        costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
+        disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
+        run: () => {
+          const lock = requirePrivateLifePhase();
+          if (lock) return lock;
+          if (!energy.spend(15)) return "Not enough energy for a charity event.";
+          if (playerState.hp < 5) return "Not enough HP for a charity event.";
+          playerState.hp -= 5;
+          playerState.image += 5;
+          markUsedThisPhase("charity-event");
+          return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
+        },
+      },
+    ],
+  };
+}
+
 function buildSponsorshipsMenu(): MenuData {
   return {
     title: "🤝 Sponsorships",
@@ -1262,40 +1389,36 @@ function buildSponsorshipsMenu(): MenuData {
 
 function openManagerDeskMenu(floor: number) {
   managerDeskView = "main";
+  managerActiveStaffRole = null;
+  managerActiveGymCategory = null;
   locationMenu.open(() => buildManagerDeskMenu(floor));
 }
 
-type ReceptionView = "main" | "staff" | "staff-role" | "gym" | "gym-category";
+// Reception now only handles hiring/promoting the Manager himself — Coach
+// and Cutman hiring moved to the Manager Desk's Team & Facilities menu
+// (see buildTeamFacilitiesMenu) since only the Manager gates Office
+// elevator floor access (see openElevatorMenu), so he's the one thing that
+// has to stay reachable before a Manager Desk even exists to visit.
+type ReceptionView = "main" | "manager";
 let receptionView: ReceptionView = "main";
-let activeStaffRole: StaffRole["id"] | null = null;
-let activeGymCategory: GymCategory["id"] | null = null;
 
 function buildReceptionMenu(): MenuData {
-  if (receptionView === "staff") return buildStaffMenu();
-  if (receptionView === "staff-role" && activeStaffRole) return buildStaffRoleMenu(activeStaffRole);
-  if (receptionView === "gym") return buildGymMenu();
-  if (receptionView === "gym-category" && activeGymCategory) return buildGymCategoryMenu(activeGymCategory);
+  if (receptionView === "manager") {
+    return buildStaffRoleMenu("manager", () => {
+      receptionView = "main";
+    });
+  }
   return {
     title: "🛎️ Reception",
     energyText: `Money: $${playerState.money}`,
     actions: [
       {
-        id: "hire-staff",
-        label: "Hire Staff",
+        id: "hire-manager",
+        label: `💼 Hire Manager (Lvl ${playerState.managerLevel}/3)`,
         cost: 0,
         costLabel: "›",
         run: () => {
-          receptionView = "staff";
-          return "";
-        },
-      },
-      {
-        id: "upgrade-gym",
-        label: "Upgrade Gym",
-        cost: 0,
-        costLabel: "›",
-        run: () => {
-          receptionView = "gym";
+          receptionView = "manager";
           return "";
         },
       },
@@ -1303,7 +1426,14 @@ function buildReceptionMenu(): MenuData {
   };
 }
 
-function buildStaffMenu(): MenuData {
+// Shared by Reception (Manager only) and the Manager Desk's Team &
+// Facilities menu (Coach/Cutman) — which roles are offered and where
+// "Back" lands are both left to the caller.
+function buildStaffListMenu(
+  roles: StaffRole[],
+  onSelectRole: (id: StaffRole["id"]) => void,
+  onBack: () => void,
+): MenuData {
   return {
     title: "👥 Hire Staff",
     energyText: `Money: $${playerState.money}`,
@@ -1314,18 +1444,17 @@ function buildStaffMenu(): MenuData {
         cost: 0,
         costLabel: "",
         run: () => {
-          receptionView = "main";
+          onBack();
           return "";
         },
       },
-      ...STAFF_ROLES.map((role) => ({
+      ...roles.map((role) => ({
         id: `role-${role.id}`,
         label: `${role.icon} ${role.name} (Lvl ${getStaffLevel(role.id)}/3)`,
         cost: 0,
         costLabel: "›",
         run: () => {
-          activeStaffRole = role.id;
-          receptionView = "staff-role";
+          onSelectRole(role.id);
           return "";
         },
       })),
@@ -1333,7 +1462,7 @@ function buildStaffMenu(): MenuData {
   };
 }
 
-function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
+function buildStaffRoleMenu(roleId: StaffRole["id"], onBack: () => void): MenuData {
   const role = STAFF_ROLES.find((r) => r.id === roleId)!;
   // The Manager is exclusive — only one tier is on staff at a time, and
   // hiring a different one replaces him, locking the Office elevator floor
@@ -1350,7 +1479,7 @@ function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
         cost: 0,
         costLabel: "",
         run: () => {
-          receptionView = "staff";
+          onBack();
           return "";
         },
       },
@@ -1381,7 +1510,9 @@ function buildStaffRoleMenu(roleId: StaffRole["id"]): MenuData {
   };
 }
 
-function buildGymMenu(): MenuData {
+// Shared by the Manager Desk's Team & Facilities menu — Upgrade Gym no
+// longer lives at Reception.
+function buildGymListMenu(onSelectCategory: (id: GymCategory["id"]) => void, onBack: () => void): MenuData {
   return {
     title: "🏋️ Upgrade Gym",
     energyText: `Money: $${playerState.money}`,
@@ -1392,7 +1523,7 @@ function buildGymMenu(): MenuData {
         cost: 0,
         costLabel: "",
         run: () => {
-          receptionView = "main";
+          onBack();
           return "";
         },
       },
@@ -1402,8 +1533,7 @@ function buildGymMenu(): MenuData {
         cost: 0,
         costLabel: "›",
         run: () => {
-          activeGymCategory = cat.id;
-          receptionView = "gym-category";
+          onSelectCategory(cat.id);
           return "";
         },
       })),
@@ -1411,7 +1541,7 @@ function buildGymMenu(): MenuData {
   };
 }
 
-function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
+function buildGymCategoryMenu(catId: GymCategory["id"], onBack: () => void): MenuData {
   const cat = GYM_CATEGORIES.find((c) => c.id === catId)!;
   return {
     title: `${cat.icon} ${cat.name}`,
@@ -1423,7 +1553,7 @@ function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
         cost: 0,
         costLabel: "",
         run: () => {
-          receptionView = "gym";
+          onBack();
           return "";
         },
       },
@@ -1533,27 +1663,17 @@ let activeNpc: NpcDef | null = null;
 let activeCategory: TalkCategory | null = null;
 let lastTalkResult = "";
 
-// "Hire Staff" and "Upgrade Gym" are shared business functions, not tied
-// to either receptionist specifically (per spec for Hire Staff; Upgrade
-// Gym is treated the same way since it's the same kind of desk function
-// and predates this NPC system).
+// "Hire Manager" is a shared business function, not tied to either
+// receptionist specifically — Coach/Cutman hiring and Upgrade Gym have
+// moved to the Manager Desk (see buildTeamFacilitiesMenu).
 function receptionSharedOptions(): DialogueOption[] {
   return [
     {
-      id: "hire-staff",
-      label: "Hire Staff",
+      id: "hire-manager",
+      label: "Hire Manager",
       onSelect: () => {
         dialogueBox.close();
-        receptionView = "staff";
-        locationMenu.open(buildReceptionMenu);
-      },
-    },
-    {
-      id: "upgrade-gym",
-      label: "Upgrade Gym",
-      onSelect: () => {
-        dialogueBox.close();
-        receptionView = "gym";
+        receptionView = "manager";
         locationMenu.open(buildReceptionMenu);
       },
     },
