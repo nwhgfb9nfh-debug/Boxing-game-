@@ -2231,12 +2231,13 @@ function loop(now: number) {
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;
       else onTrigger = () => startStation(lot, interior, nearStation.id, pos);
-      // NPC stations (e.g. a receptionist behind a desk) can sit out of
-      // reach behind a blocking Decoration — anchoring the prompt to the
-      // NPC's own world position would float it past the barrier, so it
-      // goes bottom-center instead when you're close enough to interact.
-      const promptPos =
-        nearStation.kind === "npc" ? { x: window.innerWidth / 2, y: window.innerHeight - 100 } : pos;
+      // Every interior station prompt docks to the bottom-center of the
+      // screen (like the NPC dialogue prompt) rather than floating at the
+      // station's world position — keeps the interact button in the same
+      // predictable spot for the bed, equipment, counters, etc. The street
+      // building-entrance prompt (line ~2163) is unrelated and stays
+      // anchored to the building's world position.
+      const promptPos = { x: window.innerWidth / 2, y: window.innerHeight - 100 };
       buildingUI.setEnterPrompt(promptPos, onTrigger, nearStation.label.toUpperCase());
     } else {
       buildingUI.setEnterPrompt(null, () => {});
