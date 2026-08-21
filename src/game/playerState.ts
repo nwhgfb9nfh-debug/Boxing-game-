@@ -123,10 +123,17 @@ export interface PlayerState {
   // derived from the score, not stored directly — see getRelationshipTier.
   contacts: Record<string, number>;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
-  // once successful, keyed by NPC id. Meant to unlock the Phone-meetup
-  // system per NPC once that system exists — not built yet, so this flag
-  // just sits here for now.
+  // once successful, keyed by NPC id — unlocks the Contacts app + Phone
+  // meetups for that NPC.
   exchangedNumbers: Record<string, boolean>;
+  // Meetup System (NPC Dialogue spec): successful meetups completed at
+  // locations OTHER than Home, keyed by NPC id — Home's per-NPC unlock can
+  // require a minimum count of these first.
+  meetupCounts: Record<string, number>;
+  // True while an NPC is away from her normal spot for the current phase
+  // (set by Overnight Stay's phase advance; cleared at every subsequent
+  // phase advance, so she's back starting the following phase).
+  npcAbsentThisPhase: Record<string, boolean>;
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -171,5 +178,7 @@ export function createPlayerState(): PlayerState {
     imagestarPosts: [],
     contacts: {},
     exchangedNumbers: {},
+    meetupCounts: {},
+    npcAbsentThisPhase: {},
   };
 }

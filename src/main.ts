@@ -33,6 +33,12 @@ import {
   TEXT_TALK_NOT_ROMANCED,
   TEXT_TALK_ROMANCED,
   TEXT_TALK_DELTA,
+  type MeetupLocationId,
+  type MeetupOptionDef,
+  MEETUP_LOCATIONS,
+  MEETUP_ENERGY_COST,
+  MEETUP_OPTION_DELTA,
+  getMeetupLocation,
 } from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
@@ -256,11 +262,74 @@ const phoneApi: PhoneApi = {
     bumpRelationship(npcId, TEXT_TALK_DELTA);
     return formatTopicResult(TEXT_TALK_DELTA);
   },
-  // The Diner/Lounge/Beach/Apartment drive-to meetup mechanic this is
-  // meant to launch isn't built yet — stubbed until that system exists.
-  initiateMeetup: (npcId) => {
-    if (isNpcInCurrentBuilding(npcId)) return "She's right here — no need to set up a meetup.";
-    return "Meetups aren't built yet — coming soon.";
+  // Meetup System: the spec frames this as "player drives there," but this
+  // build plays it out entirely inside the Phone UI (paying the Energy
+  // cost and picking an option stand in for the trip) rather than
+  // simulating an actual drive — a much bigger scene-transition feature.
+  getMeetupLocations: (npcId) => {
+    const npc = getNpcById(npcId);
+    if (!npc) return [];
+    const tier = getRelationshipTier(getRelationshipScore(npcId));
+    const meetupCount = playerState.meetupCounts[npcId] ?? 0;
+    return MEETUP_LOCATIONS.map((loc) => {
+      const hasContent = loc.general.length > 0;
+      if (loc.id === "home") {
+        const unlocked = hasContent && !!npc.homeMeetupUnlock && npc.homeMeetupUnlock(meetupCount, tier);
+        return {
+          id: loc.id,
+          label: loc.label,
+          available: unlocked,
+          reason: !hasContent || !npc.homeMeetupUnlock ? "Not yet designed." : unlocked ? undefined : "Not available yet.",
+        };
+      }
+      return {
+        id: loc.id,
+        label: loc.label,
+        available: hasContent,
+        reason: hasContent ? undefined : "Not yet designed.",
+      };
+    });
+  },
+  payForMeetup: (npcId, locationId) => {
+    if (isNpcInCurrentBuilding(npcId)) {
+      return { ok: false, message: "She's right here — no need to set up a meetup." };
+    }
+    const loc = getMeetupLocation(locationId as MeetupLocationId);
+    if (loc.general.length === 0) return { ok: false, message: "Not yet designed." };
+    if (!energy.spend(MEETUP_ENERGY_COST)) {
+      return { ok: false, message: `Not enough energy — need ${MEETUP_ENERGY_COST}.` };
+    }
+    return { ok: true, message: `You head over to ${loc.label}.` };
+  },
+  getMeetupOptions: (npcId, locationId) => {
+    const npc = getNpcById(npcId);
+    const loc = getMeetupLocation(locationId as MeetupLocationId);
+    if (!npc) return { general: [], romance: [] };
+    const mapOpt = (o: MeetupOptionDef) => ({
+      id: o.id,
+      label: o.label,
+      disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
+    });
+    return {
+      general: loc.general.map(mapOpt),
+      romance: npc.romanceEligible ? loc.romance.map(mapOpt) : [],
+    };
+  },
+  pickMeetupOption: (npcId, locationId, optionId) => {
+    const loc = getMeetupLocation(locationId as MeetupLocationId);
+    const option = [...loc.general, ...loc.romance].find((o) => o.id === optionId);
+    if (!option) return "Something went wrong.";
+    if (option.requiresGift) {
+      if (playerState.giftsOwned <= 0) return "You don't have a gift to give.";
+      playerState.giftsOwned -= 1;
+    }
+    if (option.special === "overnight-stay") return resolveOvernightStay(npcId);
+    // Home doesn't count toward its own unlock — only "other locations" do.
+    if (loc.id !== "home") {
+      playerState.meetupCounts[npcId] = (playerState.meetupCounts[npcId] ?? 0) + 1;
+    }
+    bumpRelationship(npcId, MEETUP_OPTION_DELTA);
+    return formatTopicResult(MEETUP_OPTION_DELTA);
   },
 };
 
@@ -424,6 +493,7 @@ function openDebugMenu() {
           playerState.fightScheduled = stage.type !== "nofight";
           usedThisPhase.clear();
           socialBattery.reset();
+          playerState.npcAbsentThisPhase = {};
           // Reset Energy to whatever a real sleep into this stage would
           // have left it at — same vacation-bonus formula as sleepAtBed,
           // consuming a use so repeated jumps into Private Life can't
@@ -1734,6 +1804,9 @@ const PRIYA: NpcDef = {
     { id: "line", label: "Drop a Line", ratingByTier: { friend: "negative", close: "neutral" } },
   ],
   actions: PRIYA_ACTIONS,
+  // Requires BOTH 2 successful meetups elsewhere AND Tier 4 (Close) —
+  // meetup count alone or tier alone isn't enough.
+  homeMeetupUnlock: (meetupCount, tier) => meetupCount >= 2 && tier === "close",
 };
 
 const CAROL_ACTIONS: NpcActionRules = {
@@ -1867,10 +1940,17 @@ function receptionSharedOptions(): DialogueOption[] {
 
 function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): DialogueData {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  // Office-specific: Carol acknowledges Priya's absence on an Overnight
+  // Stay's newly-arrived phase (Meetup System spec's "consistency rule"),
+  // overriding her normal tiered greeting just for that one phase.
+  const greeting =
+    npc.id === "carol" && playerState.npcAbsentThisPhase["priya"]
+      ? "Priya's got the day off — something about a big date, if you ask me. It's just me holding down the fort."
+      : npc.greetings[tier];
   return {
     portrait: npc.portrait,
     name: npc.name,
-    text: npc.greetings[tier],
+    text: greeting,
     options: [
       {
         id: "talk",
@@ -2182,6 +2262,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const nextStage = campCycle.advance();
   usedThisPhase.clear();
   socialBattery.reset();
+  playerState.npcAbsentThisPhase = {};
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
@@ -2196,6 +2277,36 @@ function sleepAtBed(anchor: { x: number; y: number }) {
     anchor,
     "bottom",
   );
+}
+
+// Home meetup's Overnight Stay (Meetup System spec): triggers the same
+// phase advance as sleepAtBed (duplicated rather than shared, matching
+// this file's existing pattern across sleepAtBed/Simulate Fight/debug
+// jump), then marks the NPC absent from her normal spot for the newly
+// arrived phase only.
+function resolveOvernightStay(npcId: string): string {
+  const peekedNextStage = CAMP_SEQUENCE[(campCycle.currentIndex + 1) % CAMP_SEQUENCE.length];
+  const useBonus = playerState.vacationEnergyBonusUses > 0 && peekedNextStage.type === "privatelife";
+  const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
+  if (useBonus) playerState.vacationEnergyBonusUses -= 1;
+  const leftover = energy.sleep(cap);
+  const hpGain = Math.floor(leftover / 2);
+  if (campCycle.current.type === "afterfight") playerState.hp = 100;
+  else playerState.hp += hpGain;
+
+  const nextStage = campCycle.advance();
+  usedThisPhase.clear();
+  socialBattery.reset();
+  playerState.npcAbsentThisPhase = {};
+  if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
+  if (nextStage.type === "nofight") {
+    playerState.fightScheduled = false;
+    playerState.cashAdvanceTaken = false;
+  }
+  playerState.npcAbsentThisPhase[npcId] = true;
+  bumpRelationship(npcId, MEETUP_OPTION_DELTA);
+
+  return `You wake up together the next morning. Next: ${nextStage.label}. (${formatTopicResult(MEETUP_OPTION_DELTA)})`;
 }
 
 // Airport (Section 5): "Go on Vacation" — $1000, only available right
@@ -2263,6 +2374,7 @@ function openSimulateFightMenu() {
             const nextStage = campCycle.advance();
             usedThisPhase.clear();
             socialBattery.reset();
+            playerState.npcAbsentThisPhase = {};
             return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
           },
         },
@@ -2741,7 +2853,11 @@ function loop(now: number) {
       else if (nearStation.id === "faceoff") onTrigger = openFaceOffMenu;
       else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
-      else if (nearStation.id === "reception-priya") onTrigger = () => openNpcDialogue(PRIYA, receptionSharedOptions());
+      else if (nearStation.id === "reception-priya") {
+        onTrigger = playerState.npcAbsentThisPhase["priya"]
+          ? () => buildingUI.showToast("Priya isn't in today.", pos, "bottom")
+          : () => openNpcDialogue(PRIYA, receptionSharedOptions());
+      }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
