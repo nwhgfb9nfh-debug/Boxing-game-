@@ -88,15 +88,16 @@ const PRIVATE_LIFE_STATIONS = new Set([
 const PROMOTION_STATIONS = new Set(["pressconf", "photostudio", "faceoff", "fanevent"]);
 
 // Every energy-costing Private Life activity is once-per-phase — cleared
-// in sleepAtBed whenever the stage advances. "bar" and "pressreception"
-// host multiple distinct activities each limited individually inside
-// their own menu builders (bar-drink/bar-round, press-podcast/press-tv),
-// so they're excluded from the blanket per-station check below.
+// in sleepAtBed whenever the stage advances. "bar", "pressreception", and
+// "workoutclip" host multiple distinct activities each limited
+// individually inside their own menu builders (bar-drink/bar-round,
+// press-podcast/press-tv, workoutclip-shoot/workoutclip-training), so
+// they're excluded from the blanket per-station check below.
 const usedThisPhase = new Set<string>();
 function markUsedThisPhase(activityId: string) {
   usedThisPhase.add(activityId);
 }
-const MULTI_ACTIVITY_STATIONS = new Set(["bar", "pressreception"]);
+const MULTI_ACTIVITY_STATIONS = new Set(["bar", "pressreception", "workoutclip"]);
 
 function requirePrivateLifePhase(): string | null {
   const stage = campCycle.current;
@@ -236,7 +237,7 @@ phoneBtn.addEventListener("pointerdown", (e) => {
 });
 
 // Shared overlay for every other Private Life location's action menu
-// (Gym's Workout Clip first; Diner/Beach/Office/Lounge/Press reuse this
+// (Gym's Weight Area first; Diner/Beach/Office/Lounge/Press reuse this
 // same instance as they come online — only one can be open at a time).
 const locationMenu = createActionMenu(app);
 
@@ -402,26 +403,41 @@ function openDebugMenu() {
   }));
 }
 
-function openWorkoutClipMenu() {
+function openWeightAreaMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("workoutclip");
+    const shootUsed = usedThisPhase.has("workoutclip-shoot");
+    const trainUsed = usedThisPhase.has("workoutclip-training");
     return {
-      title: "🎥 Workout Clip",
-      energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}`,
+      title: "🏋️ Weight Area",
+      energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}  ·  HP: ${playerState.hp}`,
       actions: [
         {
-          id: "post-workout",
-          label: "Post a Workout Clip",
+          id: "shoot-workout-content",
+          label: "Shoot Workout Content",
           cost: 10,
-          costLabel: used ? "DONE" : "10 EN",
-          disabled: used,
+          costLabel: shootUsed ? "DONE" : "10 EN",
+          disabled: shootUsed,
           run: () => {
-            if (used) return "Already done this Private Life phase.";
-            if (!energy.spend(10)) return "Not enough energy to post a clip.";
+            if (shootUsed) return "Already done this Private Life phase.";
+            if (!energy.spend(10)) return "Not enough energy to shoot content.";
             playerState.fame += 2;
             playerState.image += 2;
-            markUsedThisPhase("workoutclip");
+            markUsedThisPhase("workoutclip-shoot");
             return "Posted! Fame +2, Image +2.";
+          },
+        },
+        {
+          id: "weight-training",
+          label: "Weight Training",
+          cost: 15,
+          costLabel: trainUsed ? "DONE" : "15 EN",
+          disabled: trainUsed,
+          run: () => {
+            if (trainUsed) return "Already done this Private Life phase.";
+            if (!energy.spend(15)) return "Not enough energy for weight training.";
+            playerState.hp += 5;
+            markUsedThisPhase("workoutclip-training");
+            return `Solid session. HP +5 (now ${playerState.hp}).`;
           },
         },
       ],
@@ -1150,7 +1166,7 @@ function buildManagerDeskMenu(floor: number): MenuData {
       managerDeskView = "team-gym";
     });
   }
-  if (managerDeskView === "pr") return buildPrFinanceMenu();
+  if (managerDeskView === "pr") return buildPrFinanceMenu(floor);
 
   const actions: MenuData["actions"] = [
     {
@@ -1198,46 +1214,6 @@ function buildManagerDeskMenu(floor: number): MenuData {
     },
   ];
 
-  // Manager Lvl 2+ desk options.
-  if (floor >= 2) {
-    actions.push({
-      id: "invest-portfolio",
-      label: "Invest in Portfolio",
-      cost: 0,
-      costLabel: `-$${PORTFOLIO_INVEST_AMOUNT}`,
-      disabled: playerState.money < PORTFOLIO_INVEST_AMOUNT,
-      run: () => {
-        if (playerState.money < PORTFOLIO_INVEST_AMOUNT) {
-          return `Not enough money — need $${PORTFOLIO_INVEST_AMOUNT}, have $${playerState.money}.`;
-        }
-        playerState.money -= PORTFOLIO_INVEST_AMOUNT;
-        playerState.portfolioInvested += PORTFOLIO_INVEST_AMOUNT;
-        return `Invested $${PORTFOLIO_INVEST_AMOUNT} (total $${playerState.portfolioInvested}). Returns arrive once a real investment system exists.`;
-      },
-    });
-  }
-
-  // Manager Lvl 3 desk option.
-  if (floor >= 3) {
-    actions.push({
-      id: "networking-event",
-      label: "Networking Event",
-      cost: 20,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("networking-event") ? "DONE" : "20 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("networking-event"),
-      run: () => {
-        const lock = requirePrivateLifePhase();
-        if (lock) return lock;
-        if (!energy.spend(20)) return "Not enough energy for a networking event.";
-        if (playerState.hp < 8) return "Not enough HP for a networking event.";
-        playerState.hp -= 8;
-        playerState.fame += 5;
-        markUsedThisPhase("networking-event");
-        return `Fame +5 (now ${playerState.fame}), HP -8 (now ${playerState.hp}).`;
-      },
-    });
-  }
-
   return {
     title: `🗄️ Manager Desk — Lvl ${floor}`,
     energyText: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}`,
@@ -1284,72 +1260,114 @@ function buildTeamFacilitiesMenu(): MenuData {
   };
 }
 
-function buildPrFinanceMenu(): MenuData {
+function buildPrFinanceMenu(floor: number): MenuData {
+  const actions: MenuData["actions"] = [
+    {
+      id: "back",
+      label: "‹ Back",
+      cost: 0,
+      costLabel: "",
+      run: () => {
+        managerDeskView = "main";
+        return "";
+      },
+    },
+    {
+      id: "cash-advance",
+      label: "Request Cash Advance",
+      cost: 0,
+      costLabel: !playerState.fightScheduled
+        ? "NEED FIGHT"
+        : playerState.cashAdvanceTaken
+          ? "TAKEN"
+          : `+$${CASH_ADVANCE_AMOUNT}`,
+      disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
+      run: () => {
+        if (!playerState.fightScheduled) return "Schedule a fight first.";
+        if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
+        playerState.money += CASH_ADVANCE_AMOUNT;
+        playerState.cashAdvanceTaken = true;
+        return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
+      },
+    },
+    {
+      id: "media-training",
+      label: "Media Training",
+      cost: 10,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
+      run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
+        if (!energy.spend(10)) return "Not enough energy for media training.";
+        playerState.image += 2;
+        markUsedThisPhase("media-training");
+        return `Image +2 (now ${playerState.image}).`;
+      },
+    },
+    {
+      id: "charity-event",
+      label: "Charity Event",
+      cost: 15,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
+      run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
+        if (!energy.spend(15)) return "Not enough energy for a charity event.";
+        if (playerState.hp < 5) return "Not enough HP for a charity event.";
+        playerState.hp -= 5;
+        playerState.image += 5;
+        markUsedThisPhase("charity-event");
+        return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
+      },
+    },
+  ];
+
+  // Manager Lvl 2+ desk option.
+  if (floor >= 2) {
+    actions.push({
+      id: "invest-portfolio",
+      label: "Invest in Portfolio",
+      cost: 0,
+      costLabel: `-$${PORTFOLIO_INVEST_AMOUNT}`,
+      disabled: playerState.money < PORTFOLIO_INVEST_AMOUNT,
+      run: () => {
+        if (playerState.money < PORTFOLIO_INVEST_AMOUNT) {
+          return `Not enough money — need $${PORTFOLIO_INVEST_AMOUNT}, have $${playerState.money}.`;
+        }
+        playerState.money -= PORTFOLIO_INVEST_AMOUNT;
+        playerState.portfolioInvested += PORTFOLIO_INVEST_AMOUNT;
+        return `Invested $${PORTFOLIO_INVEST_AMOUNT} (total $${playerState.portfolioInvested}). Returns arrive once a real investment system exists.`;
+      },
+    });
+  }
+
+  // Manager Lvl 3 desk option.
+  if (floor >= 3) {
+    actions.push({
+      id: "networking-event",
+      label: "Networking Event",
+      cost: 20,
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("networking-event") ? "DONE" : "20 EN",
+      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("networking-event"),
+      run: () => {
+        const lock = requirePrivateLifePhase();
+        if (lock) return lock;
+        if (!energy.spend(20)) return "Not enough energy for a networking event.";
+        if (playerState.hp < 8) return "Not enough HP for a networking event.";
+        playerState.hp -= 8;
+        playerState.fame += 5;
+        markUsedThisPhase("networking-event");
+        return `Fame +5 (now ${playerState.fame}), HP -8 (now ${playerState.hp}).`;
+      },
+    });
+  }
+
   return {
     title: "📣 PR & Finance",
     energyText: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}`,
-    actions: [
-      {
-        id: "back",
-        label: "‹ Back",
-        cost: 0,
-        costLabel: "",
-        run: () => {
-          managerDeskView = "main";
-          return "";
-        },
-      },
-      {
-        id: "cash-advance",
-        label: "Request Cash Advance",
-        cost: 0,
-        costLabel: !playerState.fightScheduled
-          ? "NEED FIGHT"
-          : playerState.cashAdvanceTaken
-            ? "TAKEN"
-            : `+$${CASH_ADVANCE_AMOUNT}`,
-        disabled: !playerState.fightScheduled || playerState.cashAdvanceTaken,
-        run: () => {
-          if (!playerState.fightScheduled) return "Schedule a fight first.";
-          if (playerState.cashAdvanceTaken) return "You've already taken an advance against this fight's purse.";
-          playerState.money += CASH_ADVANCE_AMOUNT;
-          playerState.cashAdvanceTaken = true;
-          return `Advance granted: +$${CASH_ADVANCE_AMOUNT} (comes out of your purse after the fight).`;
-        },
-      },
-      {
-        id: "media-training",
-        label: "Media Training",
-        cost: 10,
-        costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
-        disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
-        run: () => {
-          const lock = requirePrivateLifePhase();
-          if (lock) return lock;
-          if (!energy.spend(10)) return "Not enough energy for media training.";
-          playerState.image += 2;
-          markUsedThisPhase("media-training");
-          return `Image +2 (now ${playerState.image}).`;
-        },
-      },
-      {
-        id: "charity-event",
-        label: "Charity Event",
-        cost: 15,
-        costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
-        disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
-        run: () => {
-          const lock = requirePrivateLifePhase();
-          if (lock) return lock;
-          if (!energy.spend(15)) return "Not enough energy for a charity event.";
-          if (playerState.hp < 5) return "Not enough HP for a charity event.";
-          playerState.hp -= 5;
-          playerState.image += 5;
-          markUsedThisPhase("charity-event");
-          return `Image +5 (now ${playerState.image}), HP -5 (now ${playerState.hp}).`;
-        },
-      },
-    ],
+    actions,
   };
 }
 
@@ -2153,7 +2171,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
     { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
     { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
-    { id: "workoutclip", label: "Workout Clip", nx: 0.5, ny: 0.6 },
+    { id: "workoutclip", label: "Weight Area", nx: 0.5, ny: 0.6 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
@@ -2399,7 +2417,7 @@ function loop(now: number) {
         const bedLock = getBedLock();
         onTrigger = bedLock ? () => buildingUI.showToast(bedLock, pos, "bottom") : () => sleepAtBed(pos);
       }
-      else if (nearStation.id === "workoutclip") onTrigger = openWorkoutClipMenu;
+      else if (nearStation.id === "workoutclip") onTrigger = openWeightAreaMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
@@ -2440,7 +2458,10 @@ function loop(now: number) {
       // building-entrance prompt (line ~2163) is unrelated and stays
       // anchored to the building's world position.
       const promptPos = { x: window.innerWidth / 2, y: window.innerHeight - 100 };
-      buildingUI.setEnterPrompt(promptPos, onTrigger, nearStation.label.toUpperCase());
+      // Every interior station uses the same generic "INTERACT" label now,
+      // rather than the station's own name (NPC name, "Elevator", etc.) —
+      // the street building-entrance prompt keeps its default "ENTER".
+      buildingUI.setEnterPrompt(promptPos, onTrigger, "INTERACT");
     } else {
       buildingUI.setEnterPrompt(null, () => {});
     }
