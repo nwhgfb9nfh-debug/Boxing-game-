@@ -17,7 +17,7 @@ import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
 import { SocialBattery } from "./game/socialBattery";
-import { PRIYA_PORTRAIT } from "./assets/portraits";
+import { PRIYA_PORTRAIT, CAROL_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
   type TalkCategory,
@@ -155,8 +155,11 @@ const energyPill = document.createElement("div");
 energyPill.className = "status-hud__pill status-hud__pill--energy";
 const hpPill = document.createElement("div");
 hpPill.className = "status-hud__pill status-hud__pill--hp";
+const socialPill = document.createElement("div");
+socialPill.className = "status-hud__pill status-hud__pill--social";
 statusHud.appendChild(energyPill);
 statusHud.appendChild(hpPill);
+statusHud.appendChild(socialPill);
 app.appendChild(statusHud);
 
 // Money (Section 5) — its own HUD, top-left.
@@ -274,6 +277,7 @@ function getDebugStatFields(): DebugStatField[] {
     { label: "Fame", get: () => playerState.fame, set: (n) => (playerState.fame = n) },
     { label: "Image", get: () => playerState.image, set: (n) => (playerState.image = n) },
     { label: "HP", get: () => playerState.hp, set: (n) => (playerState.hp = n) },
+    { label: "Social Battery", get: () => socialBattery.remaining, set: (n) => socialBattery.set(n) },
     { label: "Money", get: () => playerState.money, set: (n) => (playerState.money = n) },
     { label: "Power bonus", get: () => playerState.training.power.bonus, set: setTrainingBonus("power") },
     { label: "Speed bonus", get: () => playerState.training.speed.bonus, set: setTrainingBonus("speed") },
@@ -1497,12 +1501,12 @@ const PRIYA: NpcDef = {
   ],
 };
 
-// Not yet designed per spec — a generic placeholder so a real NPC can be
-// slotted into this same interaction point later without rework.
-const RECEPTIONIST_2: NpcDef = {
-  id: "receptionist-2",
-  name: "Receptionist",
-  portrait: "🧑🏻‍💼",
+// Portrait's in, but her Talk content isn't written yet — dialogueWritten:
+// false surfaces a placeholder instead of the category/topic menus below.
+const CAROL: NpcDef = {
+  id: "carol",
+  name: "Carol Jenkins",
+  portrait: CAROL_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Hi there — welcome in. Let me know if you need anything.",
@@ -1510,14 +1514,9 @@ const RECEPTIONIST_2: NpcDef = {
     friend: "Hey! How's it going?",
     close: "Hey you — good to see you.",
   },
-  smallTalkTopics: [
-    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-    { id: "office", label: "The Office", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-    { id: "events", label: "Current Events", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-  ],
-  personalTopics: [
-    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-  ],
+  smallTalkTopics: [],
+  personalTopics: [],
+  dialogueWritten: false,
 };
 
 function getRelationshipScore(npcId: string): number {
@@ -1528,7 +1527,7 @@ function bumpRelationship(npcId: string, delta: number) {
   playerState.contacts[npcId] = Math.max(0, getRelationshipScore(npcId) + delta);
 }
 
-type DialogueView = "main" | "talk-categories" | "talk-topics" | "talk-response";
+type DialogueView = "main" | "talk-categories" | "talk-topics" | "talk-response" | "talk-placeholder";
 let dialogueView: DialogueView = "main";
 let activeNpc: NpcDef | null = null;
 let activeCategory: TalkCategory | null = null;
@@ -1572,7 +1571,7 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
         id: "talk",
         label: "Talk",
         onSelect: () => {
-          dialogueView = "talk-categories";
+          dialogueView = npc.dialogueWritten === false ? "talk-placeholder" : "talk-categories";
         },
       },
       ...extraOptions,
@@ -1663,6 +1662,23 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
   };
 }
 
+function buildDialogueTalkPlaceholder(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: "Dialogue not written yet.",
+    options: [
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
 function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
   activeNpc = npc;
   dialogueView = "main";
@@ -1671,6 +1687,7 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
     if (dialogueView === "talk-categories") return buildDialogueTalkCategories(activeNpc!);
     if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
+    if (dialogueView === "talk-placeholder") return buildDialogueTalkPlaceholder(activeNpc!);
     return buildDialogueMain(activeNpc!, extraOptions);
   });
 }
@@ -2032,7 +2049,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     },
     {
       id: "reception-2",
-      label: "Receptionist",
+      label: "Carol",
       nx: 0.4,
       ny: 0.28,
       kind: "npc",
@@ -2196,6 +2213,7 @@ function loop(now: number) {
   if (outOfMinigame) {
     energyPill.textContent = `⚡ ${energy.remaining}/${energy.maxValue}`;
     hpPill.textContent = `❤ ${playerState.hp} HP`;
+    socialPill.textContent = `💬 ${socialBattery.remaining}/100`;
     moneyPill.textContent = `$${playerState.money}`;
     const stage = campCycle.current;
     const statSuffix = stage.stat ? ` — ${stage.stat[0].toUpperCase()}${stage.stat.slice(1)}` : "";
@@ -2290,7 +2308,7 @@ function loop(now: number) {
       else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception-priya") onTrigger = () => openNpcDialogue(PRIYA, receptionSharedOptions());
-      else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(RECEPTIONIST_2, receptionSharedOptions());
+      else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;

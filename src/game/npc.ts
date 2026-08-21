@@ -30,6 +30,10 @@ export interface NpcDef {
   greetings: Record<RelationshipTier, string>;
   smallTalkTopics: TalkTopicDef[];
   personalTopics: TalkTopicDef[];
+  // False for an NPC whose portrait/greeting exists but whose Talk content
+  // hasn't been written yet — "Talk" shows a placeholder instead of the
+  // category/topic menus. Defaults to true (content is written).
+  dialogueWritten?: boolean;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.

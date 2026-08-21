@@ -252,6 +252,10 @@ canvas {
   color: #ff6b6b;
 }
 
+.status-hud__pill--social {
+  color: #7ec8ff;
+}
+
 /* Money — its own HUD, top-left, separate from Energy/HP. */
 .money-hud {
   position: absolute;

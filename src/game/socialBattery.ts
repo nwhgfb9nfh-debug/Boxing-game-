@@ -23,6 +23,11 @@ export class SocialBattery {
     return true;
   }
 
+  /** Dev-tool only — direct override, bypassing spend/canAfford. */
+  set(value: number): void {
+    this.value = value;
+  }
+
   /** Called on every camp-phase advance, same cadence as Energy Star's sleep(). */
   reset(): void {
     this.value = MAX_SOCIAL_BATTERY;
