@@ -309,9 +309,47 @@ canvas {
   background: rgba(5, 6, 9, 0.35);
 }
 
-.dialogue-box {
+.dialogue-wrap {
   width: 100%;
   max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Character bust, floating above the box's top-left corner rather than
+   inline in its header — matches the visual-novel-style reference. */
+.dialogue-portrait {
+  width: 96px;
+  height: 118px;
+  margin-left: 20px;
+  margin-bottom: -4px;
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  background: #2a2e39;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-bottom: none;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dialogue-portrait__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.dialogue-portrait__emoji {
+  font-size: 48px;
+}
+
+.dialogue-box {
+  width: 100%;
   box-sizing: border-box;
   background: #1c1f27;
   border-top: 2px solid rgba(255, 255, 255, 0.15);
@@ -328,10 +366,6 @@ canvas {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.dialogue-box__portrait {
-  font-size: 32px;
 }
 
 .dialogue-box__name {

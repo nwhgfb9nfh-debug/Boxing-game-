@@ -17,6 +17,7 @@ import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
 import { SocialBattery } from "./game/socialBattery";
+import { PRIYA_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
   getRelationshipTier,
@@ -1451,7 +1452,7 @@ function buildGymCategoryMenu(catId: GymCategory["id"]): MenuData {
 const PRIYA: NpcDef = {
   id: "priya",
   name: "Priya Malhotra",
-  portrait: "🧑🏽‍💼",
+  portrait: PRIYA_PORTRAIT,
   romanceEligible: true,
   greetings: {
     stranger:

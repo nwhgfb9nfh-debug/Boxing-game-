@@ -32,27 +32,49 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
   overlay.className = "dialogue-overlay";
   overlay.style.display = "none";
 
+  // wrap holds the floating portrait above the box's top-left corner and
+  // the box itself, stacked — same max-width as the box so the portrait
+  // lines up with its left edge instead of the screen's.
+  const wrap = document.createElement("div");
+  wrap.className = "dialogue-wrap";
+
+  const portrait = document.createElement("div");
+  portrait.className = "dialogue-portrait";
+
   const box = document.createElement("div");
   box.className = "dialogue-box";
-  overlay.appendChild(box);
+
+  wrap.appendChild(portrait);
+  wrap.appendChild(box);
+  overlay.appendChild(wrap);
   container.appendChild(overlay);
 
   let builder: (() => DialogueData) | null = null;
 
   function render() {
     if (!builder) return;
-    const { portrait, name, text, options } = builder();
+    const { portrait: portraitSrc, name, text, options } = builder();
+
+    portrait.innerHTML = "";
+    if (portraitSrc.startsWith("data:") || portraitSrc.startsWith("http")) {
+      const img = document.createElement("img");
+      img.className = "dialogue-portrait__img";
+      img.src = portraitSrc;
+      portrait.appendChild(img);
+    } else {
+      const emoji = document.createElement("span");
+      emoji.className = "dialogue-portrait__emoji";
+      emoji.textContent = portraitSrc;
+      portrait.appendChild(emoji);
+    }
+
     box.innerHTML = "";
 
     const header = document.createElement("div");
     header.className = "dialogue-box__header";
-    const portraitEl = document.createElement("span");
-    portraitEl.className = "dialogue-box__portrait";
-    portraitEl.textContent = portrait;
     const nameEl = document.createElement("span");
     nameEl.className = "dialogue-box__name";
     nameEl.textContent = name;
-    header.appendChild(portraitEl);
     header.appendChild(nameEl);
     box.appendChild(header);
 
