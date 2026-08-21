@@ -55,7 +55,6 @@ type View =
   | "home"
   | "contacts"
   | "contact-detail"
-  | "contact-text"
   | "contact-texttalk"
   | "stats"
   | "realestate"
@@ -144,7 +143,6 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     if (view === "home") renderHome();
     else if (view === "contacts") renderContacts();
     else if (view === "contact-detail") renderContactDetail();
-    else if (view === "contact-text") renderContactText();
     else if (view === "contact-texttalk") renderContactTextTalk();
     else if (view === "stats") renderStats();
     else if (view === "realestate") renderRealEstate();
@@ -280,48 +278,20 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     scoreEl.textContent = `${contact.score}/${contact.maxScore}`;
     panel.appendChild(scoreEl);
 
+    appendMessage();
+
+    const list = document.createElement("div");
+    list.className = "action-menu__list";
+
     const textBtn = document.createElement("button");
     textBtn.type = "button";
     textBtn.className = "action-menu__item";
     textBtn.textContent = "Text";
     textBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      go("contact-text");
-    });
-    panel.appendChild(textBtn);
-  }
-
-  function renderContactText() {
-    const contact = api.getContacts().find((c) => c.id === activeContactId);
-    if (!contact) {
-      go("contacts");
-      return;
-    }
-
-    const backBtn = document.createElement("button");
-    backBtn.type = "button";
-    backBtn.className = "action-menu__item";
-    backBtn.textContent = "‹ Back";
-    backBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      go("contact-detail");
-    });
-    panel.appendChild(backBtn);
-
-    appendMessage();
-
-    const list = document.createElement("div");
-    list.className = "action-menu__list";
-
-    const talkBtn = document.createElement("button");
-    talkBtn.type = "button";
-    talkBtn.className = "action-menu__item";
-    talkBtn.textContent = "Talk";
-    talkBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
       go("contact-texttalk");
     });
-    list.appendChild(talkBtn);
+    list.appendChild(textBtn);
 
     const meetupBtn = document.createElement("button");
     meetupBtn.type = "button";
@@ -350,7 +320,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     backBtn.textContent = "‹ Back";
     backBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      go("contact-text");
+      go("contact-detail");
     });
     panel.appendChild(backBtn);
 
