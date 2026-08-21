@@ -122,6 +122,11 @@ export interface PlayerState {
   // NPC relationship scores (NPC Dialogue spec), keyed by NPC id. Tier is
   // derived from the score, not stored directly — see getRelationshipTier.
   contacts: Record<string, number>;
+  // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
+  // once successful, keyed by NPC id. Meant to unlock the Phone-meetup
+  // system per NPC once that system exists — not built yet, so this flag
+  // just sits here for now.
+  exchangedNumbers: Record<string, boolean>;
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -165,5 +170,6 @@ export function createPlayerState(): PlayerState {
     availablePhotos: [],
     imagestarPosts: [],
     contacts: {},
+    exchangedNumbers: {},
   };
 }

@@ -20,8 +20,10 @@ import { SocialBattery } from "./game/socialBattery";
 import { PRIYA_PORTRAIT, CAROL_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
+  type NpcActionRules,
   type TalkCategory,
   type TalkTopicDef,
+  type FlirtySubcategory,
   getRelationshipTier,
   isCategoryUnlocked,
   getTopicDelta,
@@ -1603,6 +1605,34 @@ function buildGymCategoryMenu(catId: GymCategory["id"], onBack: () => void): Men
 // NPC Dialogue system (NPC Dialogue & Office Reception spec): a reusable
 // engine, first wired up here for Office's two receptionists. Relationship
 // score lives in playerState.contacts, keyed by NPC id.
+
+const EXCHANGE_NUMBER_COST = 30;
+const GIVE_GIFT_COST = 10;
+// "Meaningful relationship progress within Tier 3" (spec) — not just
+// entering Friend tier (score 50) — placeholder threshold, easy to retune.
+const PRIYA_EXCHANGE_THRESHOLD = 70;
+
+const PRIYA_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier, score) => {
+    if (tier === "stranger" || tier === "acquaintance") {
+      return { success: false, delta: -5, message: 'She gives you a flat look. "Absolutely not."' };
+    }
+    if (tier === "friend" && score < PRIYA_EXCHANGE_THRESHOLD) {
+      return { success: false, delta: -5, message: '"We\'re not there yet."' };
+    }
+    return { success: true, delta: 10, message: "She actually smiles and hands over her number." };
+  },
+  giftReaction: (tier) => {
+    if (tier === "stranger" || tier === "acquaintance") {
+      return { delta: -5, message: "She declines politely but firmly." };
+    }
+    // From Friend+ the reaction should depend on the specific gift once
+    // Gift Shop items carry NPC preferences (spec: "item preferences
+    // TBD") — placeholder positive default until that data exists.
+    return { delta: 8, message: "She's genuinely touched." };
+  },
+};
+
 const PRIYA: NpcDef = {
   id: "priya",
   name: "Priya Malhotra",
@@ -1632,8 +1662,15 @@ const PRIYA: NpcDef = {
       ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
     },
     {
-      id: "events",
-      label: "Current Events",
+      id: "ask-day",
+      label: "Ask About Her Day",
+      ratingByTier: { stranger: "negative", acquaintance: "neutral", friend: "positive", close: "positive" },
+    },
+    // Rating TBD per spec ("general humor topic, applies to any NPC") —
+    // placeholder neutral until a real value is set.
+    {
+      id: "joke",
+      label: "Crack a Joke",
       ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" },
     },
   ],
@@ -1647,10 +1684,29 @@ const PRIYA: NpcDef = {
     },
     { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
   ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "negative", close: "positive" } },
+    { id: "style", label: "Style", ratingByTier: { friend: "neutral", close: "positive" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "neutral", close: "positive" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "negative", close: "negative" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "negative", close: "neutral" } },
+  ],
+  actions: PRIYA_ACTIONS,
 };
 
-// Portrait's in, but her Talk content isn't written yet — dialogueWritten:
-// false surfaces a placeholder instead of the category/topic menus below.
+// Portrait's in, but her Talk/Actions content isn't written yet —
+// dialogueWritten: false surfaces a placeholder instead of the real menus.
 const CAROL: NpcDef = {
   id: "carol",
   name: "Carol Jenkins",
@@ -1664,6 +1720,9 @@ const CAROL: NpcDef = {
   },
   smallTalkTopics: [],
   personalTopics: [],
+  heartToHeartTopics: [],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
   dialogueWritten: false,
 };
 
@@ -1675,11 +1734,21 @@ function bumpRelationship(npcId: string, delta: number) {
   playerState.contacts[npcId] = Math.max(0, getRelationshipScore(npcId) + delta);
 }
 
-type DialogueView = "main" | "talk-categories" | "talk-topics" | "talk-response" | "talk-placeholder";
+type DialogueView =
+  | "main"
+  | "talk-categories"
+  | "talk-flirty-sub"
+  | "talk-topics"
+  | "talk-response"
+  | "actions"
+  | "actions-response"
+  | "not-written";
 let dialogueView: DialogueView = "main";
 let activeNpc: NpcDef | null = null;
 let activeCategory: TalkCategory | null = null;
+let activeFlirtySub: FlirtySubcategory | null = null;
 let lastTalkResult = "";
+let lastActionResult = "";
 
 // "Hire Manager" is a shared business function, not tied to either
 // receptionist specifically — Coach/Cutman hiring and Upgrade Gym have
@@ -1709,7 +1778,14 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
         id: "talk",
         label: "Talk",
         onSelect: () => {
-          dialogueView = npc.dialogueWritten === false ? "talk-placeholder" : "talk-categories";
+          dialogueView = npc.dialogueWritten === false ? "not-written" : "talk-categories";
+        },
+      },
+      {
+        id: "actions",
+        label: "Actions",
+        onSelect: () => {
+          dialogueView = npc.dialogueWritten === false ? "not-written" : "actions";
         },
       },
       ...extraOptions,
@@ -1718,14 +1794,18 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
   };
 }
 
-// "Talk" opens a category menu first (Small Talk always, Personal once
-// unlocked at Acquaintance+) — locked categories are omitted entirely
-// rather than shown disabled, same treatment the spec calls for once
-// Flirty exists.
+// "Talk" opens a category menu first (Small Talk always, Personal from
+// Acquaintance, Heart to Heart from Friend for everyone, Flirty from
+// Friend but romance-eligible NPCs only) — locked/ineligible categories
+// are omitted entirely rather than shown disabled, per spec.
 function buildDialogueTalkCategories(npc: NpcDef): DialogueData {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
   const categories: { id: TalkCategory; label: string }[] = [{ id: "smalltalk", label: "Small Talk" }];
-  if (isCategoryUnlocked("personal", tier)) categories.push({ id: "personal", label: "Personal" });
+  if (isCategoryUnlocked("personal", tier, npc.romanceEligible)) categories.push({ id: "personal", label: "Personal" });
+  if (isCategoryUnlocked("hearttoheart", tier, npc.romanceEligible)) {
+    categories.push({ id: "hearttoheart", label: "Heart to Heart" });
+  }
+  if (isCategoryUnlocked("flirty", tier, npc.romanceEligible)) categories.push({ id: "flirty", label: "Flirty" });
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -1736,7 +1816,7 @@ function buildDialogueTalkCategories(npc: NpcDef): DialogueData {
         label: c.label,
         onSelect: () => {
           activeCategory = c.id;
-          dialogueView = "talk-topics";
+          dialogueView = c.id === "flirty" ? "talk-flirty-sub" : "talk-topics";
         },
       })),
       {
@@ -1750,9 +1830,51 @@ function buildDialogueTalkCategories(npc: NpcDef): DialogueData {
   };
 }
 
+// Flirty's own sub-menu (Compliment/Charm) — only ever reached for
+// romance-eligible NPCs, since Flirty itself is hidden otherwise.
+function buildDialogueFlirtySub(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Social Battery: ${socialBattery.remaining}/100`,
+    options: [
+      {
+        id: "compliment",
+        label: "Compliment",
+        onSelect: () => {
+          activeFlirtySub = "compliment";
+          dialogueView = "talk-topics";
+        },
+      },
+      {
+        id: "charm",
+        label: "Charm",
+        onSelect: () => {
+          activeFlirtySub = "charm";
+          dialogueView = "talk-topics";
+        },
+      },
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "talk-categories";
+        },
+      },
+    ],
+  };
+}
+
+function topicsForActiveCategory(npc: NpcDef): TalkTopicDef[] {
+  if (activeCategory === "personal") return npc.personalTopics;
+  if (activeCategory === "hearttoheart") return npc.heartToHeartTopics;
+  if (activeCategory === "flirty") return activeFlirtySub === "charm" ? npc.flirtyCharmTopics : npc.flirtyComplimentTopics;
+  return npc.smallTalkTopics;
+}
+
 function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
-  const topics: TalkTopicDef[] = activeCategory === "personal" ? npc.personalTopics : npc.smallTalkTopics;
+  const topics = topicsForActiveCategory(npc);
   const affordable = socialBattery.canAfford(20);
   return {
     portrait: npc.portrait,
@@ -1776,7 +1898,7 @@ function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
         id: "back",
         label: "‹ Back",
         onSelect: () => {
-          dialogueView = "talk-categories";
+          dialogueView = activeCategory === "flirty" ? "talk-flirty-sub" : "talk-categories";
         },
       },
     ],
@@ -1800,7 +1922,79 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
   };
 }
 
-function buildDialogueTalkPlaceholder(npc: NpcDef): DialogueData {
+// "Actions" — Energy-Star-costed relationship progression, separate from
+// Talk's Social-Battery-gated topics. Always visible from Tier 1; outcomes
+// (success/reaction) come from the NPC's own actions rules.
+function buildDialogueActions(npc: NpcDef): DialogueData {
+  const score = getRelationshipScore(npc.id);
+  const tier = getRelationshipTier(score);
+  const rules = npc.actions!;
+  const hasNumber = !!playerState.exchangedNumbers[npc.id];
+  const affordExchange = energy.canAfford(EXCHANGE_NUMBER_COST);
+  const hasGift = playerState.giftsOwned > 0;
+  const affordGift = hasGift && energy.canAfford(GIVE_GIFT_COST);
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Energy: ${energy.remaining}/100  ·  Gifts owned: ${playerState.giftsOwned}`,
+    options: [
+      {
+        id: "exchange-number",
+        label: "Exchange Number",
+        costLabel: hasNumber ? "HAVE IT" : `${EXCHANGE_NUMBER_COST} EN`,
+        disabled: hasNumber || !affordExchange,
+        onSelect: () => {
+          if (hasNumber || !energy.spend(EXCHANGE_NUMBER_COST)) return;
+          const result = rules.exchangeNumber(tier, score);
+          bumpRelationship(npc.id, result.delta);
+          if (result.success) playerState.exchangedNumbers[npc.id] = true;
+          lastActionResult = `${result.message} (${formatTopicResult(result.delta)})`;
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "give-gift",
+        label: "Give a Gift",
+        costLabel: !hasGift ? "NO GIFTS" : `${GIVE_GIFT_COST} EN`,
+        disabled: !affordGift,
+        onSelect: () => {
+          if (!affordGift || !energy.spend(GIVE_GIFT_COST)) return;
+          playerState.giftsOwned -= 1;
+          const result = rules.giftReaction(tier);
+          bumpRelationship(npc.id, result.delta);
+          lastActionResult = `${result.message} (${formatTopicResult(result.delta)})`;
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+function buildDialogueActionsResponse(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: lastActionResult,
+    options: [
+      {
+        id: "continue",
+        label: "Continue",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+function buildDialogueNotWritten(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -1821,11 +2015,15 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
   activeNpc = npc;
   dialogueView = "main";
   activeCategory = null;
+  activeFlirtySub = null;
   dialogueBox.open(() => {
     if (dialogueView === "talk-categories") return buildDialogueTalkCategories(activeNpc!);
+    if (dialogueView === "talk-flirty-sub") return buildDialogueFlirtySub(activeNpc!);
     if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
-    if (dialogueView === "talk-placeholder") return buildDialogueTalkPlaceholder(activeNpc!);
+    if (dialogueView === "actions") return buildDialogueActions(activeNpc!);
+    if (dialogueView === "actions-response") return buildDialogueActionsResponse(activeNpc!);
+    if (dialogueView === "not-written") return buildDialogueNotWritten(activeNpc!);
     return buildDialogueMain(activeNpc!, extraOptions);
   });
 }
