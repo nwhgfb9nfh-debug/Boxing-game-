@@ -1666,13 +1666,6 @@ const PRIYA: NpcDef = {
       label: "Ask About Her Day",
       ratingByTier: { stranger: "negative", acquaintance: "neutral", friend: "positive", close: "positive" },
     },
-    // Rating TBD per spec ("general humor topic, applies to any NPC") —
-    // placeholder neutral until a real value is set.
-    {
-      id: "joke",
-      label: "Crack a Joke",
-      ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" },
-    },
   ],
   personalTopics: [
     { id: "family", label: "Family", ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" } },
