@@ -11,9 +11,6 @@ export interface DialogueOption {
   costLabel?: string;
   disabled?: boolean;
   onSelect: () => void;
-  // A header is inserted before this option whenever it differs from the
-  // previous option's section (e.g. Meetup System's General/Romance split).
-  section?: string;
 }
 
 export interface DialogueData {
@@ -88,15 +85,7 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
 
     const optionsEl = document.createElement("div");
     optionsEl.className = "dialogue-box__options";
-    let lastSection: string | undefined;
     for (const option of options) {
-      if (option.section && option.section !== lastSection) {
-        const sectionEl = document.createElement("div");
-        sectionEl.className = "dialogue-box__section";
-        sectionEl.textContent = option.section;
-        optionsEl.appendChild(sectionEl);
-      }
-      lastSection = option.section;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "dialogue-box__option";

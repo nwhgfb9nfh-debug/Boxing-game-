@@ -391,15 +391,6 @@ canvas {
   gap: 8px;
 }
 
-.dialogue-box__section {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-top: 4px;
-}
-
 .dialogue-box__option {
   display: flex;
   justify-content: space-between;

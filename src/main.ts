@@ -2201,8 +2201,11 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
 // eligible) options directly, no Talk/Actions split. Picking one resolves
 // the whole meetup: relationship bump (or Overnight Stay's phase advance),
 // then she's gone — the room is rebuilt without her marker.
-type MeetupDialogueView = "main" | "response";
-let meetupDialogueView: MeetupDialogueView = "main";
+// Top menu (General/Romance) → submenu (that category's options) →
+// response — same shape as the reception Talk flow, not one flat list.
+type MeetupDialogueView = "categories" | "options" | "response";
+let meetupDialogueView: MeetupDialogueView = "categories";
+let activeMeetupCategory: "general" | "romance" | null = null;
 let lastMeetupResult = "";
 
 function resolveMeetupPick(npc: NpcDef, location: MeetupLocationId, option: MeetupOptionDef) {
@@ -2223,23 +2226,58 @@ function resolveMeetupPick(npc: NpcDef, location: MeetupLocationId, option: Meet
   meetupDialogueView = "response";
 }
 
-function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId): DialogueData {
+function buildMeetupDialogueCategories(npc: NpcDef): DialogueData {
+  const options: DialogueOption[] = [
+    {
+      id: "general",
+      label: "General",
+      onSelect: () => {
+        activeMeetupCategory = "general";
+        meetupDialogueView = "options";
+      },
+    },
+  ];
+  if (npc.romanceEligible) {
+    options.push({
+      id: "romance",
+      label: "Romance",
+      onSelect: () => {
+        activeMeetupCategory = "romance";
+        meetupDialogueView = "options";
+      },
+    });
+  }
+  options.push({ id: "leave", label: "Leave", onSelect: () => dialogueBox.close() });
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `${npc.name} is happy to see you.`,
+    options,
+  };
+}
+
+function buildMeetupDialogueOptions(npc: NpcDef, location: MeetupLocationId): DialogueData {
   const loc = getMeetupLocation(location);
-  const toOption = (section: string) => (o: MeetupOptionDef): DialogueOption => ({
-    id: o.id,
-    label: o.label,
-    section,
-    disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
-    costLabel: o.requiresGift && playerState.giftsOwned <= 0 ? "NO GIFT" : undefined,
-    onSelect: () => resolveMeetupPick(npc, location, o),
-  });
+  const opts = activeMeetupCategory === "romance" ? loc.romance : loc.general;
   return {
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     options: [
-      ...loc.general.map(toOption("General")),
-      ...(npc.romanceEligible ? loc.romance.map(toOption("Romance")) : []),
+      ...opts.map((o) => ({
+        id: o.id,
+        label: o.label,
+        disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
+        costLabel: o.requiresGift && playerState.giftsOwned <= 0 ? "NO GIFT" : undefined,
+        onSelect: () => resolveMeetupPick(npc, location, o),
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          meetupDialogueView = "categories";
+        },
+      },
     ],
   };
 }
@@ -2266,10 +2304,12 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
 }
 
 function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId) {
-  meetupDialogueView = "main";
+  meetupDialogueView = "categories";
+  activeMeetupCategory = null;
   dialogueBox.open(() => {
+    if (meetupDialogueView === "options") return buildMeetupDialogueOptions(npc, location);
     if (meetupDialogueView === "response") return buildMeetupDialogueResponse(npc);
-    return buildMeetupDialogueMain(npc, location);
+    return buildMeetupDialogueCategories(npc);
   });
 }
 
