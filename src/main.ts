@@ -1698,8 +1698,22 @@ const PRIYA: NpcDef = {
   actions: PRIYA_ACTIONS,
 };
 
-// Portrait's in, but her Talk/Actions content isn't written yet —
-// dialogueWritten: false surfaces a placeholder instead of the real menus.
+const CAROL_ACTIONS: NpcActionRules = {
+  // Unlike Priya, succeeds starting at Acquaintance (T2) — no internal
+  // sub-threshold, matching her simple/straightforward nature.
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Oh — maybe once we know each other a bit better!"' };
+    }
+    return { success: true, delta: 10, message: "She beams and jots her number down without a second thought." };
+  },
+  // Well-received starting at Tier 1 — placeholder positive default until
+  // Gift Shop items carry real per-NPC preferences.
+  giftReaction: () => {
+    return { delta: 8, message: 'She lights up. "Oh, you shouldn\'t have!"' };
+  },
+};
+
 const CAROL: NpcDef = {
   id: "carol",
   name: "Carol Jenkins",
@@ -1711,12 +1725,46 @@ const CAROL: NpcDef = {
     friend: "Hey! How's it going?",
     close: "Hey you — good to see you.",
   },
-  smallTalkTopics: [],
-  personalTopics: [],
-  heartToHeartTopics: [],
+  smallTalkTopics: [
+    {
+      id: "weather",
+      label: "Weather",
+      ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
+    },
+    {
+      id: "gossip",
+      label: "Boxing World Gossip",
+      ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
+    },
+    {
+      id: "office",
+      label: "The Office",
+      ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
+    },
+    {
+      // Her one real dislike — too heavy/serious for her taste.
+      id: "events",
+      label: "Current Events",
+      ratingByTier: { stranger: "negative", acquaintance: "negative", friend: "negative", close: "negative" },
+    },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // She's a genuine film fan.
+    { id: "movies", label: "Movies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    // Warm, but prefers redirecting toward positivity over dwelling on it.
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
   flirtyComplimentTopics: [],
   flirtyCharmTopics: [],
-  dialogueWritten: false,
+  actions: CAROL_ACTIONS,
 };
 
 function getRelationshipScore(npcId: string): number {
