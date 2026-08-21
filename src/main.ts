@@ -476,7 +476,7 @@ function openDebugMenu() {
           playerState.fightScheduled = stage.type !== "nofight";
           usedThisPhase.clear();
           socialBattery.reset();
-          playerState.npcAbsentThisPhase = {};
+          playerState.overnightCommuteStep = {};
           // Reset Energy to whatever a real sleep into this stage would
           // have left it at — same vacation-bonus formula as sleepAtBed,
           // consuming a use so repeated jumps into Private Life can't
@@ -1923,13 +1923,20 @@ function receptionSharedOptions(): DialogueOption[] {
 
 function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): DialogueData {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
-  // Office-specific: Carol acknowledges Priya's absence on an Overnight
-  // Stay's newly-arrived phase (Meetup System spec's "consistency rule"),
-  // overriding her normal tiered greeting just for that one phase.
-  const greeting =
-    npc.id === "carol" && playerState.npcAbsentThisPhase["priya"]
-      ? "Priya's got the day off — something about a big date, if you ask me. It's just me holding down the fort."
-      : npc.greetings[tier];
+  // Office-specific: Carol acknowledges Priya's absence (Meetup System
+  // spec's "consistency rule"), overriding her normal tiered greeting
+  // while it's active — flavor depends on why Priya's away.
+  const greeting = (() => {
+    if (npc.id !== "carol") return npc.greetings[tier];
+    const commuteStep = playerState.overnightCommuteStep["priya"];
+    if (commuteStep !== undefined && commuteStep < 2) {
+      return "Priya's late to work — I'm honestly surprised, that's not like her.";
+    }
+    if (playerState.activeMeetup?.npcId === "priya") {
+      return "Priya stepped out for a bit — something personal, she said. Just me holding down the fort.";
+    }
+    return npc.greetings[tier];
+  })();
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -2218,9 +2225,10 @@ function resolveMeetupPick(npc: NpcDef, location: MeetupLocationId, option: Meet
 
 function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId): DialogueData {
   const loc = getMeetupLocation(location);
-  const toOption = (o: MeetupOptionDef): DialogueOption => ({
+  const toOption = (section: string) => (o: MeetupOptionDef): DialogueOption => ({
     id: o.id,
     label: o.label,
+    section,
     disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
     costLabel: o.requiresGift && playerState.giftsOwned <= 0 ? "NO GIFT" : undefined,
     onSelect: () => resolveMeetupPick(npc, location, o),
@@ -2229,7 +2237,10 @@ function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId): Dialo
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
-    options: [...loc.general.map(toOption), ...(npc.romanceEligible ? loc.romance.map(toOption) : [])],
+    options: [
+      ...loc.general.map(toOption("General")),
+      ...(npc.romanceEligible ? loc.romance.map(toOption("Romance")) : []),
+    ],
   };
 }
 
@@ -2318,7 +2329,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const nextStage = campCycle.advance();
   usedThisPhase.clear();
   socialBattery.reset();
-  playerState.npcAbsentThisPhase = {};
+  playerState.overnightCommuteStep = {};
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
@@ -2353,13 +2364,15 @@ function resolveOvernightStay(npcId: string): string {
   const nextStage = campCycle.advance();
   usedThisPhase.clear();
   socialBattery.reset();
-  playerState.npcAbsentThisPhase = {};
+  playerState.overnightCommuteStep = {};
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
   }
-  playerState.npcAbsentThisPhase[npcId] = true;
+  // Asleep at home — see advanceOvernightCommute for how this counts back
+  // up to normal as the player enters buildings afterward.
+  playerState.overnightCommuteStep[npcId] = 0;
   bumpRelationship(npcId, MEETUP_OPTION_DELTA);
 
   return `You wake up together the next morning. Next: ${nextStage.label}. (${formatTopicResult(MEETUP_OPTION_DELTA)})`;
@@ -2430,7 +2443,7 @@ function openSimulateFightMenu() {
             const nextStage = campCycle.advance();
             usedThisPhase.clear();
             socialBattery.reset();
-            playerState.npcAbsentThisPhase = {};
+            playerState.overnightCommuteStep = {};
             return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
           },
         },
@@ -2706,10 +2719,45 @@ const MEETUP_STATION_POS: Record<MeetupLocationId, { nx: number; ny: number }> =
 /** The arranged NPC's station for this room, if a pending meetup is set here — null otherwise. */
 function getActiveMeetupStation(buildingName: string): Station | null {
   const meetup = playerState.activeMeetup;
-  if (!meetup || !MEETUP_LOCATION_BUILDING[meetup.location](buildingName)) return null;
-  const npc = getNpcById(meetup.npcId);
-  if (!npc) return null;
-  return { id: "meetup-npc", label: npc.name, kind: "npc", ...MEETUP_STATION_POS[meetup.location] };
+  if (meetup && MEETUP_LOCATION_BUILDING[meetup.location](buildingName)) {
+    const npc = getNpcById(meetup.npcId);
+    if (npc) return { id: "meetup-npc", label: npc.name, kind: "npc", ...MEETUP_STATION_POS[meetup.location] };
+  }
+  // An overnight guest, still asleep at Home the morning after — a
+  // separate, lower-key station (see the "overnight-guest" dispatch)
+  // rather than the full meetup dialogue.
+  if (HOUSE_NAMES.has(buildingName)) {
+    for (const npcId of Object.keys(playerState.overnightCommuteStep)) {
+      if (playerState.overnightCommuteStep[npcId] === 0) {
+        const npc = getNpcById(npcId);
+        if (npc) return { id: "overnight-guest", label: npc.name, kind: "npc", ...MEETUP_STATION_POS.home };
+      }
+    }
+  }
+  return null;
+}
+
+// True while an NPC is away from her normal Office spot — either because
+// a meetup's been arranged elsewhere and not yet fulfilled, or she's
+// mid-commute after an Overnight Stay (still asleep at home, or on her
+// way in but not yet arrived — see advanceOvernightCommute).
+function isNpcAwayFromOffice(npcId: string): boolean {
+  if (playerState.activeMeetup?.npcId === npcId) return true;
+  const step = playerState.overnightCommuteStep[npcId];
+  return step !== undefined && step < 2;
+}
+
+// Each time the player enters ANY building, an NPC mid-commute (see
+// resolveOvernightStay) advances one step closer to being back at her
+// normal spot: 0 (asleep at home) → 1 (in transit, present nowhere) → back
+// to normal. This is deliberately building-entry-driven rather than tied
+// to a phase advance, so it resolves within the same phase.
+function advanceOvernightCommute() {
+  for (const npcId of Object.keys(playerState.overnightCommuteStep)) {
+    const next = playerState.overnightCommuteStep[npcId] + 1;
+    if (next >= 2) delete playerState.overnightCommuteStep[npcId];
+    else playerState.overnightCommuteStep[npcId] = next;
+  }
 }
 
 function computeStationsFor(buildingName: string): Station[] {
@@ -2782,6 +2830,7 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     buildingUI.showToast("Closed after the fight — only your home and the Airport are open.", anchor, lot.row);
     return;
   }
+  advanceOvernightCommute();
   scene = { type: "interior", lot, interior: buildInteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
@@ -2945,8 +2994,8 @@ function loop(now: number) {
       else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
       else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
       else if (nearStation.id === "reception-priya") {
-        onTrigger = playerState.npcAbsentThisPhase["priya"]
-          ? () => buildingUI.showToast("Priya isn't in today.", pos, "bottom")
+        onTrigger = isNpcAwayFromOffice("priya")
+          ? () => buildingUI.showToast("Priya isn't at her desk right now.", pos, "bottom")
           : () => openNpcDialogue(PRIYA, receptionSharedOptions());
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
@@ -2954,6 +3003,9 @@ function loop(now: number) {
         const { npcId, location } = playerState.activeMeetup;
         const meetupNpc = getNpcById(npcId);
         onTrigger = meetupNpc ? () => openMeetupDialogue(meetupNpc, location) : () => {};
+      }
+      else if (nearStation.id === "overnight-guest") {
+        onTrigger = () => buildingUI.showToast("She's still asleep — let her rest.", pos, "bottom");
       }
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;

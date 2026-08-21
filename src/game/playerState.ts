@@ -131,10 +131,12 @@ export interface PlayerState {
   // locations OTHER than Home, keyed by NPC id — Home's per-NPC unlock can
   // require a minimum count of these first.
   meetupCounts: Record<string, number>;
-  // True while an NPC is away from her normal spot for the current phase
-  // (set by Overnight Stay's phase advance; cleared at every subsequent
-  // phase advance, so she's back starting the following phase).
-  npcAbsentThisPhase: Record<string, boolean>;
+  // Overnight Stay's morning-after commute, keyed by NPC id: 0 = asleep at
+  // home, 1 = in transit (present nowhere). Advances by one on each
+  // building the player enters (see advanceOvernightCommute) until she's
+  // back to normal, at which point the entry is deleted. Also cleared
+  // outright on any phase advance.
+  overnightCommuteStep: Record<string, number>;
   // Meetup System: an arranged-but-not-yet-visited meetup. She physically
   // appears as a station at this location on the player's NEXT entry (not
   // the current visit, if already inside) — cleared once the player
@@ -185,7 +187,7 @@ export function createPlayerState(): PlayerState {
     contacts: {},
     exchangedNumbers: {},
     meetupCounts: {},
-    npcAbsentThisPhase: {},
+    overnightCommuteStep: {},
     activeMeetup: null,
   };
 }
