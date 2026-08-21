@@ -773,3 +773,79 @@ canvas {
   color: #fff;
   font-size: 14px;
 }
+
+/* Contacts app */
+.phone-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start !important;
+}
+
+.phone-contact-item__portrait {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2e39;
+  flex-shrink: 0;
+  font-size: 20px;
+}
+
+.phone-contact-item__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.contact-detail__portrait {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 8px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2e39;
+  font-size: 64px;
+}
+
+.contact-detail__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.contact-detail__status {
+  text-align: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.contact-detail__heart {
+  color: #ff6b9a;
+  margin-left: 6px;
+}
+
+.contact-detail__bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #262a35;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  margin: 4px 0;
+}
+
+.contact-detail__bar-fill {
+  height: 100%;
+  background: #ffd23f;
+  border-radius: 999px;
+}

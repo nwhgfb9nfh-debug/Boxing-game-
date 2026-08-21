@@ -13,6 +13,24 @@ export interface HouseListing {
   price?: number;
 }
 
+// Contacts app (NPC Dialogue system spec, Contacts App & Text-Talk):
+// portrait is either an emoji placeholder or a data:/http image URL, same
+// as NpcDef.portrait — this module doesn't otherwise know about NpcDef.
+export interface ContactSummary {
+  id: string;
+  name: string;
+  portrait: string;
+  tierLabel: string;
+  score: number;
+  maxScore: number;
+  romanced: boolean;
+}
+
+export interface TextTalkOption {
+  id: string;
+  label: string;
+}
+
 export interface PhoneApi {
   getEnergy: () => number;
   getFame: () => number;
@@ -27,9 +45,23 @@ export interface PhoneApi {
   getAvailablePhotos: () => Photo[];
   getImagestarPosts: () => Photo[];
   postPhoto: (id: string) => string;
+  getContacts: () => ContactSummary[];
+  getTextTalkOptions: (npcId: string) => TextTalkOption[];
+  sendTextTalk: (npcId: string, optionId: string) => string;
+  initiateMeetup: (npcId: string) => string;
 }
 
-type View = "home" | "contacts" | "stats" | "realestate" | "buzzer" | "imagestar" | "bca";
+type View =
+  | "home"
+  | "contacts"
+  | "contact-detail"
+  | "contact-text"
+  | "contact-texttalk"
+  | "stats"
+  | "realestate"
+  | "buzzer"
+  | "imagestar"
+  | "bca";
 
 interface AppDef {
   id: View;
@@ -67,6 +99,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   let view: View = "home";
   let message = "";
   let composeText = "";
+  let activeContactId: string | null = null;
 
   function go(next: View) {
     view = next;
@@ -110,6 +143,9 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
 
     if (view === "home") renderHome();
     else if (view === "contacts") renderContacts();
+    else if (view === "contact-detail") renderContactDetail();
+    else if (view === "contact-text") renderContactText();
+    else if (view === "contact-texttalk") renderContactTextTalk();
     else if (view === "stats") renderStats();
     else if (view === "realestate") renderRealEstate();
     else if (view === "buzzer") renderBuzzer();
@@ -147,11 +183,194 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     panel.appendChild(msgEl);
   }
 
+  // Portrait is either an emoji placeholder or a data:/http image URL —
+  // same convention as the in-person NPC dialogue box.
+  function renderPortraitInto(host: HTMLElement, src: string) {
+    if (src.startsWith("data:") || src.startsWith("http")) {
+      const img = document.createElement("img");
+      img.src = src;
+      host.appendChild(img);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = src;
+      host.appendChild(span);
+    }
+  }
+
   function renderContacts() {
-    const empty = document.createElement("div");
-    empty.className = "phone-empty";
-    empty.textContent = "No contacts yet — meet people around town to add them here.";
-    panel.appendChild(empty);
+    const contacts = api.getContacts();
+    if (contacts.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "phone-empty";
+      empty.textContent = "No contacts yet — meet people around town to add them here.";
+      panel.appendChild(empty);
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "action-menu__list";
+    for (const contact of contacts) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "action-menu__item phone-contact-item";
+      const portraitEl = document.createElement("span");
+      portraitEl.className = "phone-contact-item__portrait";
+      renderPortraitInto(portraitEl, contact.portrait);
+      const nameEl = document.createElement("span");
+      nameEl.textContent = contact.romanced ? `${contact.name} ♥` : contact.name;
+      btn.appendChild(portraitEl);
+      btn.appendChild(nameEl);
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        activeContactId = contact.id;
+        go("contact-detail");
+      });
+      list.appendChild(btn);
+    }
+    panel.appendChild(list);
+  }
+
+  function renderContactDetail() {
+    const contact = api.getContacts().find((c) => c.id === activeContactId);
+    if (!contact) {
+      go("contacts");
+      return;
+    }
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "action-menu__item";
+    backBtn.textContent = "‹ Back";
+    backBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contacts");
+    });
+    panel.appendChild(backBtn);
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "action-menu__title";
+    nameEl.textContent = contact.name;
+    panel.appendChild(nameEl);
+
+    const portraitEl = document.createElement("div");
+    portraitEl.className = "contact-detail__portrait";
+    renderPortraitInto(portraitEl, contact.portrait);
+    panel.appendChild(portraitEl);
+
+    const statusEl = document.createElement("div");
+    statusEl.className = "contact-detail__status";
+    statusEl.textContent = contact.tierLabel;
+    if (contact.romanced) {
+      const heart = document.createElement("span");
+      heart.className = "contact-detail__heart";
+      heart.textContent = "♥";
+      statusEl.appendChild(heart);
+    }
+    panel.appendChild(statusEl);
+
+    const barTrack = document.createElement("div");
+    barTrack.className = "contact-detail__bar";
+    const barFill = document.createElement("div");
+    barFill.className = "contact-detail__bar-fill";
+    barFill.style.width = `${Math.min(100, (contact.score / contact.maxScore) * 100)}%`;
+    barTrack.appendChild(barFill);
+    panel.appendChild(barTrack);
+
+    const scoreEl = document.createElement("div");
+    scoreEl.className = "phone-empty";
+    scoreEl.textContent = `${contact.score}/${contact.maxScore}`;
+    panel.appendChild(scoreEl);
+
+    const textBtn = document.createElement("button");
+    textBtn.type = "button";
+    textBtn.className = "action-menu__item";
+    textBtn.textContent = "Text";
+    textBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contact-text");
+    });
+    panel.appendChild(textBtn);
+  }
+
+  function renderContactText() {
+    const contact = api.getContacts().find((c) => c.id === activeContactId);
+    if (!contact) {
+      go("contacts");
+      return;
+    }
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "action-menu__item";
+    backBtn.textContent = "‹ Back";
+    backBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contact-detail");
+    });
+    panel.appendChild(backBtn);
+
+    appendMessage();
+
+    const list = document.createElement("div");
+    list.className = "action-menu__list";
+
+    const talkBtn = document.createElement("button");
+    talkBtn.type = "button";
+    talkBtn.className = "action-menu__item";
+    talkBtn.textContent = "Talk";
+    talkBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contact-texttalk");
+    });
+    list.appendChild(talkBtn);
+
+    const meetupBtn = document.createElement("button");
+    meetupBtn.type = "button";
+    meetupBtn.className = "action-menu__item";
+    meetupBtn.textContent = "Initiate Meetup";
+    meetupBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      message = api.initiateMeetup(contact.id);
+      render();
+    });
+    list.appendChild(meetupBtn);
+
+    panel.appendChild(list);
+  }
+
+  function renderContactTextTalk() {
+    const contact = api.getContacts().find((c) => c.id === activeContactId);
+    if (!contact) {
+      go("contacts");
+      return;
+    }
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "action-menu__item";
+    backBtn.textContent = "‹ Back";
+    backBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contact-text");
+    });
+    panel.appendChild(backBtn);
+
+    appendMessage();
+
+    const list = document.createElement("div");
+    list.className = "action-menu__list";
+    for (const option of api.getTextTalkOptions(contact.id)) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "action-menu__item";
+      btn.textContent = option.label;
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        message = api.sendTextTalk(contact.id, option.id);
+        render();
+      });
+      list.appendChild(btn);
+    }
+    panel.appendChild(list);
   }
 
   function renderStats() {

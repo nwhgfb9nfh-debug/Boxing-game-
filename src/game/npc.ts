@@ -120,3 +120,47 @@ export function formatTopicResult(delta: number): string {
   if (delta < 0) return `−${Math.abs(delta)} Relationship`;
   return "No change.";
 }
+
+const TIER_LABELS: Record<RelationshipTier, string> = {
+  stranger: "Stranger",
+  acquaintance: "Acquaintance",
+  friend: "Friend",
+  close: "Close",
+};
+
+export function tierLabel(tier: RelationshipTier): string {
+  return TIER_LABELS[tier];
+}
+
+// Contacts app "Text" → "Talk" (NPC Dialogue system spec, Contacts App &
+// Text-Talk section): a much simpler, flat system than in-person Talk —
+// no categories/tiers, the same 4 fixed options for every NPC, varying
+// only by whether that NPC is currently romanced (Close tier +
+// romance-eligible — no separate romance-progression system exists yet,
+// so tier stands in for it).
+export interface TextTalkOption {
+  id: string;
+  label: string;
+}
+
+export const TEXT_TALK_NOT_ROMANCED: TextTalkOption[] = [
+  { id: "say-hi", label: "Say Hi" },
+  { id: "how-doing", label: "Ask How They're Doing" },
+  { id: "funny", label: "Share Something Funny" },
+  { id: "advice", label: "Ask for Advice" },
+];
+
+export const TEXT_TALK_ROMANCED: TextTalkOption[] = [
+  { id: "morning", label: "Good Morning Text" },
+  { id: "flirty", label: "Flirty Text" },
+  { id: "day", label: "Ask How Their Day's Going" },
+  { id: "selfie", label: "Send a Selfie" },
+];
+
+// Flat, reusable bump — spec doesn't specify a value ("low-content-cost
+// system, not authored per-NPC"), so this is a placeholder default.
+export const TEXT_TALK_DELTA = 3;
+
+export function isRomanced(npc: NpcDef, tier: RelationshipTier): boolean {
+  return npc.romanceEligible && tier === "close";
+}

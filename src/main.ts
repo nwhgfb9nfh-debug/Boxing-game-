@@ -28,6 +28,11 @@ import {
   isCategoryUnlocked,
   getTopicDelta,
   formatTopicResult,
+  tierLabel,
+  isRomanced,
+  TEXT_TALK_NOT_ROMANCED,
+  TEXT_TALK_ROMANCED,
+  TEXT_TALK_DELTA,
 } from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
@@ -224,6 +229,34 @@ const phoneApi: PhoneApi = {
     playerState.image += 3;
     return `Posted! Image +3 (now ${playerState.image}).`;
   },
+  getContacts: () => {
+    return ALL_NPCS.filter((npc) => playerState.exchangedNumbers[npc.id]).map((npc) => {
+      const score = getRelationshipScore(npc.id);
+      const tier = getRelationshipTier(score);
+      return {
+        id: npc.id,
+        name: npc.name,
+        portrait: npc.portrait,
+        tierLabel: tierLabel(tier),
+        score,
+        maxScore: 100,
+        romanced: isRomanced(npc, tier),
+      };
+    });
+  },
+  getTextTalkOptions: (npcId) => {
+    const npc = getNpcById(npcId);
+    if (!npc) return [];
+    const tier = getRelationshipTier(getRelationshipScore(npcId));
+    return isRomanced(npc, tier) ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
+  },
+  sendTextTalk: (npcId) => {
+    bumpRelationship(npcId, TEXT_TALK_DELTA);
+    return formatTopicResult(TEXT_TALK_DELTA);
+  },
+  // The Diner/Lounge/Beach/Apartment drive-to meetup mechanic this is
+  // meant to launch isn't built yet — stubbed until that system exists.
+  initiateMeetup: () => "Meetups aren't built yet — coming soon.",
 };
 
 const phoneUI = createPhoneUI(app, phoneApi);
@@ -1766,6 +1799,14 @@ const CAROL: NpcDef = {
   flirtyCharmTopics: [],
   actions: CAROL_ACTIONS,
 };
+
+// Registry of every dialogue-capable NPC — used by the Contacts app to look
+// up whoever has had their number exchanged, regardless of which building
+// they're physically found in.
+const ALL_NPCS: NpcDef[] = [PRIYA, CAROL];
+function getNpcById(id: string): NpcDef | undefined {
+  return ALL_NPCS.find((n) => n.id === id);
+}
 
 function getRelationshipScore(npcId: string): number {
   return playerState.contacts[npcId] ?? 0;
