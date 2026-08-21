@@ -22,20 +22,23 @@ export interface Station {
   // Overrides STATION_RADIUS — for a station standing behind a blocking
   // Decoration (a desk), where the default radius wouldn't reach across it.
   radius?: number;
-  // For NPCs stationed behind a blocking Decoration: the proximity check
-  // (and the prompt trigger) uses this point instead of nx/ny, so the
-  // player has to stand on the near side of the barrier, lined up with
-  // the NPC, rather than just getting close to the NPC's marker from any
-  // angle (which would let you walk around the desk to trigger it).
-  // The marker itself still renders at nx/ny.
-  approachNx?: number;
-  approachNy?: number;
+  // For NPCs stationed behind a blocking Decoration (id-matched below): the
+  // proximity check (and the prompt trigger) uses a point pinned to that
+  // Decoration's near edge instead of nx/ny, so the player has to actually
+  // be pressed up against the barrier — not just generally nearby, which
+  // let you trigger it from well past the entrance on short viewports
+  // where a fixed-fraction approach point collapsed too close to the door.
+  // Computed in px each frame from the Decoration's real edge, so it stays
+  // exact regardless of room/viewport size. The marker itself still
+  // renders at nx/ny.
+  approachDecorationId?: string;
 }
 
 // A rectangle drawn in the room (e.g. Office's reception desk). Purely
 // visual unless blocking is set, in which case the player collides with
 // it from any side (unlike BlockedZone, not anchored to an outer wall).
 export interface Decoration {
+  id?: string; // referenced by Station.approachDecorationId
   nx: number; // center, normalized
   ny: number;
   width: number; // px
@@ -164,10 +167,22 @@ export class InteriorScene {
 
     let nearStation: Station | null = null;
     for (const s of this.stations) {
-      const targetNx = s.approachNx ?? s.nx;
-      const targetNy = s.approachNy ?? s.ny;
-      const sx = bounds.left + targetNx * roomW;
-      const sy = bounds.top + targetNy * roomH;
+      let sx: number;
+      let sy: number;
+      const approachDecoration = s.approachDecorationId
+        ? this.decorations.find((d) => d.id === s.approachDecorationId)
+        : undefined;
+      if (approachDecoration) {
+        // Pinned to the decoration's near (south) edge, in the station's
+        // own column — the exact spot the player's collision stops them
+        // at when walking up to touch it, so the trigger radius can stay
+        // tight without ever being unreachable.
+        sx = bounds.left + s.nx * roomW;
+        sy = bounds.top + approachDecoration.ny * roomH + approachDecoration.height / 2 + PLAYER_RADIUS;
+      } else {
+        sx = bounds.left + s.nx * roomW;
+        sy = bounds.top + s.ny * roomH;
+      }
       if (Math.hypot(x - sx, y - sy) <= (s.radius ?? STATION_RADIUS)) {
         nearStation = s;
         break;
