@@ -43,17 +43,6 @@ export interface MeetupLocationSummary {
   reason?: string;
 }
 
-export interface MeetupOptionSummary {
-  id: string;
-  label: string;
-  disabled?: boolean;
-}
-
-export interface MeetupOptionsSummary {
-  general: MeetupOptionSummary[];
-  romance: MeetupOptionSummary[]; // empty when the NPC isn't romance-eligible
-}
-
 export interface PhoneApi {
   getEnergy: () => number;
   getFame: () => number;
@@ -73,8 +62,6 @@ export interface PhoneApi {
   sendTextTalk: (npcId: string, optionId: string) => string;
   getMeetupLocations: (npcId: string) => MeetupLocationSummary[];
   payForMeetup: (npcId: string, locationId: string) => { ok: boolean; message: string };
-  getMeetupOptions: (npcId: string, locationId: string) => MeetupOptionsSummary;
-  pickMeetupOption: (npcId: string, locationId: string, optionId: string) => string;
 }
 
 type View =
@@ -83,8 +70,6 @@ type View =
   | "contact-detail"
   | "contact-texttalk"
   | "contact-meetup-locations"
-  | "contact-meetup-options"
-  | "contact-meetup-response"
   | "stats"
   | "realestate"
   | "buzzer"
@@ -128,8 +113,6 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   let message = "";
   let composeText = "";
   let activeContactId: string | null = null;
-  let activeMeetupLocationId: string | null = null;
-  let lastMeetupResult = "";
 
   function go(next: View) {
     view = next;
@@ -176,8 +159,6 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     else if (view === "contact-detail") renderContactDetail();
     else if (view === "contact-texttalk") renderContactTextTalk();
     else if (view === "contact-meetup-locations") renderContactMeetupLocations();
-    else if (view === "contact-meetup-options") renderContactMeetupOptions();
-    else if (view === "contact-meetup-response") renderContactMeetupResponse();
     else if (view === "stats") renderStats();
     else if (view === "realestate") renderRealEstate();
     else if (view === "buzzer") renderBuzzer();
@@ -426,81 +407,12 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
         e.preventDefault();
         if (!loc.available) return;
         const result = api.payForMeetup(contact.id, loc.id);
-        if (!result.ok) {
-          message = result.message;
-          render();
-          return;
-        }
-        activeMeetupLocationId = loc.id;
-        go("contact-meetup-options");
+        message = result.message;
+        render();
       });
       list.appendChild(btn);
     }
     panel.appendChild(list);
-  }
-
-  function renderContactMeetupOptions() {
-    const contact = api.getContacts().find((c) => c.id === activeContactId);
-    if (!contact || !activeMeetupLocationId) {
-      go("contacts");
-      return;
-    }
-
-    const backBtn = document.createElement("button");
-    backBtn.type = "button";
-    backBtn.className = "action-menu__item";
-    backBtn.textContent = "‹ Back";
-    backBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      go("contact-meetup-locations");
-    });
-    panel.appendChild(backBtn);
-
-    const { general, romance } = api.getMeetupOptions(contact.id, activeMeetupLocationId);
-
-    const pick = (option: MeetupOptionSummary) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "action-menu__item";
-      btn.textContent = option.label;
-      btn.disabled = !!option.disabled;
-      btn.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        if (option.disabled || !activeMeetupLocationId) return;
-        lastMeetupResult = api.pickMeetupOption(contact.id, activeMeetupLocationId, option.id);
-        go("contact-meetup-response");
-      });
-      return btn;
-    };
-
-    const list = document.createElement("div");
-    list.className = "action-menu__list";
-    for (const option of general) list.appendChild(pick(option));
-    if (romance.length > 0) {
-      const romanceHeader = document.createElement("div");
-      romanceHeader.className = "phone-stats__header";
-      romanceHeader.textContent = "Romance";
-      list.appendChild(romanceHeader);
-      for (const option of romance) list.appendChild(pick(option));
-    }
-    panel.appendChild(list);
-  }
-
-  function renderContactMeetupResponse() {
-    const textEl = document.createElement("div");
-    textEl.className = "phone-empty";
-    textEl.textContent = lastMeetupResult;
-    panel.appendChild(textEl);
-
-    const doneBtn = document.createElement("button");
-    doneBtn.type = "button";
-    doneBtn.className = "action-menu__item";
-    doneBtn.textContent = "Done";
-    doneBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      go("contact-detail");
-    });
-    panel.appendChild(doneBtn);
   }
 
   function renderStats() {

@@ -2,6 +2,7 @@
 // training bonuses, and per-NPC relationship scores.
 
 import type { BuzzerPostResult } from "./buzzer";
+import type { MeetupLocationId } from "./npc";
 
 // "trained" tracks whether a session was ever completed for this stat,
 // independent of the bonus it earned — a session that scored all
@@ -134,6 +135,11 @@ export interface PlayerState {
   // (set by Overnight Stay's phase advance; cleared at every subsequent
   // phase advance, so she's back starting the following phase).
   npcAbsentThisPhase: Record<string, boolean>;
+  // Meetup System: an arranged-but-not-yet-visited meetup. She physically
+  // appears as a station at this location on the player's NEXT entry (not
+  // the current visit, if already inside) — cleared once the player
+  // actually meets her there. Only one meetup can be pending at a time.
+  activeMeetup: { npcId: string; location: MeetupLocationId } | null;
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -180,5 +186,6 @@ export function createPlayerState(): PlayerState {
     exchangedNumbers: {},
     meetupCounts: {},
     npcAbsentThisPhase: {},
+    activeMeetup: null,
   };
 }

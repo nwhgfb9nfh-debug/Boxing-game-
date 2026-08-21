@@ -262,16 +262,27 @@ const phoneApi: PhoneApi = {
     bumpRelationship(npcId, TEXT_TALK_DELTA);
     return formatTopicResult(TEXT_TALK_DELTA);
   },
-  // Meetup System: the spec frames this as "player drives there," but this
-  // build plays it out entirely inside the Phone UI (paying the Energy
-  // cost and picking an option stand in for the trip) rather than
-  // simulating an actual drive — a much bigger scene-transition feature.
+  // Meetup System: "Initiate Meetup" only ARRANGES the date from here —
+  // she then physically appears as a station at that location on the
+  // player's next visit there (see getActiveMeetupStation), where the
+  // actual general/romance options play out in person, same as any other
+  // NPC dialogue. Only one meetup can be arranged at a time.
   getMeetupLocations: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
     const tier = getRelationshipTier(getRelationshipScore(npcId));
     const meetupCount = playerState.meetupCounts[npcId] ?? 0;
+    const active = playerState.activeMeetup;
     return MEETUP_LOCATIONS.map((loc) => {
+      if (active) {
+        const isThisOne = active.npcId === npcId && active.location === loc.id;
+        return {
+          id: loc.id,
+          label: loc.label,
+          available: false,
+          reason: isThisOne ? "Arranged — go find her there." : "You already have a meetup arranged.",
+        };
+      }
       const hasContent = loc.general.length > 0;
       if (loc.id === "home") {
         const unlocked = hasContent && !!npc.homeMeetupUnlock && npc.homeMeetupUnlock(meetupCount, tier);
@@ -294,42 +305,14 @@ const phoneApi: PhoneApi = {
     if (isNpcInCurrentBuilding(npcId)) {
       return { ok: false, message: "She's right here — no need to set up a meetup." };
     }
+    if (playerState.activeMeetup) return { ok: false, message: "You already have a meetup arranged." };
     const loc = getMeetupLocation(locationId as MeetupLocationId);
     if (loc.general.length === 0) return { ok: false, message: "Not yet designed." };
     if (!energy.spend(MEETUP_ENERGY_COST)) {
       return { ok: false, message: `Not enough energy — need ${MEETUP_ENERGY_COST}.` };
     }
-    return { ok: true, message: `You head over to ${loc.label}.` };
-  },
-  getMeetupOptions: (npcId, locationId) => {
-    const npc = getNpcById(npcId);
-    const loc = getMeetupLocation(locationId as MeetupLocationId);
-    if (!npc) return { general: [], romance: [] };
-    const mapOpt = (o: MeetupOptionDef) => ({
-      id: o.id,
-      label: o.label,
-      disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
-    });
-    return {
-      general: loc.general.map(mapOpt),
-      romance: npc.romanceEligible ? loc.romance.map(mapOpt) : [],
-    };
-  },
-  pickMeetupOption: (npcId, locationId, optionId) => {
-    const loc = getMeetupLocation(locationId as MeetupLocationId);
-    const option = [...loc.general, ...loc.romance].find((o) => o.id === optionId);
-    if (!option) return "Something went wrong.";
-    if (option.requiresGift) {
-      if (playerState.giftsOwned <= 0) return "You don't have a gift to give.";
-      playerState.giftsOwned -= 1;
-    }
-    if (option.special === "overnight-stay") return resolveOvernightStay(npcId);
-    // Home doesn't count toward its own unlock — only "other locations" do.
-    if (loc.id !== "home") {
-      playerState.meetupCounts[npcId] = (playerState.meetupCounts[npcId] ?? 0) + 1;
-    }
-    bumpRelationship(npcId, MEETUP_OPTION_DELTA);
-    return formatTopicResult(MEETUP_OPTION_DELTA);
+    playerState.activeMeetup = { npcId, location: loc.id };
+    return { ok: true, message: `Arranged! You'll find her at the ${loc.label} next time you visit.` };
   },
 };
 
@@ -2206,6 +2189,79 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
   });
 }
 
+// Meetup System: the in-person side of an arranged meetup — walking up to
+// her at the location shows the location's general (+ romance, if
+// eligible) options directly, no Talk/Actions split. Picking one resolves
+// the whole meetup: relationship bump (or Overnight Stay's phase advance),
+// then she's gone — the room is rebuilt without her marker.
+type MeetupDialogueView = "main" | "response";
+let meetupDialogueView: MeetupDialogueView = "main";
+let lastMeetupResult = "";
+
+function resolveMeetupPick(npc: NpcDef, location: MeetupLocationId, option: MeetupOptionDef) {
+  if (option.requiresGift) {
+    if (playerState.giftsOwned <= 0) return; // guarded by disabled, shouldn't happen
+    playerState.giftsOwned -= 1;
+  }
+  if (option.special === "overnight-stay") {
+    lastMeetupResult = resolveOvernightStay(npc.id);
+  } else {
+    // Home doesn't count toward its own unlock — only "other locations" do.
+    if (location !== "home") {
+      playerState.meetupCounts[npc.id] = (playerState.meetupCounts[npc.id] ?? 0) + 1;
+    }
+    bumpRelationship(npc.id, MEETUP_OPTION_DELTA);
+    lastMeetupResult = formatTopicResult(MEETUP_OPTION_DELTA);
+  }
+  meetupDialogueView = "response";
+}
+
+function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId): DialogueData {
+  const loc = getMeetupLocation(location);
+  const toOption = (o: MeetupOptionDef): DialogueOption => ({
+    id: o.id,
+    label: o.label,
+    disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
+    costLabel: o.requiresGift && playerState.giftsOwned <= 0 ? "NO GIFT" : undefined,
+    onSelect: () => resolveMeetupPick(npc, location, o),
+  });
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `${npc.name} is happy to see you.`,
+    options: [...loc.general.map(toOption), ...(npc.romanceEligible ? loc.romance.map(toOption) : [])],
+  };
+}
+
+function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: lastMeetupResult,
+    options: [
+      {
+        id: "continue",
+        label: "Continue",
+        onSelect: () => {
+          dialogueBox.close();
+          playerState.activeMeetup = null;
+          if (scene.type === "interior") {
+            scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+          }
+        },
+      },
+    ],
+  };
+}
+
+function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId) {
+  meetupDialogueView = "main";
+  dialogueBox.open(() => {
+    if (meetupDialogueView === "response") return buildMeetupDialogueResponse(npc);
+    return buildMeetupDialogueMain(npc, location);
+  });
+}
+
 function openElevatorMenu(lot: LotInstance) {
   locationMenu.open(() => ({
     title: "🛗 Elevator",
@@ -2632,6 +2688,44 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   ],
 };
 
+// Meetup System: which building(s) a location id corresponds to, and
+// where her marker sits in that room when a meetup's arranged there.
+const MEETUP_LOCATION_BUILDING: Record<MeetupLocationId, (buildingName: string) => boolean> = {
+  home: (name) => HOUSE_NAMES.has(name),
+  diner: (name) => name === "Diner",
+  beach: (name) => name === "Beach",
+  lounge: (name) => name === "Lounge",
+};
+const MEETUP_STATION_POS: Record<MeetupLocationId, { nx: number; ny: number }> = {
+  home: { nx: 0.5, ny: 0.65 },
+  diner: { nx: 0.5, ny: 0.75 },
+  beach: { nx: 0.5, ny: 0.75 },
+  lounge: { nx: 0.2, ny: 0.75 },
+};
+
+/** The arranged NPC's station for this room, if a pending meetup is set here — null otherwise. */
+function getActiveMeetupStation(buildingName: string): Station | null {
+  const meetup = playerState.activeMeetup;
+  if (!meetup || !MEETUP_LOCATION_BUILDING[meetup.location](buildingName)) return null;
+  const npc = getNpcById(meetup.npcId);
+  if (!npc) return null;
+  return { id: "meetup-npc", label: npc.name, kind: "npc", ...MEETUP_STATION_POS[meetup.location] };
+}
+
+function computeStationsFor(buildingName: string): Station[] {
+  const base = STATIONS_BY_BUILDING[buildingName] ?? [];
+  const meetupStation = getActiveMeetupStation(buildingName);
+  return meetupStation ? [...base, meetupStation] : base;
+}
+
+/** Builds a fresh InteriorScene for this lot, including its meetup NPC marker if one's arranged here. */
+function buildInteriorScene(lot: LotInstance): InteriorScene {
+  const stations = computeStationsFor(lot.building.name);
+  const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
+  const decorations = lot.building.name === "Office" ? OFFICE_DECORATIONS : undefined;
+  return new InteriorScene(lot, stations, blockedZone, decorations);
+}
+
 // Each Mall store is its own room, entered through a wall-side station on
 // the main floor — same sub-room pattern as Office's elevator floors, just
 // triggered by walking up to a door instead of picking from a menu.
@@ -2688,10 +2782,7 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     buildingUI.showToast("Closed after the fight — only your home and the Airport are open.", anchor, lot.row);
     return;
   }
-  const stations = STATIONS_BY_BUILDING[lot.building.name] ?? [];
-  const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
-  const decorations = lot.building.name === "Office" ? OFFICE_DECORATIONS : undefined;
-  scene = { type: "interior", lot, interior: new InteriorScene(lot, stations, blockedZone, decorations) };
+  scene = { type: "interior", lot, interior: buildInteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
@@ -2859,6 +2950,11 @@ function loop(now: number) {
           : () => openNpcDialogue(PRIYA, receptionSharedOptions());
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
+      else if (nearStation.id === "meetup-npc" && playerState.activeMeetup) {
+        const { npcId, location } = playerState.activeMeetup;
+        const meetupNpc = getNpcById(npcId);
+        onTrigger = meetupNpc ? () => openMeetupDialogue(meetupNpc, location) : () => {};
+      }
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;
