@@ -241,6 +241,7 @@ const phoneApi: PhoneApi = {
         score,
         maxScore: 100,
         romanced: isRomanced(npc, tier),
+        locked: isNpcInCurrentBuilding(npc.id),
       };
     });
   },
@@ -251,12 +252,16 @@ const phoneApi: PhoneApi = {
     return isRomanced(npc, tier) ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
   },
   sendTextTalk: (npcId) => {
+    if (isNpcInCurrentBuilding(npcId)) return "She's right here — talk to her in person instead.";
     bumpRelationship(npcId, TEXT_TALK_DELTA);
     return formatTopicResult(TEXT_TALK_DELTA);
   },
   // The Diner/Lounge/Beach/Apartment drive-to meetup mechanic this is
   // meant to launch isn't built yet — stubbed until that system exists.
-  initiateMeetup: () => "Meetups aren't built yet — coming soon.",
+  initiateMeetup: (npcId) => {
+    if (isNpcInCurrentBuilding(npcId)) return "She's right here — no need to set up a meetup.";
+    return "Meetups aren't built yet — coming soon.";
+  },
 };
 
 const phoneUI = createPhoneUI(app, phoneApi);
@@ -1806,6 +1811,17 @@ const CAROL: NpcDef = {
 const ALL_NPCS: NpcDef[] = [PRIYA, CAROL];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
+}
+
+// Which building each NPC is physically found in — Text/Initiate Meetup
+// only make sense when you're not standing right in front of her, so
+// they're locked whenever the player is currently inside that building.
+const NPC_HOME_BUILDING: Record<string, string> = {
+  priya: "Office",
+  carol: "Office",
+};
+function isNpcInCurrentBuilding(npcId: string): boolean {
+  return scene.type === "interior" && scene.lot.building.name === NPC_HOME_BUILDING[npcId];
 }
 
 function getRelationshipScore(npcId: string): number {

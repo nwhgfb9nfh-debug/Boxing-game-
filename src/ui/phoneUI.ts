@@ -24,6 +24,9 @@ export interface ContactSummary {
   score: number;
   maxScore: number;
   romanced: boolean;
+  // True while the player is physically inside this NPC's building —
+  // Text/Initiate Meetup are locked then (talk to her in person instead).
+  locked: boolean;
 }
 
 export interface TextTalkOption {
@@ -278,6 +281,13 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     scoreEl.textContent = `${contact.score}/${contact.maxScore}`;
     panel.appendChild(scoreEl);
 
+    if (contact.locked) {
+      const lockedNote = document.createElement("div");
+      lockedNote.className = "phone-empty";
+      lockedNote.textContent = "She's right here — Text and Initiate Meetup only work from elsewhere.";
+      panel.appendChild(lockedNote);
+    }
+
     appendMessage();
 
     const list = document.createElement("div");
@@ -287,8 +297,10 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     textBtn.type = "button";
     textBtn.className = "action-menu__item";
     textBtn.textContent = "Text";
+    textBtn.disabled = contact.locked;
     textBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      if (contact.locked) return;
       go("contact-texttalk");
     });
     list.appendChild(textBtn);
@@ -297,8 +309,10 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     meetupBtn.type = "button";
     meetupBtn.className = "action-menu__item";
     meetupBtn.textContent = "Initiate Meetup";
+    meetupBtn.disabled = contact.locked;
     meetupBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      if (contact.locked) return;
       message = api.initiateMeetup(contact.id);
       render();
     });
