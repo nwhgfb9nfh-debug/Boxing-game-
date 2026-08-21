@@ -1,19 +1,35 @@
-// NPC Dialogue system (NPC Dialogue & Office Reception spec): a reusable
-// relationship + topic-reaction engine meant for every dialogue-capable NPC
-// in the game, not just Office Reception. The same shapes/helpers here are
-// meant to be reused as-is when Diner/Beach/Lounge/Mall meetups come online.
+// NPC Dialogue system (NPC Dialogue & Office Reception spec, v2): a
+// reusable relationship + topic-rating engine meant for every dialogue-
+// capable NPC in the game, not just Office Reception.
+//
+// Small Talk and Personal are the only real categories right now.
+// Flirty/Playful is planned but not built, so it has no code path at all —
+// once it exists it must be completely hidden (not just locked) for
+// friend-only NPCs, but for now it simply doesn't exist yet.
 
 export type RelationshipTier = "stranger" | "acquaintance" | "friend" | "close";
-export type TalkTopic = "genuine" | "flirty" | "cocky" | "smalltalk";
-export type TopicReaction = "positive" | "neutral" | "negative";
+export type TalkCategory = "smalltalk" | "personal";
+// The spec's +/0/− topic symbols.
+export type TopicRating = "positive" | "neutral" | "negative";
+
+export interface TalkTopicDef {
+  id: string;
+  label: string;
+  // Rating per relationship tier — a topic can flip from negative to
+  // positive as trust builds. Personal topics are only ever reachable at
+  // Acquaintance+ (the category itself is gated), so they don't need a
+  // Stranger-tier entry.
+  ratingByTier: Partial<Record<RelationshipTier, TopicRating>>;
+}
 
 export interface NpcDef {
   id: string;
   name: string;
-  portrait: string; // emoji placeholder — no real art pipeline yet
+  portrait: string; // emoji placeholder, or a data:/http image URL
   romanceEligible: boolean;
   greetings: Record<RelationshipTier, string>;
-  topicReactions: Record<TalkTopic, TopicReaction>;
+  smallTalkTopics: TalkTopicDef[];
+  personalTopics: TalkTopicDef[];
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.
@@ -30,47 +46,37 @@ export function getRelationshipTier(score: number): RelationshipTier {
   return tier;
 }
 
-// Placeholder deltas for how much a Talk pick moves the relationship score.
-// Not specified in the spec — a reasonable default, easy to retune.
-export const REACTION_DELTA: Record<TopicReaction, number> = {
+const TIER_ORDER: RelationshipTier[] = ["stranger", "acquaintance", "friend", "close"];
+
+// Personal unlocks at Acquaintance tier for every NPC (spec Section 2) — a
+// fixed engine rule, not per-NPC data. Small Talk is always available from
+// Stranger onward.
+export function isCategoryUnlocked(category: TalkCategory, tier: RelationshipTier): boolean {
+  if (category === "smalltalk") return true;
+  return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf("acquaintance");
+}
+
+// Placeholder magnitudes for the +/0/− symbols — the spec only specifies
+// the readout format ("+X Relationship"/"−X Relationship"), not the exact
+// values, so these are a reasonable default, easy to retune.
+const RATING_DELTA: Record<TopicRating, number> = {
   positive: 8,
-  neutral: 2,
+  neutral: 0,
   negative: -5,
 };
 
-export const TALK_TOPICS: { id: TalkTopic; label: string }[] = [
-  { id: "genuine", label: "Genuine / Respectful" },
-  { id: "flirty", label: "Playful / Flirty" },
-  { id: "cocky", label: "Cocky / Confident" },
-  { id: "smalltalk", label: "Small Talk" },
-];
+export function getTopicRating(topic: TalkTopicDef, tier: RelationshipTier): TopicRating {
+  return topic.ratingByTier[tier] ?? "neutral";
+}
 
-// One small reusable line pool per topic+reaction — shared by every NPC,
-// never unique per NPC (per spec). Kept gender-neutral in phrasing.
-const RESPONSE_LINES: Record<TalkTopic, Record<TopicReaction, string[]>> = {
-  genuine: {
-    positive: ["That lands. \"I appreciate you saying that.\"", "A genuine nod. \"Yeah — thank you.\""],
-    neutral: ["\"Sure, I hear you.\"", "A polite nod, nothing more."],
-    negative: ["\"...Right.\" A flicker of skepticism.", "Doesn't quite land. \"If you say so.\""],
-  },
-  flirty: {
-    positive: ["A small smile creeps in. \"Careful, that almost worked.\"", "\"Okay, that was smooth.\""],
-    neutral: ["An amused eye-roll. \"Nice try.\"", "\"Mm-hm. Sure.\""],
-    negative: ["A flat look. \"Not the time.\"", "\"...Moving on.\""],
-  },
-  cocky: {
-    positive: ["\"Ha! I like the confidence.\"", "A grin. \"Okay, big talk. Let's see it.\""],
-    neutral: ["\"Sure, champ.\" Unbothered.", "A shrug. \"If you say so.\""],
-    negative: ["An unimpressed stare. \"Wow. Okay.\"", "\"...That's a lot.\" Not a compliment."],
-  },
-  smalltalk: {
-    positive: ["Easy conversation. \"Yeah, exactly.\"", "A relaxed nod. \"Same, honestly.\""],
-    neutral: ["\"Yeah, I guess.\" Polite, brief.", "A small nod, nothing more."],
-    negative: ["Distracted, barely listening.", "\"Mm.\" Already looking elsewhere."],
-  },
-};
+export function getTopicDelta(topic: TalkTopicDef, tier: RelationshipTier): number {
+  return RATING_DELTA[getTopicRating(topic, tier)];
+}
 
-export function pickResponseLine(topic: TalkTopic, reaction: TopicReaction): string {
-  const pool = RESPONSE_LINES[topic][reaction];
-  return pool[Math.floor(Math.random() * pool.length)];
+// No written NPC dialogue lines per topic (per spec) — just the plain
+// relationship readout.
+export function formatTopicResult(delta: number): string {
+  if (delta > 0) return `+${delta} Relationship`;
+  if (delta < 0) return `−${Math.abs(delta)} Relationship`;
+  return "No change.";
 }

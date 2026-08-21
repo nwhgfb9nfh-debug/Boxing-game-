@@ -20,10 +20,12 @@ import { SocialBattery } from "./game/socialBattery";
 import { PRIYA_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
+  type TalkCategory,
+  type TalkTopicDef,
   getRelationshipTier,
-  REACTION_DELTA,
-  TALK_TOPICS,
-  pickResponseLine,
+  isCategoryUnlocked,
+  getTopicDelta,
+  formatTopicResult,
 } from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
@@ -1461,15 +1463,38 @@ const PRIYA: NpcDef = {
     friend: "Hey — good to see you. What's going on?",
     close: "There you are. I was hoping you'd stop by.",
   },
-  // "Likes: Genuine/Respectful. Dislikes: Cocky/Confident" per spec —
-  // Flirty/Small Talk aren't specified ("exact full mapping TBD"), filled
-  // in as neutral to match her "doesn't fall for charm easily" trait.
-  topicReactions: {
-    genuine: "positive",
-    flirty: "neutral",
-    cocky: "negative",
-    smalltalk: "neutral",
-  },
+  smallTalkTopics: [
+    {
+      id: "weather",
+      label: "Weather",
+      ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
+    },
+    {
+      id: "gossip",
+      label: "Boxing World Gossip",
+      ratingByTier: { stranger: "negative", acquaintance: "negative", friend: "positive", close: "positive" },
+    },
+    {
+      id: "office",
+      label: "The Office",
+      ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" },
+    },
+    {
+      id: "events",
+      label: "Current Events",
+      ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" },
+    },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    {
+      id: "weekend",
+      label: "Weekend Plans",
+      ratingByTier: { acquaintance: "neutral", friend: "positive", close: "positive" },
+    },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
 };
 
 // Not yet designed per spec — a generic placeholder so a real NPC can be
@@ -1485,12 +1510,14 @@ const RECEPTIONIST_2: NpcDef = {
     friend: "Hey! How's it going?",
     close: "Hey you — good to see you.",
   },
-  topicReactions: {
-    genuine: "neutral",
-    flirty: "neutral",
-    cocky: "neutral",
-    smalltalk: "positive",
-  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "office", label: "The Office", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "events", label: "Current Events", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  personalTopics: [
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
 };
 
 function getRelationshipScore(npcId: string): number {
@@ -1501,10 +1528,11 @@ function bumpRelationship(npcId: string, delta: number) {
   playerState.contacts[npcId] = Math.max(0, getRelationshipScore(npcId) + delta);
 }
 
-type DialogueView = "main" | "talk-topics" | "talk-response";
+type DialogueView = "main" | "talk-categories" | "talk-topics" | "talk-response";
 let dialogueView: DialogueView = "main";
 let activeNpc: NpcDef | null = null;
-let lastTalkLine = "";
+let activeCategory: TalkCategory | null = null;
+let lastTalkResult = "";
 
 // "Hire Staff" and "Upgrade Gym" are shared business functions, not tied
 // to either receptionist specifically (per spec for Hire Staff; Upgrade
@@ -1544,7 +1572,7 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
         id: "talk",
         label: "Talk",
         onSelect: () => {
-          dialogueView = "talk-topics";
+          dialogueView = "talk-categories";
         },
       },
       ...extraOptions,
@@ -1553,24 +1581,25 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
   };
 }
 
-function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
-  const affordable = socialBattery.canAfford(20);
+// "Talk" opens a category menu first (Small Talk always, Personal once
+// unlocked at Acquaintance+) — locked categories are omitted entirely
+// rather than shown disabled, same treatment the spec calls for once
+// Flirty exists.
+function buildDialogueTalkCategories(npc: NpcDef): DialogueData {
+  const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  const categories: { id: TalkCategory; label: string }[] = [{ id: "smalltalk", label: "Small Talk" }];
+  if (isCategoryUnlocked("personal", tier)) categories.push({ id: "personal", label: "Personal" });
   return {
     portrait: npc.portrait,
     name: npc.name,
     text: `Social Battery: ${socialBattery.remaining}/100`,
     options: [
-      ...TALK_TOPICS.map((topic) => ({
-        id: topic.id,
-        label: topic.label,
-        costLabel: "20 SB",
-        disabled: !affordable,
+      ...categories.map((c) => ({
+        id: c.id,
+        label: c.label,
         onSelect: () => {
-          if (!socialBattery.spend(20)) return;
-          const reaction = npc.topicReactions[topic.id];
-          bumpRelationship(npc.id, REACTION_DELTA[reaction]);
-          lastTalkLine = pickResponseLine(topic.id, reaction);
-          dialogueView = "talk-response";
+          activeCategory = c.id;
+          dialogueView = "talk-topics";
         },
       })),
       {
@@ -1584,11 +1613,44 @@ function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
   };
 }
 
+function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
+  const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  const topics: TalkTopicDef[] = activeCategory === "personal" ? npc.personalTopics : npc.smallTalkTopics;
+  const affordable = socialBattery.canAfford(20);
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Social Battery: ${socialBattery.remaining}/100`,
+    options: [
+      ...topics.map((topic) => ({
+        id: topic.id,
+        label: topic.label,
+        costLabel: "20 SB",
+        disabled: !affordable,
+        onSelect: () => {
+          if (!socialBattery.spend(20)) return;
+          const delta = getTopicDelta(topic, tier);
+          bumpRelationship(npc.id, delta);
+          lastTalkResult = formatTopicResult(delta);
+          dialogueView = "talk-response";
+        },
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "talk-categories";
+        },
+      },
+    ],
+  };
+}
+
 function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
     name: npc.name,
-    text: lastTalkLine,
+    text: lastTalkResult,
     options: [
       {
         id: "continue",
@@ -1604,7 +1666,9 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
 function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
   activeNpc = npc;
   dialogueView = "main";
+  activeCategory = null;
   dialogueBox.open(() => {
+    if (dialogueView === "talk-categories") return buildDialogueTalkCategories(activeNpc!);
     if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
     return buildDialogueMain(activeNpc!, extraOptions);
