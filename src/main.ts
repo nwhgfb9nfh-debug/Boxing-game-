@@ -2761,7 +2761,12 @@ function advanceOvernightCommute() {
 }
 
 function computeStationsFor(buildingName: string): Station[] {
-  const base = STATIONS_BY_BUILDING[buildingName] ?? [];
+  let base = STATIONS_BY_BUILDING[buildingName] ?? [];
+  // Her marker shouldn't just be non-interactive while she's away — it
+  // shouldn't be there to look confusingly clickable in the first place.
+  if (buildingName === "Office" && isNpcAwayFromOffice("priya")) {
+    base = base.filter((s) => s.id !== "reception-priya");
+  }
   const meetupStation = getActiveMeetupStation(buildingName);
   return meetupStation ? [...base, meetupStation] : base;
 }
@@ -2948,11 +2953,11 @@ function loop(now: number) {
         scene = {
           type: "interior",
           lot,
-          interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Office, undefined, OFFICE_DECORATIONS),
+          interior: new InteriorScene(lot, computeStationsFor("Office"), undefined, OFFICE_DECORATIONS),
         };
       } else if (mallStore) {
         // Store rooms exit back to the Mall floor, not the street.
-        scene = { type: "interior", lot, interior: new InteriorScene(lot, STATIONS_BY_BUILDING.Mall) };
+        scene = { type: "interior", lot, interior: new InteriorScene(lot, computeStationsFor("Mall")) };
       } else {
         exitBuilding();
       }
