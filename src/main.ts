@@ -264,15 +264,16 @@ const phoneApi: PhoneApi = {
     if (!npc) return [];
     // Assigned by NPC type (romance-eligible vs. friend-only), not by
     // Dating status — flirty texting is itself one of the ways the
-    // Romance meter builds up in the first place.
-    return npc.romanceEligible ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
+    // Romance meter builds up in the first place. Married-elsewhere locks
+    // out the flirty variant same as the in-person Flirty category.
+    return npc.romanceEligible && !isRomanceLockedOut(npc) ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
   },
   sendTextTalk: (npcId, optionId) => {
     if (isNpcInCurrentBuilding(npcId)) return "She's right here — talk to her in person instead.";
     bumpRelationship(npcId, TEXT_TALK_DELTA);
     let resultText = formatTopicResult(TEXT_TALK_DELTA);
     const npc = getNpcById(npcId);
-    if (npc?.romanceEligible && optionId === "flirty") {
+    if (npc?.romanceEligible && !isRomanceLockedOut(npc) && optionId === "flirty") {
       bumpRomance(npcId, TEXT_TALK_ROMANCE_DELTA);
       resultText += ` / ${formatRomanceResult(TEXT_TALK_ROMANCE_DELTA)}`;
     }
@@ -287,12 +288,27 @@ const phoneApi: PhoneApi = {
   getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
+    // Married to her — she already lives at home, nothing left to arrange.
+    if (playerState.married[npcId]) {
+      return [
+        { id: "regular", label: "Regular Meetup", available: false, reason: "She lives with you now." },
+        ...(npc.romanceEligible
+          ? [{ id: "date" as MeetupType, label: "Date", available: false, reason: "She lives with you now." }]
+          : []),
+      ];
+    }
     const types: { id: MeetupType; label: string; available: boolean; reason?: string }[] = [
       { id: "regular", label: "Regular Meetup", available: true },
     ];
     if (npc.romanceEligible) {
-      const dating = !!playerState.dating[npcId];
-      types.push({ id: "date", label: "Date", available: dating, reason: dating ? undefined : "You're not dating yet." });
+      const lockedOut = isRomanceLockedOut(npc);
+      const dating = !lockedOut && !!playerState.dating[npcId];
+      types.push({
+        id: "date",
+        label: "Date",
+        available: dating,
+        reason: lockedOut ? "You're married." : dating ? undefined : "You're not dating yet.",
+      });
     }
     return types;
   },
@@ -1735,12 +1751,19 @@ function buildGymCategoryMenu(catId: GymCategory["id"], onBack: () => void): Men
 const EXCHANGE_NUMBER_COST = 30;
 const GIVE_GIFT_COST = 10;
 const ASK_HER_OUT_COST = 20; // not given an explicit number in the spec's Actions list — placeholder
+const PROPOSE_COST = 20; // same placeholder logic as Ask Her Out
 // "Meaningful relationship progress within Tier 3" (spec) — not just
 // entering Friend tier (score 50) — placeholder threshold, easy to retune.
 const PRIYA_EXCHANGE_THRESHOLD = 70;
 // Romance meter threshold for Ask Her Out to succeed — spec's own
 // placeholder value, "will be retuned once real gameplay testing begins."
 const PRIYA_ROMANCE_THRESHOLD = 5;
+// Marriage System (placeholders, same "retune after playtesting" spirit):
+// needs real Dates elsewhere, Close-tier Relationship, and a higher
+// Romance bar than Ask Her Out required.
+const PRIYA_PROPOSE_DATE_THRESHOLD = 4;
+const PRIYA_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const PRIYA_PROPOSE_ROMANCE_THRESHOLD = 15;
 
 const PRIYA_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier, score) => {
@@ -1766,6 +1789,16 @@ const PRIYA_ACTIONS: NpcActionRules = {
       return { success: true, message: "She smiles. \"Yeah — I'd like that.\"" };
     }
     return { success: false, message: '"...I don\'t think we\'re there yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= PRIYA_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= PRIYA_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= PRIYA_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: 'Her eyes well up. "...Yes. Yes, okay — yes."' };
+    }
+    return { success: false, message: '"...Too soon."' };
   },
 };
 
@@ -1854,8 +1887,9 @@ const CAROL_ACTIONS: NpcActionRules = {
     return { delta: 8, message: 'She lights up. "Oh, you shouldn\'t have!"' };
   },
   // Never actually reachable — Carol isn't romance-eligible, so Ask Her
-  // Out never appears in her Actions menu. Required by NpcActionRules.
+  // Out/Propose never appear in her Actions menu. Required by NpcActionRules.
   askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
 };
 
 const CAROL: NpcDef = {
@@ -1946,6 +1980,29 @@ function bumpRomance(npcId: string, delta: number) {
   playerState.romanceScores[npcId] = Math.max(0, getRomanceScore(npcId) + delta);
 }
 
+// Marriage System: monogamy — once married to anyone, every other
+// romance-eligible NPC becomes off-limits for Flirty/Date/Ask Her
+// Out/Propose (platonic Talk/Regular Meetups stay fine).
+function isPlayerMarried(): boolean {
+  return Object.values(playerState.married).some(Boolean);
+}
+function isRomanceLockedOut(npc: NpcDef): boolean {
+  return npc.romanceEligible && isPlayerMarried() && !playerState.married[npc.id];
+}
+
+// Marriage System: shared by both the regular Actions menu and the meetup
+// dialogue (Propose is allowed at her regular location OR on a date). Ring
+// is only spent on success — a "Too soon" decline costs nothing.
+function resolveProposeAttempt(npc: NpcDef): string {
+  const rules = npc.actions!;
+  const result = rules.propose(getRelationshipScore(npc.id), getRomanceScore(npc.id), playerState.dateCounts[npc.id] ?? 0);
+  if (result.success) {
+    playerState.ringsOwned -= 1;
+    playerState.married[npc.id] = true;
+  }
+  return result.message;
+}
+
 type DialogueView =
   | "main"
   | "talk-categories"
@@ -2031,7 +2088,11 @@ function buildDialogueTalkCategories(npc: NpcDef): DialogueData {
   if (isCategoryUnlocked("hearttoheart", tier, npc.romanceEligible)) {
     categories.push({ id: "hearttoheart", label: "Heart to Heart" });
   }
-  if (isCategoryUnlocked("flirty", tier, npc.romanceEligible)) categories.push({ id: "flirty", label: "Flirty" });
+  // Married to someone else — every other romance-eligible NPC loses
+  // Flirty entirely, not just Ask Her Out/Propose/Date.
+  if (isCategoryUnlocked("flirty", tier, npc.romanceEligible) && !isRomanceLockedOut(npc)) {
+    categories.push({ id: "flirty", label: "Flirty" });
+  }
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -2169,7 +2230,9 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
     name: npc.name,
-    text: `Energy: ${energy.remaining}/100  ·  Gifts owned: ${playerState.giftsOwned}`,
+    text: `Energy: ${energy.remaining}/100  ·  Gifts owned: ${playerState.giftsOwned}${
+      npc.romanceEligible && !isRomanceLockedOut(npc) ? `  ·  Rings owned: ${playerState.ringsOwned}` : ""
+    }`,
     options: [
       {
         id: "exchange-number",
@@ -2199,7 +2262,7 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
           dialogueView = "actions-response";
         },
       },
-      ...(npc.romanceEligible
+      ...(npc.romanceEligible && !isRomanceLockedOut(npc)
         ? [
             {
               id: "ask-her-out",
@@ -2211,6 +2274,28 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
                 const result = rules.askHerOut(getRomanceScore(npc.id));
                 if (result.success) playerState.dating[npc.id] = true;
                 lastActionResult = result.message;
+                dialogueView = "actions-response";
+              },
+            },
+            {
+              id: "propose",
+              label: "Propose",
+              costLabel: playerState.married[npc.id]
+                ? "MARRIED"
+                : !playerState.dating[npc.id]
+                  ? "NOT DATING"
+                  : playerState.ringsOwned <= 0
+                    ? "NO RING"
+                    : `${PROPOSE_COST} EN`,
+              disabled:
+                !!playerState.married[npc.id] ||
+                !playerState.dating[npc.id] ||
+                playerState.ringsOwned <= 0 ||
+                !energy.canAfford(PROPOSE_COST),
+              onSelect: () => {
+                if (playerState.married[npc.id] || !playerState.dating[npc.id] || playerState.ringsOwned <= 0) return;
+                if (!energy.spend(PROPOSE_COST)) return;
+                lastActionResult = resolveProposeAttempt(npc);
                 dialogueView = "actions-response";
               },
             },
@@ -2292,6 +2377,17 @@ let meetupConnectUsedThisVisit = false;
 let meetupGiftUsedThisVisit = false;
 let lastMeetupResult = "";
 let lastMeetupWasOvernight = false;
+// Marriage System: Propose is also allowed mid-meetup, not just from her
+// regular location's Actions menu. A success ends the visit outright (like
+// End Date) since there's nothing left to do — she's moving in.
+let lastMeetupWasMarried = false;
+
+function resolveMeetupProposePick(npc: NpcDef) {
+  lastMeetupWasOvernight = false;
+  lastMeetupResult = resolveProposeAttempt(npc);
+  lastMeetupWasMarried = !!playerState.married[npc.id];
+  meetupDialogueView = "response";
+}
 
 function resolveConnectPick(npc: NpcDef, location: MeetupLocationId, type: MeetupType, option: MeetupOptionDef) {
   meetupConnectUsedThisVisit = true;
@@ -2367,6 +2463,16 @@ function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
       onSelect: () => resolveGiftPick(npc, type),
     });
   }
+  if (npc.romanceEligible && playerState.dating[npc.id] && !playerState.married[npc.id] && !isRomanceLockedOut(npc)) {
+    const hasRing = playerState.ringsOwned > 0;
+    options.push({
+      id: "propose",
+      label: "Propose",
+      costLabel: hasRing ? undefined : "NO RING",
+      disabled: !hasRing,
+      onSelect: () => resolveMeetupProposePick(npc),
+    });
+  }
   options.push({
     id: "end",
     label: type === "date" ? "End Date" : "End Meetup",
@@ -2427,6 +2533,14 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
             if (scene.type === "interior") {
               scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
             }
+          } else if (lastMeetupWasMarried) {
+            // She just said yes — nothing left to do at this visit. Ends the
+            // meetup outright, same as a normal End Date, with no penalty.
+            playerState.activeMeetup = null;
+            meetupConnectUsedThisVisit = false;
+            meetupGiftUsedThisVisit = false;
+            dialogueBox.close();
+            exitBuilding();
           } else {
             meetupDialogueView = "main";
           }
@@ -2714,25 +2828,43 @@ function openClothesMenu() {
 const GIFT_OPTIONS: ShopItem[] = [
   { id: "flowers", name: "Flowers", price: 50 },
   { id: "jewelry", name: "Jewelry", price: 500 },
-  { id: "ring", name: "Ring", price: 3000 },
 ];
+const RING_PRICE = 3000;
 
 function openGiftShopMenu() {
   locationMenu.open(() => ({
     title: "🎁 Gift Shop",
-    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${playerState.giftsOwned}`,
-    actions: GIFT_OPTIONS.map((g) => ({
-      id: g.id,
-      label: g.name,
-      cost: 0,
-      costLabel: `$${g.price}`,
-      run: () => {
-        if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
-        playerState.money -= g.price;
-        playerState.giftsOwned += 1;
-        return `Bought ${g.name}! (Give it to someone once the NPC/romance system exists.)`;
+    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${playerState.giftsOwned}  ·  Rings owned: ${playerState.ringsOwned}`,
+    actions: [
+      ...GIFT_OPTIONS.map((g) => ({
+        id: g.id,
+        label: g.name,
+        cost: 0,
+        costLabel: `$${g.price}`,
+        run: () => {
+          if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
+          playerState.money -= g.price;
+          playerState.giftsOwned += 1;
+          return `Bought ${g.name}!`;
+        },
+      })),
+      {
+        id: "ring",
+        // Kept separate from the generic Gifts count — an Engagement Ring
+        // is reserved for Propose, not the flat Give a Gift action.
+        label: "Engagement Ring",
+        cost: 0,
+        costLabel: `$${RING_PRICE}`,
+        run: () => {
+          if (playerState.money < RING_PRICE) {
+            return `Not enough money — need $${RING_PRICE}, have $${playerState.money}.`;
+          }
+          playerState.money -= RING_PRICE;
+          playerState.ringsOwned += 1;
+          return "Bought an Engagement Ring!";
+        },
       },
-    })),
+    ],
   }));
 }
 
@@ -2926,11 +3058,23 @@ function getActiveMeetupStation(buildingName: string): Station | null {
   return null;
 }
 
+// Marriage System: once accepted, she permanently lives at home instead of
+// her old station — this is the station that replaces "meetup-npc"/her
+// regular-location station for good, in every house the player owns.
+function getSpouseStation(buildingName: string): Station | null {
+  if (!HOUSE_NAMES.has(buildingName)) return null;
+  const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+  if (!spouseId) return null;
+  const npc = getNpcById(spouseId);
+  return npc ? { id: "spouse-npc", label: npc.name, kind: "npc", nx: 0.75, ny: 0.3 } : null;
+}
+
 // True while an NPC is away from her normal Office spot — either because
 // a meetup's been arranged elsewhere and not yet fulfilled, or she's
 // mid-commute after an Overnight Stay (still asleep at home, or on her
 // way in but not yet arrived — see advanceOvernightCommute).
 function isNpcAwayFromOffice(npcId: string): boolean {
+  if (playerState.married[npcId]) return true; // permanent — she's moved out for good
   if (playerState.activeMeetup?.npcId === npcId) return true;
   const step = playerState.overnightCommuteStep[npcId];
   return step !== undefined && step < 2;
@@ -2956,6 +3100,8 @@ function computeStationsFor(buildingName: string): Station[] {
   if (buildingName === "Office" && isNpcAwayFromOffice("priya")) {
     base = base.filter((s) => s.id !== "reception-priya");
   }
+  const spouseStation = getSpouseStation(buildingName);
+  if (spouseStation) return [...base, spouseStation];
   const meetupStation = getActiveMeetupStation(buildingName);
   return meetupStation ? [...base, meetupStation] : base;
 }
@@ -3215,6 +3361,11 @@ function loop(now: number) {
       }
       else if (nearStation.id === "overnight-guest") {
         onTrigger = () => buildingUI.showToast("She's still asleep — let her rest.", pos, "bottom");
+      }
+      else if (nearStation.id === "spouse-npc") {
+        const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+        const spouse = spouseId ? getNpcById(spouseId) : undefined;
+        onTrigger = spouse ? () => openNpcDialogue(spouse) : () => {};
       }
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;

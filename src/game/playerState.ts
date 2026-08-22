@@ -116,6 +116,9 @@ export interface PlayerState {
   vehicleOwned: string | null;
   petOwned: string | null;
   giftsOwned: number;
+  // Marriage System: bought separately from generic Gifts — reserved for
+  // Propose, not the flat Give a Gift action.
+  ringsOwned: number;
   // Phone app feeds (Section 5).
   buzzerHistory: BuzzerPostRecord[]; // newest first, capped at BUZZER_HISTORY_LIMIT
   availablePhotos: Photo[]; // taken but not yet posted to Imagestar
@@ -132,6 +135,11 @@ export interface PlayerState {
   // NPC id. Unlocks "Date" as a Meetup type going forward — does not
   // itself schedule anything.
   dating: Record<string, boolean>;
+  // Marriage System: set permanently once a Propose succeeds, keyed by
+  // NPC id. She leaves her regular location for good and appears at the
+  // player's home instead — every other romance-eligible NPC becomes
+  // off-limits for Flirty/Dating while any entry here is true.
+  married: Record<string, boolean>;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
   // once successful, keyed by NPC id — unlocks the Contacts app + Phone
   // meetups for that NPC.
@@ -193,12 +201,14 @@ export function createPlayerState(): PlayerState {
     vehicleOwned: null,
     petOwned: null,
     giftsOwned: 0,
+    ringsOwned: 0,
     buzzerHistory: [],
     availablePhotos: [],
     imagestarPosts: [],
     contacts: {},
     romanceScores: {},
     dating: {},
+    married: {},
     exchangedNumbers: {},
     dateCounts: {},
     overnightCommuteStep: {},

@@ -55,15 +55,24 @@ export interface AskHerOutResult {
   message: string;
 }
 
-// Exchange Number/Give a Gift/Ask Her Out outcomes are bespoke per NPC
-// (success conditions, reaction flavor), not a generic ratings table like
-// Talk topics — each written NPC supplies her own rules.
+export interface ProposeResult {
+  success: boolean;
+  message: string;
+}
+
+// Exchange Number/Give a Gift/Ask Her Out/Propose outcomes are bespoke per
+// NPC (success conditions, reaction flavor), not a generic ratings table
+// like Talk topics — each written NPC supplies her own rules.
 export interface NpcActionRules {
   exchangeNumber: (tier: RelationshipTier, score: number) => ExchangeNumberResult;
   giftReaction: (tier: RelationshipTier) => GiftResult;
   // Only ever called for romance-eligible NPCs. romanceScore is the
   // player's current Romance meter value with her.
   askHerOut: (romanceScore: number) => AskHerOutResult;
+  // Marriage System: only ever called for romance-eligible NPCs who are
+  // already Dating. No penalty on failure ("Too soon") — the ring isn't
+  // consumed unless she says yes.
+  propose: (relationshipScore: number, romanceScore: number, dateCount: number) => ProposeResult;
 }
 
 export interface NpcDef {
