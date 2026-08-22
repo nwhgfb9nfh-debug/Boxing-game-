@@ -165,6 +165,14 @@ function getBedLock(): string | null {
   if (stage.type === "fight") {
     return "You can't sleep through fight night — head to the Arena.";
   }
+  // Sleeping through a Meetup/Date she's actually present for (not just
+  // arranged-but-unvisited elsewhere) would advance the whole phase with
+  // her mid-visit — end it first instead (Overnight Stay is the one
+  // meetup option that's SUPPOSED to advance the phase).
+  if (playerState.activeMeetup && scene.type === "interior" && scene.interior.hasStation("meetup-npc")) {
+    const label = playerState.activeMeetup.type === "date" ? "Date" : "Meetup";
+    return `You're in the middle of a ${label} — end it before you sleep.`;
+  }
   return null;
 }
 
