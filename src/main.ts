@@ -2028,8 +2028,38 @@ function resolveProposeAttempt(npc: NpcDef): string {
   if (result.success) {
     playerState.giftInventory.ring = getGiftCount("ring") - 1;
     playerState.married[npc.id] = true;
+    // She brings any kid(s) she already had straight in with her, the day
+    // she moves in — future ones (see checkForNewKids) count from here.
+    playerState.kidsAtHome[npc.id] = npc.familyInfo?.kidsHas ?? 0;
+    playerState.marriageCampNumber[npc.id] = campCycle.campNumber;
   }
   return result.message;
+}
+
+// Marriage System: called whenever a full camp cycle just completed (the
+// game just wrapped back to "No Fight Scheduled") — one new kid arrives
+// per married NPC for every 3 full cycles since the wedding, up to her
+// familyInfo.kidsWants total. Returns a flavor line per NPC who just had
+// one, for the caller to fold into its own toast/message.
+function checkForNewKids(): string[] {
+  const messages: string[] = [];
+  for (const npcId of Object.keys(playerState.married)) {
+    if (!playerState.married[npcId]) continue;
+    const npc = getNpcById(npcId);
+    const info = npc?.familyInfo;
+    if (!npc || !info) continue;
+    const baseline = playerState.marriageCampNumber[npcId] ?? campCycle.campNumber;
+    const elapsedCycles = campCycle.campNumber - baseline;
+    const wantedFromUnion = Math.max(0, info.kidsWants - info.kidsHas);
+    const dueFromUnion = Math.min(Math.floor(elapsedCycles / 3), wantedFromUnion);
+    const bornFromUnionSoFar = Math.max(0, (playerState.kidsAtHome[npcId] ?? info.kidsHas) - info.kidsHas);
+    if (dueFromUnion > bornFromUnionSoFar) {
+      const total = info.kidsHas + dueFromUnion;
+      playerState.kidsAtHome[npcId] = total;
+      messages.push(`👶 ${npc.name} welcomes a new baby! You two now have ${total} kid${total === 1 ? "" : "s"}.`);
+    }
+  }
+  return messages;
 }
 
 type DialogueView =
@@ -2083,10 +2113,16 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
     }
     return npc.greetings[tier];
   })();
+  // Marriage System: a persistent, always-visible readout of how many
+  // kids you two have so far, out of how many she wants total.
+  const kidsNote =
+    playerState.married[npc.id] && npc.familyInfo
+      ? ` (Kids: ${playerState.kidsAtHome[npc.id] ?? npc.familyInfo.kidsHas}/${npc.familyInfo.kidsWants})`
+      : "";
   return {
     portrait: npc.portrait,
     name: npc.name,
-    text: greeting,
+    text: greeting + kidsNote,
     options: [
       {
         id: "talk",
@@ -2785,14 +2821,18 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
   // A fresh camp starts back at "No Fight Scheduled" — clear last camp's fight state.
+  let kidMessages: string[] = [];
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
     playerState.fightInvites = {};
+    kidMessages = checkForNewKids();
   }
 
   buildingUI.showToast(
-    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${useBonus ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.`,
+    `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${useBonus ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.${
+      kidMessages.length ? " " + kidMessages.join(" ") : ""
+    }`,
     anchor,
     "bottom",
   );
@@ -2818,17 +2858,21 @@ function resolveOvernightStay(npcId: string): string {
   socialBattery.reset();
   playerState.overnightCommuteStep = {};
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
+  let kidMessages: string[] = [];
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
     playerState.fightInvites = {};
+    kidMessages = checkForNewKids();
   }
   // Asleep at home — see advanceOvernightCommute for how this counts back
   // up to normal as the player enters buildings afterward.
   playerState.overnightCommuteStep[npcId] = 0;
   bumpRomance(npcId, MEETUP_CONNECT_DELTA);
 
-  return `You wake up together the next morning. Next: ${nextStage.label}. (${formatRomanceResult(MEETUP_CONNECT_DELTA)})`;
+  return `You wake up together the next morning. Next: ${nextStage.label}. (${formatRomanceResult(MEETUP_CONNECT_DELTA)})${
+    kidMessages.length ? " " + kidMessages.join(" ") : ""
+  }`;
 }
 
 // Airport (Section 5): "Go on Vacation" — $1000, only available right

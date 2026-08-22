@@ -146,6 +146,15 @@ export interface PlayerState {
   // player's home instead — every other romance-eligible NPC becomes
   // off-limits for Flirty/Dating while any entry here is true.
   married: Record<string, boolean>;
+  // Marriage System: kids currently living at home with a married NPC,
+  // keyed by NPC id. Set to her familyInfo.kidsHas the moment she moves
+  // in (any she already had come with her), then grows on its own every
+  // 3 full camp cycles after the marriage — see checkForNewKids — capped
+  // at her familyInfo.kidsWants total.
+  kidsAtHome: Record<string, number>;
+  // Marriage System: the CampCycle.campNumber value at the moment she
+  // married the player — the baseline "3 full cycles" counts from.
+  marriageCampNumber: Record<string, number>;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
   // once successful, keyed by NPC id — unlocks the Contacts app + Phone
   // meetups for that NPC.
@@ -215,6 +224,8 @@ export function createPlayerState(): PlayerState {
     romanceScores: {},
     dating: {},
     married: {},
+    kidsAtHome: {},
+    marriageCampNumber: {},
     exchangedNumbers: {},
     dateCounts: {},
     overnightCommuteStep: {},
