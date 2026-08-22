@@ -322,8 +322,19 @@ export const MEETUP_LOCATIONS: MeetupLocationDef[] = [
       { id: "hold-hand", label: "Hold Hand" },
     ],
   },
+  {
+    id: "beach",
+    label: "Beach",
+    // Regular Meetup not yet designed per spec.
+    regularGeneral: [],
+    dateConnect: [
+      { id: "sunset", label: "Watch the Sunset Together" },
+      { id: "compliment", label: "Compliment Her" },
+      { id: "deep-talk", label: "Deep Talk" },
+      { id: "hold-hand", label: "Hold Hand" },
+    ],
+  },
   // Not yet designed per spec.
-  { id: "beach", label: "Beach", regularGeneral: [], dateConnect: [] },
   { id: "lounge", label: "Lounge", regularGeneral: [], dateConnect: [] },
 ];
 
