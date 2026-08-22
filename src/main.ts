@@ -3713,12 +3713,13 @@ function getChildStations(buildingName: string): Station[] {
 // mid-commute after an Overnight Stay (still asleep at home, or on her
 // way in but not yet arrived — see advanceOvernightCommute).
 // Lobby Wanderer: Derek isn't fixed to the desk like the receptionists —
-// he's only actually around during 3 of the camp's stages ("No Fight
-// Scheduled" plus both Private Life stages), wandering-cast rather than
-// permanent. Shared by his station and the Text/Meetup presence check.
+// wandering-cast rather than permanent. Content is only being designed
+// for "No Fight Scheduled" right now, so this only covers that phase for
+// now; his other 2 phases (spec: "3 camp cycle phases including Phase 1")
+// get decided once Training 1 and onward are actually being designed.
+// Shared by his station and the Text/Meetup presence check.
 function isDerekPresentThisPhase(): boolean {
-  const stage = campCycle.current.type;
-  return stage === "nofight" || stage === "privatelife";
+  return campCycle.current.type === "nofight";
 }
 
 function isNpcAwayFromOffice(npcId: string): boolean {
