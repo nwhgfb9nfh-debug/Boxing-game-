@@ -311,7 +311,13 @@ const phoneApi: PhoneApi = {
         id: "date",
         label: "Date",
         available: dating,
-        reason: lockedOut ? "You're married." : dating ? undefined : "You're not dating yet.",
+        reason: lockedOut
+          ? "You're married."
+          : playerState.romanceEnded[npcId]
+            ? "It's over."
+            : dating
+              ? undefined
+              : "You're not dating yet.",
       });
     }
     return types;
@@ -2180,6 +2186,8 @@ type DialogueView =
   | "actions"
   | "actions-gift-picker"
   | "actions-propose-confirm"
+  | "actions-breakup-confirm"
+  | "actions-divorce-confirm"
   | "actions-response"
   | "not-written";
 let dialogueView: DialogueView = "main";
@@ -2509,7 +2517,6 @@ function buildMarriedHomeActions(npc: NpcDef): DialogueData {
           dialogueView = "actions-response";
         },
       },
-      buildInviteToFightOption(npc),
       {
         id: "have-drink",
         label: "Have a Drink Together",
@@ -2520,6 +2527,13 @@ function buildMarriedHomeActions(npc: NpcDef): DialogueData {
           bumpRelationship(npc.id, HAVE_DRINK_DELTA);
           lastActionResult = `You two unwind together after a long day. (${formatTopicResult(HAVE_DRINK_DELTA)})`;
           dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "divorce",
+        label: "Divorce",
+        onSelect: () => {
+          dialogueView = "actions-divorce-confirm";
         },
       },
       {
@@ -2579,14 +2593,35 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
             {
               id: "ask-her-out",
               label: "Ask Her Out",
-              costLabel: playerState.dating[npc.id] ? "DATING" : `${ASK_HER_OUT_COST} EN`,
-              disabled: !!playerState.dating[npc.id] || !energy.canAfford(ASK_HER_OUT_COST),
+              costLabel: playerState.romanceEnded[npc.id]
+                ? "OVER"
+                : playerState.dating[npc.id]
+                  ? "DATING"
+                  : `${ASK_HER_OUT_COST} EN`,
+              disabled:
+                !!playerState.romanceEnded[npc.id] ||
+                !!playerState.dating[npc.id] ||
+                !energy.canAfford(ASK_HER_OUT_COST),
               onSelect: () => {
-                if (playerState.dating[npc.id] || !energy.spend(ASK_HER_OUT_COST)) return;
+                if (playerState.romanceEnded[npc.id] || playerState.dating[npc.id] || !energy.spend(ASK_HER_OUT_COST))
+                  return;
                 const result = rules.askHerOut(getRomanceScore(npc.id));
                 if (result.success) playerState.dating[npc.id] = true;
                 lastActionResult = result.message;
                 dialogueView = "actions-response";
+              },
+            },
+          ]
+        : []),
+      // Break Up: only ever shown while actually Dating her — unlike every
+      // other Action here, it's not visible before that at all.
+      ...(playerState.dating[npc.id]
+        ? [
+            {
+              id: "break-up",
+              label: "Break Up",
+              onSelect: () => {
+                dialogueView = "actions-breakup-confirm";
               },
             },
           ]
@@ -2671,6 +2706,77 @@ function buildDialogueActionsProposeConfirm(npc: NpcDef): DialogueData {
   };
 }
 
+// Romance System's terminal state: no negotiation, no negative
+// consequence beyond the permanent lock itself — "Are you sure? You
+// won't be able to date her again" either way.
+function buildDialogueActionsBreakupConfirm(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: "Are you sure? You won't be able to date her again.",
+    options: [
+      {
+        id: "yes",
+        label: "Yes",
+        onSelect: () => {
+          playerState.dating[npc.id] = false;
+          playerState.romanceEnded[npc.id] = true;
+          lastActionResult = `You and ${npc.name} have broken up.`;
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "no",
+        label: "No",
+        onSelect: () => {
+          dialogueView = "actions";
+        },
+      },
+    ],
+  };
+}
+
+function buildDialogueActionsDivorceConfirm(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: "Are you sure? You won't be able to date her again.",
+    options: [
+      {
+        id: "yes",
+        label: "Yes",
+        onSelect: () => {
+          const kidCount = playerState.children[npc.id]?.length ?? 0;
+          playerState.married[npc.id] = false;
+          playerState.dating[npc.id] = false;
+          playerState.romanceEnded[npc.id] = true;
+          delete playerState.children[npc.id];
+          delete playerState.marriageCampNumber[npc.id];
+          if (kidCount > 0) {
+            playerState.divorceChildSupportPercent += kidCount * 10;
+          }
+          lastActionResult =
+            `The divorce is final. ${npc.name} and the kids are gone for good.` +
+            (kidCount > 0
+              ? ` You now owe ${playerState.divorceChildSupportPercent}% of every future Purse in child support.`
+              : "");
+          dialogueView = "actions-response";
+          if (scene.type === "interior") {
+            scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+          }
+        },
+      },
+      {
+        id: "no",
+        label: "No",
+        onSelect: () => {
+          dialogueView = "actions";
+        },
+      },
+    ],
+  };
+}
+
 function buildDialogueActionsResponse(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
@@ -2719,6 +2825,8 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
     if (dialogueView === "actions") return buildDialogueActions(activeNpc!);
     if (dialogueView === "actions-gift-picker") return buildDialogueActionsGiftPicker(activeNpc!);
     if (dialogueView === "actions-propose-confirm") return buildDialogueActionsProposeConfirm(activeNpc!);
+    if (dialogueView === "actions-breakup-confirm") return buildDialogueActionsBreakupConfirm(activeNpc!);
+    if (dialogueView === "actions-divorce-confirm") return buildDialogueActionsDivorceConfirm(activeNpc!);
     if (dialogueView === "actions-response") return buildDialogueActionsResponse(activeNpc!);
     if (dialogueView === "not-written") return buildDialogueNotWritten(activeNpc!);
     return buildDialogueMain(activeNpc!, extraOptions);

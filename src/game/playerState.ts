@@ -151,6 +151,11 @@ export interface PlayerState {
   // NPC id. Unlocks "Date" as a Meetup type going forward — does not
   // itself schedule anything.
   dating: Record<string, boolean>;
+  // Romance System: set permanently once Break Up or Divorce is confirmed
+  // for this NPC, keyed by NPC id — blocks "Ask Her Out" (and
+  // transitively "Propose", which requires Dating first) from ever
+  // succeeding for her again. The romance system's terminal state.
+  romanceEnded: Record<string, boolean>;
   // Marriage System: set permanently once a Propose succeeds, keyed by
   // NPC id. She leaves her regular location for good and appears at the
   // player's home instead — every other romance-eligible NPC becomes
@@ -166,6 +171,13 @@ export interface PlayerState {
   // Marriage System: the CampCycle.campNumber value at the moment she
   // married the player — the baseline "3 full cycles" counts from.
   marriageCampNumber: Record<string, number>;
+  // Marriage System: cumulative % of every future fight's Purse owed in
+  // child support from past divorces — 10% per child from that marriage,
+  // permanent and stacking across every divorce over a career (2 kids =
+  // +20%, etc.). Inert until a real Fight/Purse payout system exists to
+  // actually apply it — same "placeholder, not wired up yet" status as
+  // purseMultiplier above.
+  divorceChildSupportPercent: number;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
   // once successful, keyed by NPC id — unlocks the Contacts app + Phone
   // meetups for that NPC.
@@ -234,9 +246,11 @@ export function createPlayerState(): PlayerState {
     contacts: {},
     romanceScores: {},
     dating: {},
+    romanceEnded: {},
     married: {},
     children: {},
     marriageCampNumber: {},
+    divorceChildSupportPercent: 0,
     exchangedNumbers: {},
     dateCounts: {},
     overnightCommuteStep: {},
