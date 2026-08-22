@@ -2280,11 +2280,12 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
 
 // Meetup System (v4): the in-person side of an arranged Regular Meetup or
 // Date. She stays visible in the scene for the whole visit — picking an
-// option doesn't end it. Connect (Regular's 4 General options shown
-// directly; Date's own 4-option boldness scale behind a "Connect" button)
-// and Give a Gift are each single-use per visit; the visit itself only
-// ends via "End Meetup"/"End Date" or a confirmed door-exit (see
-// openEndMeetupConfirm) — both routed through endMeetupVisit.
+// option doesn't end it. Both types show the same "Connect" button,
+// leading to that type's own 4-option list (Regular's General options or
+// Date's boldness scale). Connect and Give a Gift are each single-use per
+// visit; the visit itself only ends via "End Meetup"/"End Date" or a
+// confirmed door-exit (see openEndMeetupConfirm) — both routed through
+// endMeetupVisit.
 type MeetupDialogueView = "main" | "connect-options" | "response";
 let meetupDialogueView: MeetupDialogueView = "main";
 let meetupConnectUsedThisVisit = false;
@@ -2341,30 +2342,21 @@ function endMeetupVisit() {
   exitBuilding();
 }
 
-function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId, type: MeetupType): DialogueData {
-  const loc = getMeetupLocation(location);
-  const connectOptions = type === "date" ? loc.dateConnect : loc.regularGeneral;
+function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
   const hasGift = playerState.giftsOwned > 0;
   const options: DialogueOption[] = [];
 
   if (!meetupConnectUsedThisVisit) {
-    if (type === "date") {
-      // Named "Connect," not "Talk" — Date options include physical
-      // actions, not just conversation.
-      options.push({
-        id: "connect",
-        label: "Connect",
-        onSelect: () => {
-          meetupDialogueView = "connect-options";
-        },
-      });
-    } else {
-      // Regular Meetup shows its 4 General options directly, no wrapper
-      // button — but picking any one still uses up the same Connect slot.
-      for (const o of connectOptions) {
-        options.push({ id: o.id, label: o.label, onSelect: () => resolveConnectPick(npc, location, type, o) });
-      }
-    }
+    // Same "Connect" button either way, leading to that type's 4-option
+    // list — Regular's General options and Date's boldness scale are both
+    // reached the same way, just with different content underneath.
+    options.push({
+      id: "connect",
+      label: "Connect",
+      onSelect: () => {
+        meetupDialogueView = "connect-options";
+      },
+    });
   }
   if (!meetupGiftUsedThisVisit) {
     options.push({
@@ -2392,12 +2384,13 @@ function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId, type: 
 
 function buildMeetupDialogueConnectOptions(npc: NpcDef, location: MeetupLocationId, type: MeetupType): DialogueData {
   const loc = getMeetupLocation(location);
+  const connectOptions = type === "date" ? loc.dateConnect : loc.regularGeneral;
   return {
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     options: [
-      ...loc.dateConnect.map((o) => ({
+      ...connectOptions.map((o) => ({
         id: o.id,
         label: o.label,
         onSelect: () => resolveConnectPick(npc, location, type, o),
@@ -2448,7 +2441,7 @@ function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId, type: Meetu
   dialogueBox.open(() => {
     if (meetupDialogueView === "connect-options") return buildMeetupDialogueConnectOptions(npc, location, type);
     if (meetupDialogueView === "response") return buildMeetupDialogueResponse(npc);
-    return buildMeetupDialogueMain(npc, location, type);
+    return buildMeetupDialogueMain(npc, type);
   });
 }
 
@@ -3157,8 +3150,12 @@ function loop(now: number) {
       } else if (mallStore) {
         // Store rooms exit back to the Mall floor, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, computeStationsFor("Mall")) };
-      } else if (playerState.activeMeetup && MEETUP_LOCATION_BUILDING[playerState.activeMeetup.location](lot.building.name)) {
-        // Walking to the door mid-meetup doesn't exit on its own — confirm
+      } else if (playerState.activeMeetup && interior.hasStation("meetup-npc")) {
+        // Checks the room's own station list (fixed at entry), not just
+        // whether a meetup's arranged — an arranged-but-not-yet-visited
+        // meetup shouldn't trigger this if the player never left and came
+        // back since arranging it (she isn't actually here yet).
+        // Walking to the door mid-visit doesn't exit on its own — confirm
         // first (only once per approach, not every frame standing here).
         if (!doorConfirmShown) {
           doorConfirmShown = true;

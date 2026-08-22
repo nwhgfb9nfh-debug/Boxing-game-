@@ -99,6 +99,11 @@ export class InteriorScene {
     this.decorations = decorations;
   }
 
+  /** Whether this room's station list (fixed at construction) includes the given id. */
+  hasStation(id: string): boolean {
+    return this.stations.some((s) => s.id === id);
+  }
+
   private roomBounds(width: number, height: number) {
     return {
       left: MARGIN_SIDE,
