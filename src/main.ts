@@ -516,6 +516,36 @@ function openDebugMenu() {
           return "";
         },
       },
+      {
+        // Fast-forwards a FULL lap of CAMP_SEQUENCE back to "No Fight
+        // Scheduled" — unlike jumping to an individual stage below (which
+        // uses jumpTo and never touches campNumber), this goes through
+        // campCycle.advance() same as a real sleep, so campNumber actually
+        // increments and the same "camp just wrapped" checks run (fight
+        // state reset, Kids System's checkForNewKids) — the fast way to
+        // test anything gated on full cycles completing.
+        id: "next-camp",
+        label: "⏭ Jump to Next Camp",
+        cost: 0,
+        costLabel: "GO",
+        run: () => {
+          let stage = campCycle.current;
+          do {
+            stage = campCycle.advance();
+          } while (stage.type !== "nofight");
+          playerState.fightScheduled = false;
+          playerState.cashAdvanceTaken = false;
+          playerState.fightInvites = {};
+          usedThisPhase.clear();
+          socialBattery.reset();
+          playerState.overnightCommuteStep = {};
+          energy.sleep(MAX_ENERGY);
+          const kidMessages = checkForNewKids();
+          return `Jumped to Camp ${campCycle.campNumber} — ${stage.label}.${
+            kidMessages.length ? " " + kidMessages.join(" ") : ""
+          }`;
+        },
+      },
       ...CAMP_SEQUENCE.map((stage, i) => ({ stage, i }))
         .filter(({ stage }) => stage.type !== "afterfight")
         .map(({ stage, i }) => {
