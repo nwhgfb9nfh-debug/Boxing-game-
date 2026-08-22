@@ -250,7 +250,9 @@ const phoneApi: PhoneApi = {
     return `Posted! Image +3 (now ${playerState.image}).`;
   },
   getContacts: () => {
-    return ALL_NPCS.filter((npc) => playerState.exchangedNumbers[npc.id]).map((npc) => {
+    // Divorce: she's gone from the game entirely — no Contacts entry, no
+    // Text/Meetup reachability, nothing.
+    return ALL_NPCS.filter((npc) => playerState.exchangedNumbers[npc.id] && !playerState.divorced[npc.id]).map((npc) => {
       const score = getRelationshipScore(npc.id);
       const tier = getRelationshipTier(score);
       return {
@@ -311,10 +313,10 @@ const phoneApi: PhoneApi = {
         id: "date",
         label: "Date",
         available: dating,
-        reason: lockedOut
-          ? "You're married."
-          : playerState.romanceEnded[npcId]
-            ? "It's over."
+        reason: playerState.romanceEnded[npcId]
+          ? "It's over."
+          : lockedOut
+            ? "You're married."
             : dating
               ? undefined
               : "You're not dating yet.",
@@ -2055,7 +2057,11 @@ function isPlayerMarried(): boolean {
   return Object.values(playerState.married).some(Boolean);
 }
 function isRomanceLockedOut(npc: NpcDef): boolean {
-  return npc.romanceEligible && isPlayerMarried() && !playerState.married[npc.id];
+  if (!npc.romanceEligible) return false;
+  // Break Up/Divorce: permanent, regardless of anyone's marriage status —
+  // she's a non-romance character from here on, same as a friend-only NPC.
+  if (playerState.romanceEnded[npc.id]) return true;
+  return isPlayerMarried() && !playerState.married[npc.id];
 }
 
 // Family System: 50/50 every time, independent per child.
@@ -2721,7 +2727,10 @@ function buildDialogueActionsBreakupConfirm(npc: NpcDef): DialogueData {
         onSelect: () => {
           playerState.dating[npc.id] = false;
           playerState.romanceEnded[npc.id] = true;
-          lastActionResult = `You and ${npc.name} have broken up.`;
+          // Relationship resets to 0 — she's a non-romance character from
+          // here on, same as any friend-only NPC. Rebuild it from scratch.
+          playerState.contacts[npc.id] = 0;
+          lastActionResult = `You and ${npc.name} have broken up. You're just friends now — back to square one.`;
           dialogueView = "actions-response";
         },
       },
@@ -2750,6 +2759,9 @@ function buildDialogueActionsDivorceConfirm(npc: NpcDef): DialogueData {
           playerState.married[npc.id] = false;
           playerState.dating[npc.id] = false;
           playerState.romanceEnded[npc.id] = true;
+          // She's gone from the game entirely — not just off the market
+          // like Break Up leaves her (see isNpcAwayFromOffice/getContacts).
+          playerState.divorced[npc.id] = true;
           delete playerState.children[npc.id];
           delete playerState.marriageCampNumber[npc.id];
           if (kidCount > 0) {
@@ -3619,6 +3631,7 @@ function getChildStations(buildingName: string): Station[] {
 // mid-commute after an Overnight Stay (still asleep at home, or on her
 // way in but not yet arrived — see advanceOvernightCommute).
 function isNpcAwayFromOffice(npcId: string): boolean {
+  if (playerState.divorced[npcId]) return true; // permanent — she's gone from the game for good
   if (playerState.married[npcId]) return true; // permanent — she's moved out for good
   if (playerState.activeMeetup?.npcId === npcId) return true;
   const step = playerState.overnightCommuteStep[npcId];

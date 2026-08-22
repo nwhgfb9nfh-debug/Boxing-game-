@@ -161,6 +161,11 @@ export interface PlayerState {
   // player's home instead — every other romance-eligible NPC becomes
   // off-limits for Flirty/Dating while any entry here is true.
   married: Record<string, boolean>;
+  // Marriage System: set permanently once Divorce is confirmed, keyed by
+  // NPC id — she disappears from the game entirely: no Office/Home
+  // station, no Contacts entry, no Text/Meetup reachability. Distinct
+  // from romanceEnded (Break Up alone keeps her around as a friend).
+  divorced: Record<string, boolean>;
   // Family System: actual children living at home, keyed by mother's NPC
   // id, in arrival order. Any she already had come along the moment she
   // moves in (see resolveProposeAttempt); each new one is appended by
@@ -248,6 +253,7 @@ export function createPlayerState(): PlayerState {
     dating: {},
     romanceEnded: {},
     married: {},
+    divorced: {},
     children: {},
     marriageCampNumber: {},
     divorceChildSupportPercent: 0,
