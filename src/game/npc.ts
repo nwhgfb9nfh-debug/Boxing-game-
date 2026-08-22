@@ -114,6 +114,11 @@ export interface NpcDef {
     kidsWants: number;
     revealTier: RelationshipTier;
   };
+  // "Invite to Next Fight" is otherwise available from Tier 1 for every
+  // NPC (Actions isn't tier-gated for visibility) — this lets a specific
+  // NPC (e.g. Derek) require real relationship progress first before he
+  // cares enough to show up. Omitted means no minimum.
+  inviteToFightMinTier?: RelationshipTier;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.
@@ -131,7 +136,7 @@ export function getRelationshipTier(score: number): RelationshipTier {
 }
 
 const TIER_ORDER: RelationshipTier[] = ["stranger", "acquaintance", "friend", "close"];
-function tierAtLeast(tier: RelationshipTier, min: RelationshipTier): boolean {
+export function tierAtLeast(tier: RelationshipTier, min: RelationshipTier): boolean {
   return TIER_ORDER.indexOf(tier) >= TIER_ORDER.indexOf(min);
 }
 

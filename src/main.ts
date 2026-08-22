@@ -17,7 +17,7 @@ import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
 import { SocialBattery } from "./game/socialBattery";
-import { PRIYA_PORTRAIT, CAROL_PORTRAIT } from "./assets/portraits";
+import { PRIYA_PORTRAIT, CAROL_PORTRAIT, DEREK_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
   type NpcActionRules,
@@ -25,6 +25,7 @@ import {
   type TalkTopicDef,
   type FlirtySubcategory,
   getRelationshipTier,
+  tierAtLeast,
   isCategoryUnlocked,
   getTopicDelta,
   formatTopicResult,
@@ -2005,10 +2006,80 @@ const CAROL: NpcDef = {
   actions: CAROL_ACTIONS,
 };
 
+// Same sub-threshold logic as Priya's Exchange Number — placeholder value,
+// easy to retune once real gameplay testing begins.
+const DEREK_EXCHANGE_THRESHOLD = 70;
+
+const DEREK_ACTIONS: NpcActionRules = {
+  // Doesn't hand out his number easily — fails outright before Tier 3,
+  // then needs real progress within it too.
+  exchangeNumber: (tier, score) => {
+    if (tier === "stranger" || tier === "acquaintance") {
+      return { success: false, delta: -5, message: '"Why would I give you that."' };
+    }
+    if (tier === "friend" && score < DEREK_EXCHANGE_THRESHOLD) {
+      return { success: false, delta: -5, message: '"Yeah, no."' };
+    }
+    return { success: true, delta: 10, message: 'He shrugs and rattles off his number. "Whatever."' };
+  },
+  // Rejected at every tier below Friend.
+  giftReaction: (tier) => {
+    if (tier === "stranger" || tier === "acquaintance") {
+      return { delta: -5, message: '"I don\'t want this." He hands it right back.' };
+    }
+    return { delta: 8, message: '"...Huh. Thanks, actually."' };
+  },
+  // Never actually reachable — Derek isn't romance-eligible, so Ask Her
+  // Out/Propose never appear in his Actions menu. Required by NpcActionRules.
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const DEREK: NpcDef = {
+  id: "derek",
+  name: "Derek Holloway",
+  portrait: DEREK_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "...Yeah?",
+    acquaintance: "Oh. It's you again.",
+    friend: "Hey. Slow day, as usual.",
+    close: "Hey man. Good to see a face that isn't a manager's.",
+  },
+  smallTalkTopics: [
+    // Flat dislikes — never warms, doesn't pretend otherwise.
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "negative", acquaintance: "negative", friend: "negative", close: "negative" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "negative", acquaintance: "negative", friend: "negative", close: "negative" } },
+    // Loves to vent about it — his one standout positive.
+    { id: "office", label: "The Office", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "negative", acquaintance: "negative", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" } },
+    // Stays flat — never warms, even close.
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "negative", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "neutral", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "negative", close: "neutral" } },
+    // His clear standout — matches his core trait.
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "negative", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: DEREK_ACTIONS,
+  // Doesn't care enough to show up before Tier 4 — genuinely doesn't give
+  // a damn until he actually does.
+  inviteToFightMinTier: "close",
+};
+
 // Registry of every dialogue-capable NPC — used by the Contacts app to look
 // up whoever has had their number exchanged, regardless of which building
 // they're physically found in.
-const ALL_NPCS: NpcDef[] = [PRIYA, CAROL];
+const ALL_NPCS: NpcDef[] = [PRIYA, CAROL, DEREK];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
 }
@@ -2019,6 +2090,7 @@ function getNpcById(id: string): NpcDef | undefined {
 const NPC_HOME_BUILDING: Record<string, string> = {
   priya: "Office",
   carol: "Office",
+  derek: "Office",
 };
 // True whenever she's actually physically standing in the room the player
 // is currently in — covers every way she can be present, not just her
@@ -2464,22 +2536,31 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
 // Shared by the normal Actions menu and Married Home Actions — same
 // button/behavior either way.
 function buildInviteToFightOption(npc: NpcDef): DialogueOption {
+  const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  const tooEarly = !!npc.inviteToFightMinTier && !tierAtLeast(tier, npc.inviteToFightMinTier);
   return {
     id: "invite-fight",
     label: "Invite to Next Fight",
-    costLabel: playerState.fightInvites[npc.id]
-      ? "INVITED"
-      : !playerState.fightScheduled
-        ? "NO FIGHT"
-        : `${INVITE_TO_FIGHT_COST} EN`,
+    costLabel: tooEarly
+      ? "NOT INTERESTED"
+      : playerState.fightInvites[npc.id]
+        ? "INVITED"
+        : !playerState.fightScheduled
+          ? "NO FIGHT"
+          : `${INVITE_TO_FIGHT_COST} EN`,
     disabled:
-      !!playerState.fightInvites[npc.id] || !playerState.fightScheduled || !energy.canAfford(INVITE_TO_FIGHT_COST),
+      tooEarly ||
+      !!playerState.fightInvites[npc.id] ||
+      !playerState.fightScheduled ||
+      !energy.canAfford(INVITE_TO_FIGHT_COST),
     onSelect: () => {
-      if (playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
+      if (tooEarly || playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
       if (!energy.spend(INVITE_TO_FIGHT_COST)) return;
       playerState.fightInvites[npc.id] = true;
       bumpRelationship(npc.id, INVITE_TO_FIGHT_DELTA);
-      lastActionResult = `She's happy you asked. "I'll be there!" (${formatTopicResult(INVITE_TO_FIGHT_DELTA)})`;
+      // Pronoun-free — this button's shared by every NPC, not just the
+      // romance-eligible ones.
+      lastActionResult = `"I'll be there." (${formatTopicResult(INVITE_TO_FIGHT_DELTA)})`;
       dialogueView = "actions-response";
     },
   };
@@ -3631,10 +3712,20 @@ function getChildStations(buildingName: string): Station[] {
 // a meetup's been arranged elsewhere and not yet fulfilled, or she's
 // mid-commute after an Overnight Stay (still asleep at home, or on her
 // way in but not yet arrived — see advanceOvernightCommute).
+// Lobby Wanderer: Derek isn't fixed to the desk like the receptionists —
+// he's only actually around during 3 of the camp's stages ("No Fight
+// Scheduled" plus both Private Life stages), wandering-cast rather than
+// permanent. Shared by his station and the Text/Meetup presence check.
+function isDerekPresentThisPhase(): boolean {
+  const stage = campCycle.current.type;
+  return stage === "nofight" || stage === "privatelife";
+}
+
 function isNpcAwayFromOffice(npcId: string): boolean {
   if (playerState.divorced[npcId]) return true; // permanent — she's gone from the game for good
   if (playerState.married[npcId]) return true; // permanent — she's moved out for good
   if (playerState.activeMeetup?.npcId === npcId) return true;
+  if (npcId === "derek" && !isDerekPresentThisPhase()) return true;
   const step = playerState.overnightCommuteStep[npcId];
   return step !== undefined && step < 2;
 }
@@ -3652,6 +3743,12 @@ function advanceOvernightCommute() {
   }
 }
 
+/** Derek's Lobby spot — only present some phases (see isDerekPresentThisPhase), so this is additive rather than a static STATIONS_BY_BUILDING entry. */
+function getDerekStation(buildingName: string): Station | null {
+  if (buildingName !== "Office" || !isDerekPresentThisPhase()) return null;
+  return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.5, ny: 0.75 };
+}
+
 function computeStationsFor(buildingName: string): Station[] {
   let base = STATIONS_BY_BUILDING[buildingName] ?? [];
   // Her marker shouldn't just be non-interactive while she's away — it
@@ -3659,6 +3756,8 @@ function computeStationsFor(buildingName: string): Station[] {
   if (buildingName === "Office" && isNpcAwayFromOffice("priya")) {
     base = base.filter((s) => s.id !== "reception-priya");
   }
+  const derekStation = getDerekStation(buildingName);
+  if (derekStation) base = [...base, derekStation];
   const spouseStation = getSpouseStation(buildingName);
   if (spouseStation) return [...base, spouseStation, ...getChildStations(buildingName)];
   const meetupStation = getActiveMeetupStation(buildingName);
@@ -3913,6 +4012,7 @@ function loop(now: number) {
           : () => openNpcDialogue(PRIYA, receptionSharedOptions());
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
+      else if (nearStation.id === "derek-lobby") onTrigger = () => openNpcDialogue(DEREK);
       else if (nearStation.id === "meetup-npc" && playerState.activeMeetup) {
         const { npcId, location, type } = playerState.activeMeetup;
         const meetupNpc = getNpcById(npcId);
