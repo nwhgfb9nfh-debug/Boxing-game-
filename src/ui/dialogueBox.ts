@@ -13,11 +13,24 @@ export interface DialogueOption {
   onSelect: () => void;
 }
 
+// Free-text input row (Family System: naming a new child) — rendered above
+// the options list when present. Value/onChange live in the caller's own
+// module-level state (same pattern as Buzzer's compose textarea) so typing
+// doesn't trigger a rebuild and lose focus/cursor position.
+export interface DialogueTextInput {
+  value: string;
+  placeholder?: string;
+  submitLabel: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}
+
 export interface DialogueData {
   portrait: string;
   name: string;
   text: string;
   options: DialogueOption[];
+  textInput?: DialogueTextInput;
 }
 
 export interface DialogueBox {
@@ -53,7 +66,7 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
 
   function render() {
     if (!builder) return;
-    const { portrait: portraitSrc, name, text, options } = builder();
+    const { portrait: portraitSrc, name, text, options, textInput } = builder();
 
     portrait.innerHTML = "";
     if (portraitSrc.startsWith("data:") || portraitSrc.startsWith("http")) {
@@ -82,6 +95,42 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
     textEl.className = "dialogue-box__text";
     textEl.textContent = text;
     box.appendChild(textEl);
+
+    if (textInput) {
+      const inputRow = document.createElement("div");
+      inputRow.className = "dialogue-box__input-row";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "dialogue-box__input";
+      input.placeholder = textInput.placeholder ?? "";
+      input.value = textInput.value;
+      input.maxLength = 20;
+      input.addEventListener("input", (e) => {
+        textInput.onChange((e.target as HTMLInputElement).value);
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          textInput.onSubmit();
+          render();
+        }
+      });
+      inputRow.appendChild(input);
+
+      const submitBtn = document.createElement("button");
+      submitBtn.type = "button";
+      submitBtn.className = "dialogue-box__input-submit";
+      submitBtn.textContent = textInput.submitLabel;
+      submitBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        textInput.onSubmit();
+        render();
+      });
+      inputRow.appendChild(submitBtn);
+
+      box.appendChild(inputRow);
+    }
 
     const optionsEl = document.createElement("div");
     optionsEl.className = "dialogue-box__options";

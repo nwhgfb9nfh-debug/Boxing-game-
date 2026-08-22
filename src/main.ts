@@ -12,7 +12,7 @@ import { InteriorScene, type Station, type BlockedZone, type Decoration } from "
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
-import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels } from "./game/playerState";
+import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels, type Child } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
@@ -289,17 +289,12 @@ const phoneApi: PhoneApi = {
   getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
-    // Married to her — Regular Meetup is redundant with just talking to
-    // her at home, but Date (a real night out) still stands. She's still
-    // permanently "dating" so the normal Date logic below covers it.
-    const isSpouse = !!playerState.married[npcId];
+    // Married to her — meetups aren't disabled outright (spec correction):
+    // only the Home location is redundant (she already lives there — see
+    // getMeetupLocations). Diner/Beach/Lounge stay fully available, both
+    // Regular Meetup and Date.
     const types: { id: MeetupType; label: string; available: boolean; reason?: string }[] = [
-      {
-        id: "regular",
-        label: "Regular Meetup",
-        available: !isSpouse,
-        reason: isSpouse ? "She lives with you now." : undefined,
-      },
+      { id: "regular", label: "Regular Meetup", available: true },
     ];
     if (npc.romanceEligible) {
       const lockedOut = isRomanceLockedOut(npc);
@@ -2049,6 +2044,79 @@ function isRomanceLockedOut(npc: NpcDef): boolean {
   return npc.romanceEligible && isPlayerMarried() && !playerState.married[npc.id];
 }
 
+// Family System: 50/50 every time, independent per child.
+function rollGender(): "boy" | "girl" {
+  return Math.random() < 0.5 ? "boy" : "girl";
+}
+
+// Adds a new, not-yet-named child to motherId's household — she shows up
+// as her own station at Home (see getChildStations) with a placeholder
+// name until the player names her there (see openNameChildDialogue).
+function spawnChild(motherId: string): Child {
+  const gender = rollGender();
+  const child: Child = {
+    id: `${motherId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: gender === "boy" ? "Unnamed Baby Boy" : "Unnamed Baby Girl",
+    gender,
+    named: false,
+  };
+  playerState.children[motherId] = [...(playerState.children[motherId] ?? []), child];
+  return child;
+}
+
+function findChildById(childId: string): { motherId: string; child: Child } | null {
+  for (const motherId of Object.keys(playerState.children)) {
+    const child = playerState.children[motherId].find((c) => c.id === childId);
+    if (child) return { motherId, child };
+  }
+  return null;
+}
+
+let childNameDraft = "";
+
+/** A brand-new, unnamed child's station opens straight into naming her instead of the normal greeting. */
+function openChildDialogue(child: Child) {
+  if (!child.named) {
+    openNameChildDialogue(child);
+    return;
+  }
+  dialogueBox.open(() => ({
+    portrait: child.gender === "boy" ? "👦" : "👧",
+    name: child.name,
+    text: `${child.name} looks up at you and grins.`,
+    options: [{ id: "leave", label: "Leave", onSelect: () => dialogueBox.close() }],
+  }));
+}
+
+function openNameChildDialogue(child: Child) {
+  childNameDraft = "";
+  dialogueBox.open(() => ({
+    portrait: child.gender === "boy" ? "👦" : "👧",
+    name: "???",
+    text: `It's a ${child.gender}! What do you want to name ${child.gender === "boy" ? "him" : "her"}?`,
+    options: [],
+    textInput: {
+      value: childNameDraft,
+      placeholder: "Enter a name",
+      submitLabel: "Name",
+      onChange: (v) => {
+        childNameDraft = v;
+      },
+      onSubmit: () => {
+        const trimmed = childNameDraft.trim();
+        if (!trimmed) return;
+        child.name = trimmed.slice(0, 20);
+        child.named = true;
+        dialogueBox.close();
+        // Refresh so her station's label picks up the real name right away.
+        if (scene.type === "interior") {
+          scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+        }
+      },
+    },
+  }));
+}
+
 // Marriage System: shared by both the regular Actions menu and the meetup
 // dialogue (Propose is allowed at her regular location OR on a date). Ring
 // is only spent on success — a "Too soon" decline costs nothing.
@@ -2060,7 +2128,8 @@ function resolveProposeAttempt(npc: NpcDef): string {
     playerState.married[npc.id] = true;
     // She brings any kid(s) she already had straight in with her, the day
     // she moves in — future ones (see checkForNewKids) count from here.
-    playerState.kidsAtHome[npc.id] = npc.familyInfo?.kidsHas ?? 0;
+    const existingKids = npc.familyInfo?.kidsHas ?? 0;
+    for (let i = 0; i < existingKids; i++) spawnChild(npc.id);
     playerState.marriageCampNumber[npc.id] = campCycle.campNumber;
   }
   return result.message;
@@ -2082,10 +2151,11 @@ function checkForNewKids(): string[] {
     const elapsedCycles = campCycle.campNumber - baseline;
     const wantedFromUnion = Math.max(0, info.kidsWants - info.kidsHas);
     const dueFromUnion = Math.min(Math.floor(elapsedCycles / 3), wantedFromUnion);
-    const bornFromUnionSoFar = Math.max(0, (playerState.kidsAtHome[npcId] ?? info.kidsHas) - info.kidsHas);
-    if (dueFromUnion > bornFromUnionSoFar) {
-      const total = info.kidsHas + dueFromUnion;
-      playerState.kidsAtHome[npcId] = total;
+    let bornFromUnionSoFar = Math.max(0, (playerState.children[npcId]?.length ?? 0) - info.kidsHas);
+    while (dueFromUnion > bornFromUnionSoFar) {
+      spawnChild(npcId);
+      bornFromUnionSoFar += 1;
+      const total = playerState.children[npcId].length;
       messages.push(`👶 ${npc.name} welcomes a new baby! You two now have ${total} kid${total === 1 ? "" : "s"}.`);
     }
   }
@@ -2097,6 +2167,7 @@ type DialogueView =
   | "talk-categories"
   | "talk-flirty-sub"
   | "talk-topics"
+  | "married-talk"
   | "talk-response"
   | "actions"
   | "actions-gift-picker"
@@ -2147,7 +2218,7 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
   // kids you two have so far, out of how many she wants total.
   const kidsNote =
     playerState.married[npc.id] && npc.familyInfo
-      ? ` (Kids: ${playerState.kidsAtHome[npc.id] ?? npc.familyInfo.kidsHas}/${npc.familyInfo.kidsWants})`
+      ? ` (Kids: ${playerState.children[npc.id]?.length ?? npc.familyInfo.kidsHas}/${npc.familyInfo.kidsWants})`
       : "";
   return {
     portrait: npc.portrait,
@@ -2158,7 +2229,12 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
         id: "talk",
         label: "Talk",
         onSelect: () => {
-          dialogueView = npc.dialogueWritten === false ? "not-written" : "talk-categories";
+          if (npc.dialogueWritten === false) {
+            dialogueView = "not-written";
+          } else {
+            // Married Home Talk (replaces the normal tiered system at Home).
+            dialogueView = playerState.married[npc.id] ? "married-talk" : "talk-categories";
+          }
         },
       },
       {
@@ -2303,6 +2379,49 @@ function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
   };
 }
 
+// Married Home Talk: once married, the tiered Small Talk/Personal/Heart to
+// Heart/Flirty structure at Home stops applying — the relationship's
+// already at its peak, nothing left to build toward — and Talk becomes
+// this flat, always-available set instead (no tier gating, same flat SB
+// cost as any other topic pick).
+const MARRIED_TALK_DELTA = 8;
+const MARRIED_TALK_TOPICS: { id: string; label: string }[] = [
+  { id: "day", label: "Talk About Your Day" },
+  { id: "advice", label: "Ask for Her Advice" },
+  { id: "checkin", label: "Check In On Her" },
+  { id: "romantic", label: "Be Romantic" },
+];
+
+function buildDialogueMarriedTalk(npc: NpcDef): DialogueData {
+  const affordable = socialBattery.canAfford(20);
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Social Battery: ${socialBattery.remaining}/100`,
+    options: [
+      ...MARRIED_TALK_TOPICS.map((topic) => ({
+        id: topic.id,
+        label: topic.label,
+        costLabel: "20 SB",
+        disabled: !affordable,
+        onSelect: () => {
+          if (!socialBattery.spend(20)) return;
+          bumpRelationship(npc.id, MARRIED_TALK_DELTA);
+          lastTalkResult = formatTopicResult(MARRIED_TALK_DELTA);
+          dialogueView = "talk-response";
+        },
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
 function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
@@ -2320,10 +2439,97 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
   };
 }
 
+// Shared by the normal Actions menu and Married Home Actions — same
+// button/behavior either way.
+function buildInviteToFightOption(npc: NpcDef): DialogueOption {
+  return {
+    id: "invite-fight",
+    label: "Invite to Next Fight",
+    costLabel: playerState.fightInvites[npc.id]
+      ? "INVITED"
+      : !playerState.fightScheduled
+        ? "NO FIGHT"
+        : `${INVITE_TO_FIGHT_COST} EN`,
+    disabled:
+      !!playerState.fightInvites[npc.id] || !playerState.fightScheduled || !energy.canAfford(INVITE_TO_FIGHT_COST),
+    onSelect: () => {
+      if (playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
+      if (!energy.spend(INVITE_TO_FIGHT_COST)) return;
+      playerState.fightInvites[npc.id] = true;
+      bumpRelationship(npc.id, INVITE_TO_FIGHT_DELTA);
+      lastActionResult = `She's happy you asked. "I'll be there!" (${formatTopicResult(INVITE_TO_FIGHT_DELTA)})`;
+      dialogueView = "actions-response";
+    },
+  };
+}
+
+// Married Home Actions (replaces the normal Actions menu at Home once
+// married): Exchange Number/Ask Her Out/Propose are all moot by now, so
+// this is its own flat set instead.
+const INVEST_BUSINESS_COST = 2000;
+const INVEST_BUSINESS_DELTA = 15;
+const HAVE_DRINK_COST = 15;
+const HAVE_DRINK_DELTA = 8;
+
+function buildMarriedHomeActions(npc: NpcDef): DialogueData {
+  const hasGift = totalGiftsOwned() > 0;
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Energy: ${energy.remaining}/100  ·  Money: $${playerState.money}  ·  Gifts owned: ${totalGiftsOwned()}`,
+    options: [
+      {
+        id: "gift",
+        label: "Gift",
+        costLabel: hasGift ? undefined : "NO GIFTS",
+        disabled: !hasGift,
+        onSelect: () => {
+          if (!hasGift) return;
+          dialogueView = "actions-gift-picker";
+        },
+      },
+      {
+        id: "invest-business",
+        label: "Invest in her Business",
+        costLabel: `$${INVEST_BUSINESS_COST}`,
+        disabled: playerState.money < INVEST_BUSINESS_COST,
+        onSelect: () => {
+          if (playerState.money < INVEST_BUSINESS_COST) return;
+          playerState.money -= INVEST_BUSINESS_COST;
+          bumpRelationship(npc.id, INVEST_BUSINESS_DELTA);
+          lastActionResult = `She's moved by your support. "This means so much." (${formatTopicResult(INVEST_BUSINESS_DELTA)})`;
+          dialogueView = "actions-response";
+        },
+      },
+      buildInviteToFightOption(npc),
+      {
+        id: "have-drink",
+        label: "Have a Drink Together",
+        costLabel: `${HAVE_DRINK_COST} EN`,
+        disabled: !energy.canAfford(HAVE_DRINK_COST),
+        onSelect: () => {
+          if (!energy.spend(HAVE_DRINK_COST)) return;
+          bumpRelationship(npc.id, HAVE_DRINK_DELTA);
+          lastActionResult = `You two unwind together after a long day. (${formatTopicResult(HAVE_DRINK_DELTA)})`;
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
 // "Actions" — Energy-Star-costed relationship progression, separate from
 // Talk's Social-Battery-gated topics. Always visible from Tier 1; outcomes
 // (success/reaction) come from the NPC's own actions rules.
 function buildDialogueActions(npc: NpcDef): DialogueData {
+  if (playerState.married[npc.id]) return buildMarriedHomeActions(npc);
   const score = getRelationshipScore(npc.id);
   const tier = getRelationshipTier(score);
   const rules = npc.actions!;
@@ -2359,27 +2565,7 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
           dialogueView = "actions-gift-picker";
         },
       },
-      {
-        id: "invite-fight",
-        label: "Invite to Next Fight",
-        costLabel: playerState.fightInvites[npc.id]
-          ? "INVITED"
-          : !playerState.fightScheduled
-            ? "NO FIGHT"
-            : `${INVITE_TO_FIGHT_COST} EN`,
-        disabled:
-          !!playerState.fightInvites[npc.id] ||
-          !playerState.fightScheduled ||
-          !energy.canAfford(INVITE_TO_FIGHT_COST),
-        onSelect: () => {
-          if (playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
-          if (!energy.spend(INVITE_TO_FIGHT_COST)) return;
-          playerState.fightInvites[npc.id] = true;
-          bumpRelationship(npc.id, INVITE_TO_FIGHT_DELTA);
-          lastActionResult = `She's happy you asked. "I'll be there!" (${formatTopicResult(INVITE_TO_FIGHT_DELTA)})`;
-          dialogueView = "actions-response";
-        },
-      },
+      buildInviteToFightOption(npc),
       ...(npc.romanceEligible && !isRomanceLockedOut(npc)
         ? [
             {
@@ -2520,6 +2706,7 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
     if (dialogueView === "talk-categories") return buildDialogueTalkCategories(activeNpc!);
     if (dialogueView === "talk-flirty-sub") return buildDialogueFlirtySub(activeNpc!);
     if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
+    if (dialogueView === "married-talk") return buildDialogueMarriedTalk(activeNpc!);
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
     if (dialogueView === "actions") return buildDialogueActions(activeNpc!);
     if (dialogueView === "actions-gift-picker") return buildDialogueActionsGiftPicker(activeNpc!);
@@ -3287,6 +3474,30 @@ function getSpouseStation(buildingName: string): Station | null {
   return npc ? { id: "spouse-npc", label: npc.name, kind: "npc", nx: 0.75, ny: 0.3 } : null;
 }
 
+// Family System: one dot per kid, laid out along the bottom of the room —
+// separate from the bed (0.5, 0.3) and spouse (0.75, 0.3) up top. Only a
+// handful of positions exist since kidsWants is always a small number for
+// any NPC written so far; extra kids beyond the list just stack on the
+// last slot rather than crash.
+const CHILD_STATION_POSITIONS: { nx: number; ny: number }[] = [
+  { nx: 0.25, ny: 0.75 },
+  { nx: 0.4, ny: 0.75 },
+  { nx: 0.55, ny: 0.75 },
+  { nx: 0.7, ny: 0.75 },
+];
+function getChildStations(buildingName: string): Station[] {
+  if (!HOUSE_NAMES.has(buildingName)) return [];
+  const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+  if (!spouseId) return [];
+  const kids = playerState.children[spouseId] ?? [];
+  return kids.map((child, i) => ({
+    id: child.id,
+    label: child.name,
+    kind: "npc",
+    ...(CHILD_STATION_POSITIONS[i] ?? CHILD_STATION_POSITIONS[CHILD_STATION_POSITIONS.length - 1]),
+  }));
+}
+
 // True while an NPC is away from her normal Office spot — either because
 // a meetup's been arranged elsewhere and not yet fulfilled, or she's
 // mid-commute after an Overnight Stay (still asleep at home, or on her
@@ -3319,7 +3530,7 @@ function computeStationsFor(buildingName: string): Station[] {
     base = base.filter((s) => s.id !== "reception-priya");
   }
   const spouseStation = getSpouseStation(buildingName);
-  if (spouseStation) return [...base, spouseStation];
+  if (spouseStation) return [...base, spouseStation, ...getChildStations(buildingName)];
   const meetupStation = getActiveMeetupStation(buildingName);
   return meetupStation ? [...base, meetupStation] : base;
 }
@@ -3584,6 +3795,10 @@ function loop(now: number) {
         const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
         const spouse = spouseId ? getNpcById(spouseId) : undefined;
         onTrigger = spouse ? () => openNpcDialogue(spouse) : () => {};
+      }
+      else if (findChildById(nearStation.id)) {
+        const found = findChildById(nearStation.id)!;
+        onTrigger = () => openChildDialogue(found.child);
       }
       else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;

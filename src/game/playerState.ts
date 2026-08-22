@@ -60,6 +60,16 @@ export interface Photo {
   source: "photoshoot" | "selfie";
 }
 
+// Family System: a single child living with a married NPC — gender is
+// rolled 50/50 the moment she arrives (see rollGender in main.ts); name
+// starts as a placeholder until the player names her at her own station.
+export interface Child {
+  id: string;
+  name: string;
+  gender: "boy" | "girl";
+  named: boolean;
+}
+
 export interface PlayerState {
   fame: number;
   image: number;
@@ -146,12 +156,13 @@ export interface PlayerState {
   // player's home instead — every other romance-eligible NPC becomes
   // off-limits for Flirty/Dating while any entry here is true.
   married: Record<string, boolean>;
-  // Marriage System: kids currently living at home with a married NPC,
-  // keyed by NPC id. Set to her familyInfo.kidsHas the moment she moves
-  // in (any she already had come with her), then grows on its own every
-  // 3 full camp cycles after the marriage — see checkForNewKids — capped
-  // at her familyInfo.kidsWants total.
-  kidsAtHome: Record<string, number>;
+  // Family System: actual children living at home, keyed by mother's NPC
+  // id, in arrival order. Any she already had come along the moment she
+  // moves in (see resolveProposeAttempt); each new one is appended by
+  // checkForNewKids every 3 full camp cycles after the wedding, up to her
+  // familyInfo.kidsWants total. named starts false — the player names her
+  // via the child's own station at Home (see openNameChildDialogue).
+  children: Record<string, Child[]>;
   // Marriage System: the CampCycle.campNumber value at the moment she
   // married the player — the baseline "3 full cycles" counts from.
   marriageCampNumber: Record<string, number>;
@@ -224,7 +235,7 @@ export function createPlayerState(): PlayerState {
     romanceScores: {},
     dating: {},
     married: {},
-    kidsAtHome: {},
+    children: {},
     marriageCampNumber: {},
     exchangedNumbers: {},
     dateCounts: {},

@@ -415,6 +415,38 @@ canvas {
   font-weight: 700;
 }
 
+/* Family System: naming a new child — free-text row above the options. */
+.dialogue-box__input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dialogue-box__input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #262a35;
+  color: #fff;
+  font-family: inherit;
+  /* 16px minimum — iOS Safari auto-zooms on focus below that. */
+  font-size: 16px;
+}
+
+.dialogue-box__input-submit {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #3a6ea5;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Phone — only usable inside a building. Bottom-right, bigger than the
    status pills so it reads as a real button, not another readout. */
 .btn--phone {
