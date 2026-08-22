@@ -849,3 +849,13 @@ canvas {
   background: #ffd23f;
   border-radius: 999px;
 }
+
+.contact-detail__status--romance {
+  font-size: 13px;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+.contact-detail__bar-fill--romance {
+  background: #ff6b9a;
+}

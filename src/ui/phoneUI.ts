@@ -23,7 +23,13 @@ export interface ContactSummary {
   tierLabel: string;
   score: number;
   maxScore: number;
-  romanced: boolean;
+  // Romance System (v4): a SEPARATE bar from Relationship above, shown
+  // only for romance-eligible NPCs.
+  romanceEligible: boolean;
+  romanceScore?: number;
+  romanceMax: number;
+  // Set once "Ask Her Out" succeeds — drives the ♥ status icon, not tier.
+  dating: boolean;
   // True while the player is physically inside this NPC's building —
   // Text/Initiate Meetup are locked then (talk to her in person instead).
   locked: boolean;
@@ -34,8 +40,17 @@ export interface TextTalkOption {
   label: string;
 }
 
-// Meetup System — a location is only "available" once its content exists
-// (Beach/Lounge don't yet) and, for Home, its per-NPC unlock is met.
+// Meetup System — Regular Meetup is always available; Date only once
+// Dating is true.
+export interface MeetupTypeSummary {
+  id: string;
+  label: string;
+  available: boolean;
+  reason?: string;
+}
+
+// A location is only "available" once its content exists (Beach/Lounge
+// don't yet) and, for Home, its per-NPC/per-type unlock is met.
 export interface MeetupLocationSummary {
   id: string;
   label: string;
@@ -60,8 +75,9 @@ export interface PhoneApi {
   getContacts: () => ContactSummary[];
   getTextTalkOptions: (npcId: string) => TextTalkOption[];
   sendTextTalk: (npcId: string, optionId: string) => string;
-  getMeetupLocations: (npcId: string) => MeetupLocationSummary[];
-  payForMeetup: (npcId: string, locationId: string) => { ok: boolean; message: string };
+  getMeetupTypes: (npcId: string) => MeetupTypeSummary[];
+  getMeetupLocations: (npcId: string, type: string) => MeetupLocationSummary[];
+  payForMeetup: (npcId: string, type: string, locationId: string) => { ok: boolean; message: string };
 }
 
 type View =
@@ -69,6 +85,7 @@ type View =
   | "contacts"
   | "contact-detail"
   | "contact-texttalk"
+  | "contact-meetup-types"
   | "contact-meetup-locations"
   | "stats"
   | "realestate"
@@ -113,6 +130,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
   let message = "";
   let composeText = "";
   let activeContactId: string | null = null;
+  let activeMeetupType: string | null = null;
 
   function go(next: View) {
     view = next;
@@ -158,6 +176,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     else if (view === "contacts") renderContacts();
     else if (view === "contact-detail") renderContactDetail();
     else if (view === "contact-texttalk") renderContactTextTalk();
+    else if (view === "contact-meetup-types") renderContactMeetupTypes();
     else if (view === "contact-meetup-locations") renderContactMeetupLocations();
     else if (view === "stats") renderStats();
     else if (view === "realestate") renderRealEstate();
@@ -229,7 +248,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
       portraitEl.className = "phone-contact-item__portrait";
       renderPortraitInto(portraitEl, contact.portrait);
       const nameEl = document.createElement("span");
-      nameEl.textContent = contact.romanced ? `${contact.name} ♥` : contact.name;
+      nameEl.textContent = contact.dating ? `${contact.name} ♥` : contact.name;
       btn.appendChild(portraitEl);
       btn.appendChild(nameEl);
       btn.addEventListener("pointerdown", (e) => {
@@ -272,7 +291,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     const statusEl = document.createElement("div");
     statusEl.className = "contact-detail__status";
     statusEl.textContent = contact.tierLabel;
-    if (contact.romanced) {
+    if (contact.dating) {
       const heart = document.createElement("span");
       heart.className = "contact-detail__heart";
       heart.textContent = "♥";
@@ -292,6 +311,27 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     scoreEl.className = "phone-empty";
     scoreEl.textContent = `${contact.score}/${contact.maxScore}`;
     panel.appendChild(scoreEl);
+
+    if (contact.romanceEligible) {
+      const romanceLabel = document.createElement("div");
+      romanceLabel.className = "contact-detail__status contact-detail__status--romance";
+      romanceLabel.textContent = "Romance";
+      panel.appendChild(romanceLabel);
+
+      const romanceBarTrack = document.createElement("div");
+      romanceBarTrack.className = "contact-detail__bar contact-detail__bar--romance";
+      const romanceBarFill = document.createElement("div");
+      romanceBarFill.className = "contact-detail__bar-fill contact-detail__bar-fill--romance";
+      const romanceScore = contact.romanceScore ?? 0;
+      romanceBarFill.style.width = `${Math.min(100, (romanceScore / contact.romanceMax) * 100)}%`;
+      romanceBarTrack.appendChild(romanceBarFill);
+      panel.appendChild(romanceBarTrack);
+
+      const romanceScoreEl = document.createElement("div");
+      romanceScoreEl.className = "phone-empty";
+      romanceScoreEl.textContent = `${romanceScore}/${contact.romanceMax}`;
+      panel.appendChild(romanceScoreEl);
+    }
 
     if (contact.locked) {
       const lockedNote = document.createElement("div");
@@ -325,7 +365,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     meetupBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       if (contact.locked) return;
-      go("contact-meetup-locations");
+      go("contact-meetup-types");
     });
     list.appendChild(meetupBtn);
 
@@ -368,7 +408,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     panel.appendChild(list);
   }
 
-  function renderContactMeetupLocations() {
+  function renderContactMeetupTypes() {
     const contact = api.getContacts().find((c) => c.id === activeContactId);
     if (!contact) {
       go("contacts");
@@ -389,7 +429,53 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
 
     const list = document.createElement("div");
     list.className = "action-menu__list";
-    for (const loc of api.getMeetupLocations(contact.id)) {
+    for (const t of api.getMeetupTypes(contact.id)) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "action-menu__item";
+      const labelEl = document.createElement("span");
+      labelEl.textContent = t.label;
+      btn.appendChild(labelEl);
+      if (!t.available && t.reason) {
+        const reasonEl = document.createElement("span");
+        reasonEl.className = "action-menu__cost";
+        reasonEl.textContent = t.reason;
+        btn.appendChild(reasonEl);
+      }
+      btn.disabled = !t.available;
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (!t.available) return;
+        activeMeetupType = t.id;
+        go("contact-meetup-locations");
+      });
+      list.appendChild(btn);
+    }
+    panel.appendChild(list);
+  }
+
+  function renderContactMeetupLocations() {
+    const contact = api.getContacts().find((c) => c.id === activeContactId);
+    if (!contact || !activeMeetupType) {
+      go("contacts");
+      return;
+    }
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "action-menu__item";
+    backBtn.textContent = "‹ Back";
+    backBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      go("contact-meetup-types");
+    });
+    panel.appendChild(backBtn);
+
+    appendMessage();
+
+    const list = document.createElement("div");
+    list.className = "action-menu__list";
+    for (const loc of api.getMeetupLocations(contact.id, activeMeetupType)) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "action-menu__item";
@@ -405,8 +491,8 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
       btn.disabled = !loc.available;
       btn.addEventListener("pointerdown", (e) => {
         e.preventDefault();
-        if (!loc.available) return;
-        const result = api.payForMeetup(contact.id, loc.id);
+        if (!loc.available || !activeMeetupType) return;
+        const result = api.payForMeetup(contact.id, activeMeetupType, loc.id);
         message = result.message;
         render();
       });

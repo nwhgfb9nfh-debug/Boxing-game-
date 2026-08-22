@@ -2,7 +2,7 @@
 // training bonuses, and per-NPC relationship scores.
 
 import type { BuzzerPostResult } from "./buzzer";
-import type { MeetupLocationId } from "./npc";
+import type { MeetupLocationId, MeetupType } from "./npc";
 
 // "trained" tracks whether a session was ever completed for this stat,
 // independent of the bonus it earned — a session that scored all
@@ -123,25 +123,37 @@ export interface PlayerState {
   // NPC relationship scores (NPC Dialogue spec), keyed by NPC id. Tier is
   // derived from the score, not stored directly — see getRelationshipTier.
   contacts: Record<string, number>;
+  // Romance System (v4): a SEPARATE meter from the Relationship score
+  // above, keyed by NPC id — only meaningful for romance-eligible NPCs.
+  // Builds from positive Flirty topic picks and flirty texts; gates
+  // whether "Ask Her Out" can succeed.
+  romanceScores: Record<string, number>;
+  // Romance System: set permanently once "Ask Her Out" succeeds, keyed by
+  // NPC id. Unlocks "Date" as a Meetup type going forward — does not
+  // itself schedule anything.
+  dating: Record<string, boolean>;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
   // once successful, keyed by NPC id — unlocks the Contacts app + Phone
   // meetups for that NPC.
   exchangedNumbers: Record<string, boolean>;
-  // Meetup System (NPC Dialogue spec): successful meetups completed at
-  // locations OTHER than Home, keyed by NPC id — Home's per-NPC unlock can
-  // require a minimum count of these first.
-  meetupCounts: Record<string, number>;
+  // Meetup System (NPC Dialogue spec): successful DATES completed at
+  // locations OTHER than Home, keyed by NPC id — Home's per-NPC Date
+  // unlock can require a minimum count of these first. Regular Meetups
+  // don't count.
+  dateCounts: Record<string, number>;
   // Overnight Stay's morning-after commute, keyed by NPC id: 0 = asleep at
   // home, 1 = in transit (present nowhere). Advances by one on each
   // building the player enters (see advanceOvernightCommute) until she's
   // back to normal, at which point the entry is deleted. Also cleared
   // outright on any phase advance.
   overnightCommuteStep: Record<string, number>;
-  // Meetup System: an arranged-but-not-yet-visited meetup. She physically
-  // appears as a station at this location on the player's NEXT entry (not
-  // the current visit, if already inside) — cleared once the player
-  // actually meets her there. Only one meetup can be pending at a time.
-  activeMeetup: { npcId: string; location: MeetupLocationId } | null;
+  // Meetup System: an arranged-but-not-yet-visited (or in-progress) visit.
+  // She physically appears as a station at this location on the player's
+  // NEXT entry (not the current visit, if already inside), and stays
+  // visible there for the whole visit — cleared only once the visit
+  // actually ends (End Meetup/Date, or a confirmed door-exit). Only one
+  // meetup can be pending/active at a time.
+  activeMeetup: { npcId: string; location: MeetupLocationId; type: MeetupType } | null;
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -185,8 +197,10 @@ export function createPlayerState(): PlayerState {
     availablePhotos: [],
     imagestarPosts: [],
     contacts: {},
+    romanceScores: {},
+    dating: {},
     exchangedNumbers: {},
-    meetupCounts: {},
+    dateCounts: {},
     overnightCommuteStep: {},
     activeMeetup: null,
   };

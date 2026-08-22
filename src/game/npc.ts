@@ -1,4 +1,4 @@
-// NPC Dialogue system (NPC Dialogue & Office Reception spec, v3): a
+// NPC Dialogue system (NPC Dialogue & Office Reception spec, v4): a
 // reusable relationship + topic-rating engine meant for every dialogue-
 // capable NPC in the game, not just Office Reception.
 //
@@ -8,10 +8,20 @@
 // friend-only NPC simply never has the Flirty category appear at all,
 // rather than showing it locked.
 //
-// "Actions" is a separate top-level menu (Exchange Number, Give a Gift) —
-// Energy-Star-costed relationship progression, not conversation, and
-// always visible from Tier 1 (the outcome varies by NPC/tier, not the
-// menu's presence).
+// "Actions" is a separate top-level menu (Exchange Number, Give a Gift,
+// Ask Her Out) — Energy-Star-costed relationship progression, not
+// conversation, and always visible from Tier 1 (the outcome varies by
+// NPC/tier, not the menu's presence).
+//
+// The Romance System (v4, new): "romance-eligible" does NOT mean "always
+// in a romance." Every romance-eligible NPC tracks TWO independent
+// values: the Relationship bar (the tier system below, built through any
+// category) and a separate Romance meter (built only from positive Flirty
+// topic picks in-person and flirty text messages via Phone). Reaching
+// Tier 3 alone does not grant romantic access — Ask Her Out only succeeds
+// once the Romance meter clears a per-NPC threshold, and success sets a
+// permanent `Dating` flag (playerState.dating) that unlocks "Date" as a
+// Meetup type going forward.
 
 export type RelationshipTier = "stranger" | "acquaintance" | "friend" | "close";
 export type TalkCategory = "smalltalk" | "personal" | "hearttoheart" | "flirty";
@@ -40,12 +50,20 @@ export interface GiftResult {
   message: string;
 }
 
-// Exchange Number/Give a Gift outcomes are bespoke per NPC (success
-// conditions, reaction flavor), not a generic ratings table like Talk
-// topics — each written NPC supplies her own rules.
+export interface AskHerOutResult {
+  success: boolean;
+  message: string;
+}
+
+// Exchange Number/Give a Gift/Ask Her Out outcomes are bespoke per NPC
+// (success conditions, reaction flavor), not a generic ratings table like
+// Talk topics — each written NPC supplies her own rules.
 export interface NpcActionRules {
   exchangeNumber: (tier: RelationshipTier, score: number) => ExchangeNumberResult;
   giftReaction: (tier: RelationshipTier) => GiftResult;
+  // Only ever called for romance-eligible NPCs. romanceScore is the
+  // player's current Romance meter value with her.
+  askHerOut: (romanceScore: number) => AskHerOutResult;
 }
 
 export interface NpcDef {
@@ -65,10 +83,13 @@ export interface NpcDef {
   // content hasn't been written yet — both show a placeholder instead of
   // the real menus. Defaults to true (content is written).
   dialogueWritten?: boolean;
-  // Home meetup unlock condition (Meetup System spec) — per-NPC, not a
-  // tier threshold alone. Omitted entirely means Home isn't designed for
-  // her yet (shown the same "not yet designed" placeholder as Beach/Lounge).
-  homeMeetupUnlock?: (meetupCount: number, tier: RelationshipTier) => boolean;
+  // Home-as-Date unlock (Meetup System spec) — per-NPC, e.g. a minimum
+  // number of successful Dates elsewhere plus a relationship tier.
+  // Omitted means Home isn't designed as a Date location for her yet.
+  homeDateUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
+  // Home-as-Regular-Meetup has its own separate, simpler unlock — omitted
+  // means not yet designed (shown the same placeholder as Beach/Lounge).
+  homeRegularUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.
@@ -117,11 +138,23 @@ export function getTopicDelta(topic: TalkTopicDef, tier: RelationshipTier): numb
   return RATING_DELTA[getTopicRating(topic, tier)];
 }
 
+// Positive Flirty picks (Compliment/Charm) also build the Romance meter,
+// separately from the Relationship delta above — placeholder magnitude,
+// only ever applied for positive ratings (spec: "builds from positive
+// Flirty topic selections").
+export const FLIRTY_ROMANCE_DELTA = 6;
+
 // No written NPC dialogue lines per topic (per spec) — just the plain
 // relationship readout.
 export function formatTopicResult(delta: number): string {
   if (delta > 0) return `+${delta} Relationship`;
   if (delta < 0) return `−${Math.abs(delta)} Relationship`;
+  return "No change.";
+}
+
+export function formatRomanceResult(delta: number): string {
+  if (delta > 0) return `+${delta} Romance`;
+  if (delta < 0) return `−${Math.abs(delta)} Romance`;
   return "No change.";
 }
 
@@ -138,10 +171,10 @@ export function tierLabel(tier: RelationshipTier): string {
 
 // Contacts app "Text" → "Talk" (NPC Dialogue system spec, Contacts App &
 // Text-Talk section): a much simpler, flat system than in-person Talk —
-// no categories/tiers, the same 4 fixed options for every NPC, varying
-// only by whether that NPC is currently romanced (Close tier +
-// romance-eligible — no separate romance-progression system exists yet,
-// so tier stands in for it).
+// no categories/tiers. The set is assigned by NPC TYPE (romance-eligible
+// vs. friend-only), NOT by Dating status — a romance-eligible NPC gets
+// the Romance set from the moment texting unlocks, since flirty texting
+// is itself one of the ways the Romance meter builds up.
 export interface TextTalkOption {
   id: string;
   label: string;
@@ -164,31 +197,36 @@ export const TEXT_TALK_ROMANCED: TextTalkOption[] = [
 // Flat, reusable bump — spec doesn't specify a value ("low-content-cost
 // system, not authored per-NPC"), so this is a placeholder default.
 export const TEXT_TALK_DELTA = 3;
+// "Flirty Text" additionally builds the Romance meter — placeholder value.
+export const TEXT_TALK_ROMANCE_DELTA = 3;
 
-export function isRomanced(npc: NpcDef, tier: RelationshipTier): boolean {
-  return npc.romanceEligible && tier === "close";
-}
-
-// Meetup System (NPC Dialogue system spec): reached from a Contact's
+// Meetup System (NPC Dialogue system spec v4): reached from a Contact's
 // "Initiate Meetup". Each location defines ONE shared option set used
 // identically by every NPC met there (unlike in-person Talk, which is
-// authored per-NPC) — General is available to everyone, Romance is an
-// addition only ever shown for romance-eligible NPCs.
+// authored per-NPC).
+//
+// Meetups split into two formal types, chosen when arranging by Phone:
+// Regular Meetup (always available, purely platonic, regularGeneral
+// options) and Date (only selectable once Dating is true, dateConnect
+// options — a boldness/intimacy scale, location-themed). Give a Gift is
+// always a separate action from the 4-option list, boosting Relationship
+// on a Regular Meetup or Romance on a Date.
 //
 // The spec describes this as "player drives there" — this build doesn't
 // simulate an actual drive from the Phone (a much bigger scene-transition
-// feature), so a meetup plays out entirely inside the Phone UI: paying the
-// Energy cost and picking an option stand in for the trip and the visit.
+// feature); arranging pays the Energy cost and she then physically waits
+// at that location's building until the player visits and the visit is
+// resolved there in person.
 export type MeetupLocationId = "home" | "diner" | "beach" | "lounge";
+export type MeetupType = "regular" | "date";
 
 export interface MeetupOptionDef {
   id: string;
   label: string;
   // Overnight Stay triggers a full phase advance instead of a flat
-  // relationship bump — flagged so the caller can branch on it.
+  // Romance bump — flagged so the caller can branch on it. Home's Date
+  // scale only.
   special?: "overnight-stay";
-  // Only selectable if the player currently owns a gift (Gift Shop).
-  requiresGift?: boolean;
 }
 
 export interface MeetupLocationDef {
@@ -197,27 +235,34 @@ export interface MeetupLocationDef {
   // Empty arrays mean this location isn't designed yet (Beach/Lounge) —
   // shows the same "not yet designed" placeholder Carol used before her
   // Talk content existed.
-  general: MeetupOptionDef[];
-  romance: MeetupOptionDef[];
+  regularGeneral: MeetupOptionDef[];
+  dateConnect: MeetupOptionDef[];
 }
 
 export const MEETUP_ENERGY_COST = 40;
-// Flat, reusable bump for a picked meetup option — the spec doesn't give
+// Flat, reusable bump for a picked Connect option — the spec doesn't give
 // per-option ratings the way Talk topics have, so this is a placeholder
-// default, easy to retune.
-export const MEETUP_OPTION_DELTA = 10;
+// default, easy to retune. Regular Meetup boosts Relationship; Date boosts
+// Romance (except Overnight Stay, which resolves separately).
+export const MEETUP_CONNECT_DELTA = 10;
+// "A liked gift gives a noticeably stronger boost than a Talk topic would"
+// (spec) — Talk's max positive is 8, so this placeholder sits above that.
+export const MEETUP_GIFT_DELTA = 12;
+// Penalty for ending a visit without ever using Connect — placeholder,
+// applied to Relationship always, and additionally to Romance on a Date.
+export const MEETUP_NO_CONNECT_PENALTY = -8;
 
 export const MEETUP_LOCATIONS: MeetupLocationDef[] = [
   {
     id: "home",
     label: "Home",
-    general: [
+    regularGeneral: [
       { id: "movie", label: "Watch a Movie" },
       { id: "meal", label: "Share a Meal" },
       { id: "deep-conversation", label: "Deep Conversation" },
       { id: "relax", label: "Just Relax Together" },
     ],
-    romance: [
+    dateConnect: [
       { id: "cuddle", label: "Cuddle Up" },
       { id: "set-mood", label: "Set the Mood" },
       { id: "share-deep", label: "Share Something Deep" },
@@ -227,22 +272,22 @@ export const MEETUP_LOCATIONS: MeetupLocationDef[] = [
   {
     id: "diner",
     label: "Diner",
-    general: [
-      { id: "meal", label: "Share a Meal" },
+    regularGeneral: [
       { id: "drink", label: "Order a Drink" },
       { id: "catchup", label: "Catch Up" },
-      { id: "dessert", label: "Order Dessert" },
+      { id: "talk-boxing", label: "Talk Boxing" },
+      { id: "people-watch", label: "People Watch" },
     ],
-    romance: [
-      { id: "laugh", label: "Make Her Laugh" },
-      { id: "deep-talk", label: "Deep Talk" },
+    dateConnect: [
+      { id: "toast", label: "Toast to the Evening" },
       { id: "compliment", label: "Compliment" },
-      { id: "gift", label: "Gift", requiresGift: true },
+      { id: "dessert", label: "Share a Dessert" },
+      { id: "hold-hand", label: "Hold Hand" },
     ],
   },
   // Not yet designed per spec.
-  { id: "beach", label: "Beach", general: [], romance: [] },
-  { id: "lounge", label: "Lounge", general: [], romance: [] },
+  { id: "beach", label: "Beach", regularGeneral: [], dateConnect: [] },
+  { id: "lounge", label: "Lounge", regularGeneral: [], dateConnect: [] },
 ];
 
 export function getMeetupLocation(id: MeetupLocationId): MeetupLocationDef {

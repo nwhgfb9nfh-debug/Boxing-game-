@@ -28,16 +28,21 @@ import {
   isCategoryUnlocked,
   getTopicDelta,
   formatTopicResult,
+  formatRomanceResult,
   tierLabel,
-  isRomanced,
+  FLIRTY_ROMANCE_DELTA,
   TEXT_TALK_NOT_ROMANCED,
   TEXT_TALK_ROMANCED,
   TEXT_TALK_DELTA,
+  TEXT_TALK_ROMANCE_DELTA,
   type MeetupLocationId,
+  type MeetupType,
   type MeetupOptionDef,
   MEETUP_LOCATIONS,
   MEETUP_ENERGY_COST,
-  MEETUP_OPTION_DELTA,
+  MEETUP_CONNECT_DELTA,
+  MEETUP_GIFT_DELTA,
+  MEETUP_NO_CONNECT_PENALTY,
   getMeetupLocation,
 } from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
@@ -246,7 +251,10 @@ const phoneApi: PhoneApi = {
         tierLabel: tierLabel(tier),
         score,
         maxScore: 100,
-        romanced: isRomanced(npc, tier),
+        romanceEligible: npc.romanceEligible,
+        romanceScore: npc.romanceEligible ? getRomanceScore(npc.id) : undefined,
+        romanceMax: 100,
+        dating: !!playerState.dating[npc.id],
         locked: isNpcInCurrentBuilding(npc.id),
       };
     });
@@ -254,28 +262,50 @@ const phoneApi: PhoneApi = {
   getTextTalkOptions: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
-    const tier = getRelationshipTier(getRelationshipScore(npcId));
-    return isRomanced(npc, tier) ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
+    // Assigned by NPC type (romance-eligible vs. friend-only), not by
+    // Dating status — flirty texting is itself one of the ways the
+    // Romance meter builds up in the first place.
+    return npc.romanceEligible ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
   },
-  sendTextTalk: (npcId) => {
+  sendTextTalk: (npcId, optionId) => {
     if (isNpcInCurrentBuilding(npcId)) return "She's right here — talk to her in person instead.";
     bumpRelationship(npcId, TEXT_TALK_DELTA);
-    return formatTopicResult(TEXT_TALK_DELTA);
+    let resultText = formatTopicResult(TEXT_TALK_DELTA);
+    const npc = getNpcById(npcId);
+    if (npc?.romanceEligible && optionId === "flirty") {
+      bumpRomance(npcId, TEXT_TALK_ROMANCE_DELTA);
+      resultText += ` / ${formatRomanceResult(TEXT_TALK_ROMANCE_DELTA)}`;
+    }
+    return resultText;
   },
-  // Meetup System: "Initiate Meetup" only ARRANGES the date from here —
+  // Meetup System: "Initiate Meetup" only ARRANGES the visit from here —
   // she then physically appears as a station at that location on the
-  // player's next visit there (see getActiveMeetupStation), where the
-  // actual general/romance options play out in person, same as any other
-  // NPC dialogue. Only one meetup can be arranged at a time.
-  getMeetupLocations: (npcId) => {
+  // player's next visit there (see getActiveMeetupStation) and stays
+  // there for the whole visit, where the actual Connect/Gift options play
+  // out in person, same as any other NPC dialogue. Only one meetup can be
+  // arranged/active at a time.
+  getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
+    const types: { id: MeetupType; label: string; available: boolean; reason?: string }[] = [
+      { id: "regular", label: "Regular Meetup", available: true },
+    ];
+    if (npc.romanceEligible) {
+      const dating = !!playerState.dating[npcId];
+      types.push({ id: "date", label: "Date", available: dating, reason: dating ? undefined : "You're not dating yet." });
+    }
+    return types;
+  },
+  getMeetupLocations: (npcId, type) => {
+    const npc = getNpcById(npcId);
+    if (!npc) return [];
+    const meetupType = type as MeetupType;
     const tier = getRelationshipTier(getRelationshipScore(npcId));
-    const meetupCount = playerState.meetupCounts[npcId] ?? 0;
+    const dateCount = playerState.dateCounts[npcId] ?? 0;
     const active = playerState.activeMeetup;
     return MEETUP_LOCATIONS.map((loc) => {
       if (active) {
-        const isThisOne = active.npcId === npcId && active.location === loc.id;
+        const isThisOne = active.npcId === npcId && active.location === loc.id && active.type === meetupType;
         return {
           id: loc.id,
           label: loc.label,
@@ -283,16 +313,18 @@ const phoneApi: PhoneApi = {
           reason: isThisOne ? "Arranged — go find her there." : "You already have a meetup arranged.",
         };
       }
-      const hasContent = loc.general.length > 0;
       if (loc.id === "home") {
-        const unlocked = hasContent && !!npc.homeMeetupUnlock && npc.homeMeetupUnlock(meetupCount, tier);
+        const unlockFn = meetupType === "date" ? npc.homeDateUnlock : npc.homeRegularUnlock;
+        const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
+        const unlocked = hasContent && !!unlockFn && unlockFn(dateCount, tier);
         return {
           id: loc.id,
           label: loc.label,
           available: unlocked,
-          reason: !hasContent || !npc.homeMeetupUnlock ? "Not yet designed." : unlocked ? undefined : "Not available yet.",
+          reason: !hasContent || !unlockFn ? "Not yet designed." : unlocked ? undefined : "Not available yet.",
         };
       }
+      const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
       return {
         id: loc.id,
         label: loc.label,
@@ -301,18 +333,21 @@ const phoneApi: PhoneApi = {
       };
     });
   },
-  payForMeetup: (npcId, locationId) => {
+  payForMeetup: (npcId, type, locationId) => {
     if (isNpcInCurrentBuilding(npcId)) {
       return { ok: false, message: "She's right here — no need to set up a meetup." };
     }
     if (playerState.activeMeetup) return { ok: false, message: "You already have a meetup arranged." };
+    const meetupType = type as MeetupType;
     const loc = getMeetupLocation(locationId as MeetupLocationId);
-    if (loc.general.length === 0) return { ok: false, message: "Not yet designed." };
+    const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
+    if (!hasContent) return { ok: false, message: "Not yet designed." };
     if (!energy.spend(MEETUP_ENERGY_COST)) {
       return { ok: false, message: `Not enough energy — need ${MEETUP_ENERGY_COST}.` };
     }
-    playerState.activeMeetup = { npcId, location: loc.id };
-    return { ok: true, message: `Arranged! You'll find her at the ${loc.label} next time you visit.` };
+    playerState.activeMeetup = { npcId, location: loc.id, type: meetupType };
+    const typeLabel = meetupType === "date" ? "Date" : "meetup";
+    return { ok: true, message: `Arranged! You'll find her at the ${loc.label} for your ${typeLabel} next time you visit.` };
   },
 };
 
@@ -1699,9 +1734,13 @@ function buildGymCategoryMenu(catId: GymCategory["id"], onBack: () => void): Men
 
 const EXCHANGE_NUMBER_COST = 30;
 const GIVE_GIFT_COST = 10;
+const ASK_HER_OUT_COST = 20; // not given an explicit number in the spec's Actions list — placeholder
 // "Meaningful relationship progress within Tier 3" (spec) — not just
 // entering Friend tier (score 50) — placeholder threshold, easy to retune.
 const PRIYA_EXCHANGE_THRESHOLD = 70;
+// Romance meter threshold for Ask Her Out to succeed — spec's own
+// placeholder value, "will be retuned once real gameplay testing begins."
+const PRIYA_ROMANCE_THRESHOLD = 5;
 
 const PRIYA_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier, score) => {
@@ -1721,6 +1760,12 @@ const PRIYA_ACTIONS: NpcActionRules = {
     // Gift Shop items carry NPC preferences (spec: "item preferences
     // TBD") — placeholder positive default until that data exists.
     return { delta: 8, message: "She's genuinely touched." };
+  },
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= PRIYA_ROMANCE_THRESHOLD) {
+      return { success: true, message: "She smiles. \"Yeah — I'd like that.\"" };
+    }
+    return { success: false, message: '"...I don\'t think we\'re there yet."' };
   },
 };
 
@@ -1787,9 +1832,11 @@ const PRIYA: NpcDef = {
     { id: "line", label: "Drop a Line", ratingByTier: { friend: "negative", close: "neutral" } },
   ],
   actions: PRIYA_ACTIONS,
-  // Requires BOTH 2 successful meetups elsewhere AND Tier 4 (Close) —
-  // meetup count alone or tier alone isn't enough.
-  homeMeetupUnlock: (meetupCount, tier) => meetupCount >= 2 && tier === "close",
+  // Requires BOTH 2 successful Dates elsewhere AND Tier 4 (Close) — date
+  // count alone or tier alone isn't enough. Home-as-Regular-Meetup has no
+  // defined condition yet (spec: "not yet defined"), so homeRegularUnlock
+  // stays omitted — locked with the same placeholder as Beach/Lounge.
+  homeDateUnlock: (dateCount, tier) => dateCount >= 2 && tier === "close",
 };
 
 const CAROL_ACTIONS: NpcActionRules = {
@@ -1806,6 +1853,9 @@ const CAROL_ACTIONS: NpcActionRules = {
   giftReaction: () => {
     return { delta: 8, message: 'She lights up. "Oh, you shouldn\'t have!"' };
   },
+  // Never actually reachable — Carol isn't romance-eligible, so Ask Her
+  // Out never appears in her Actions menu. Required by NpcActionRules.
+  askHerOut: () => ({ success: false, message: "" }),
 };
 
 const CAROL: NpcDef = {
@@ -1886,6 +1936,14 @@ function getRelationshipScore(npcId: string): number {
 
 function bumpRelationship(npcId: string, delta: number) {
   playerState.contacts[npcId] = Math.max(0, getRelationshipScore(npcId) + delta);
+}
+
+function getRomanceScore(npcId: string): number {
+  return playerState.romanceScores[npcId] ?? 0;
+}
+
+function bumpRomance(npcId: string, delta: number) {
+  playerState.romanceScores[npcId] = Math.max(0, getRomanceScore(npcId) + delta);
 }
 
 type DialogueView =
@@ -2058,7 +2116,14 @@ function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
           if (!socialBattery.spend(20)) return;
           const delta = getTopicDelta(topic, tier);
           bumpRelationship(npc.id, delta);
-          lastTalkResult = formatTopicResult(delta);
+          let resultText = formatTopicResult(delta);
+          // Positive Flirty picks (Compliment/Charm) also build the
+          // Romance meter, separate from the Relationship bar above.
+          if (activeCategory === "flirty" && delta > 0) {
+            bumpRomance(npc.id, FLIRTY_ROMANCE_DELTA);
+            resultText += ` / ${formatRomanceResult(FLIRTY_ROMANCE_DELTA)}`;
+          }
+          lastTalkResult = resultText;
           dialogueView = "talk-response";
         },
       })),
@@ -2134,6 +2199,23 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
           dialogueView = "actions-response";
         },
       },
+      ...(npc.romanceEligible
+        ? [
+            {
+              id: "ask-her-out",
+              label: "Ask Her Out",
+              costLabel: playerState.dating[npc.id] ? "DATING" : `${ASK_HER_OUT_COST} EN`,
+              disabled: !!playerState.dating[npc.id] || !energy.canAfford(ASK_HER_OUT_COST),
+              onSelect: () => {
+                if (playerState.dating[npc.id] || !energy.spend(ASK_HER_OUT_COST)) return;
+                const result = rules.askHerOut(getRomanceScore(npc.id));
+                if (result.success) playerState.dating[npc.id] = true;
+                lastActionResult = result.message;
+                dialogueView = "actions-response";
+              },
+            },
+          ]
+        : []),
       {
         id: "back",
         label: "‹ Back",
@@ -2196,58 +2278,110 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
   });
 }
 
-// Meetup System: the in-person side of an arranged meetup — walking up to
-// her at the location shows the location's general (+ romance, if
-// eligible) options directly, no Talk/Actions split. Picking one resolves
-// the whole meetup: relationship bump (or Overnight Stay's phase advance),
-// then she's gone — the room is rebuilt without her marker.
-// Top menu (General/Romance) → submenu (that category's options) →
-// response — same shape as the reception Talk flow, not one flat list.
-type MeetupDialogueView = "categories" | "options" | "response";
-let meetupDialogueView: MeetupDialogueView = "categories";
-let activeMeetupCategory: "general" | "romance" | null = null;
+// Meetup System (v4): the in-person side of an arranged Regular Meetup or
+// Date. She stays visible in the scene for the whole visit — picking an
+// option doesn't end it. Connect (Regular's 4 General options shown
+// directly; Date's own 4-option boldness scale behind a "Connect" button)
+// and Give a Gift are each single-use per visit; the visit itself only
+// ends via "End Meetup"/"End Date" or a confirmed door-exit (see
+// openEndMeetupConfirm) — both routed through endMeetupVisit.
+type MeetupDialogueView = "main" | "connect-options" | "response";
+let meetupDialogueView: MeetupDialogueView = "main";
+let meetupConnectUsedThisVisit = false;
+let meetupGiftUsedThisVisit = false;
 let lastMeetupResult = "";
+let lastMeetupWasOvernight = false;
 
-function resolveMeetupPick(npc: NpcDef, location: MeetupLocationId, option: MeetupOptionDef) {
-  if (option.requiresGift) {
-    if (playerState.giftsOwned <= 0) return; // guarded by disabled, shouldn't happen
-    playerState.giftsOwned -= 1;
-  }
+function resolveConnectPick(npc: NpcDef, location: MeetupLocationId, type: MeetupType, option: MeetupOptionDef) {
+  meetupConnectUsedThisVisit = true;
+  lastMeetupWasOvernight = false;
   if (option.special === "overnight-stay") {
+    lastMeetupWasOvernight = true;
     lastMeetupResult = resolveOvernightStay(npc.id);
-  } else {
+  } else if (type === "date") {
     // Home doesn't count toward its own unlock — only "other locations" do.
     if (location !== "home") {
-      playerState.meetupCounts[npc.id] = (playerState.meetupCounts[npc.id] ?? 0) + 1;
+      playerState.dateCounts[npc.id] = (playerState.dateCounts[npc.id] ?? 0) + 1;
     }
-    bumpRelationship(npc.id, MEETUP_OPTION_DELTA);
-    lastMeetupResult = formatTopicResult(MEETUP_OPTION_DELTA);
+    bumpRomance(npc.id, MEETUP_CONNECT_DELTA);
+    lastMeetupResult = formatRomanceResult(MEETUP_CONNECT_DELTA);
+  } else {
+    bumpRelationship(npc.id, MEETUP_CONNECT_DELTA);
+    lastMeetupResult = formatTopicResult(MEETUP_CONNECT_DELTA);
   }
   meetupDialogueView = "response";
 }
 
-function buildMeetupDialogueCategories(npc: NpcDef): DialogueData {
-  const options: DialogueOption[] = [
-    {
-      id: "general",
-      label: "General",
-      onSelect: () => {
-        activeMeetupCategory = "general";
-        meetupDialogueView = "options";
-      },
-    },
-  ];
-  if (npc.romanceEligible) {
+function resolveGiftPick(npc: NpcDef, type: MeetupType) {
+  if (playerState.giftsOwned <= 0) return; // guarded by disabled, shouldn't happen
+  playerState.giftsOwned -= 1;
+  meetupGiftUsedThisVisit = true;
+  lastMeetupWasOvernight = false;
+  if (type === "date") {
+    bumpRomance(npc.id, MEETUP_GIFT_DELTA);
+    lastMeetupResult = formatRomanceResult(MEETUP_GIFT_DELTA);
+  } else {
+    bumpRelationship(npc.id, MEETUP_GIFT_DELTA);
+    lastMeetupResult = formatTopicResult(MEETUP_GIFT_DELTA);
+  }
+  meetupDialogueView = "response";
+}
+
+/** Ends the current visit outright — penalizes leaving without ever using Connect, clears the meetup, and exits the building. Shared by "End Meetup/Date" and a confirmed door-exit. */
+function endMeetupVisit() {
+  const meetup = playerState.activeMeetup;
+  if (meetup && !meetupConnectUsedThisVisit) {
+    bumpRelationship(meetup.npcId, MEETUP_NO_CONNECT_PENALTY);
+    if (meetup.type === "date") bumpRomance(meetup.npcId, MEETUP_NO_CONNECT_PENALTY);
+  }
+  playerState.activeMeetup = null;
+  meetupConnectUsedThisVisit = false;
+  meetupGiftUsedThisVisit = false;
+  dialogueBox.close();
+  exitBuilding();
+}
+
+function buildMeetupDialogueMain(npc: NpcDef, location: MeetupLocationId, type: MeetupType): DialogueData {
+  const loc = getMeetupLocation(location);
+  const connectOptions = type === "date" ? loc.dateConnect : loc.regularGeneral;
+  const hasGift = playerState.giftsOwned > 0;
+  const options: DialogueOption[] = [];
+
+  if (!meetupConnectUsedThisVisit) {
+    if (type === "date") {
+      // Named "Connect," not "Talk" — Date options include physical
+      // actions, not just conversation.
+      options.push({
+        id: "connect",
+        label: "Connect",
+        onSelect: () => {
+          meetupDialogueView = "connect-options";
+        },
+      });
+    } else {
+      // Regular Meetup shows its 4 General options directly, no wrapper
+      // button — but picking any one still uses up the same Connect slot.
+      for (const o of connectOptions) {
+        options.push({ id: o.id, label: o.label, onSelect: () => resolveConnectPick(npc, location, type, o) });
+      }
+    }
+  }
+  if (!meetupGiftUsedThisVisit) {
     options.push({
-      id: "romance",
-      label: "Romance",
-      onSelect: () => {
-        activeMeetupCategory = "romance";
-        meetupDialogueView = "options";
-      },
+      id: "gift",
+      label: "Give a Gift",
+      costLabel: hasGift ? undefined : "NO GIFTS",
+      disabled: !hasGift,
+      onSelect: () => resolveGiftPick(npc, type),
     });
   }
-  options.push({ id: "leave", label: "Leave", onSelect: () => dialogueBox.close() });
+  options.push({
+    id: "end",
+    label: type === "date" ? "End Date" : "End Meetup",
+    onSelect: () => endMeetupVisit(),
+  });
+  options.push({ id: "leave", label: "‹ Not Now", onSelect: () => dialogueBox.close() });
+
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -2256,26 +2390,23 @@ function buildMeetupDialogueCategories(npc: NpcDef): DialogueData {
   };
 }
 
-function buildMeetupDialogueOptions(npc: NpcDef, location: MeetupLocationId): DialogueData {
+function buildMeetupDialogueConnectOptions(npc: NpcDef, location: MeetupLocationId, type: MeetupType): DialogueData {
   const loc = getMeetupLocation(location);
-  const opts = activeMeetupCategory === "romance" ? loc.romance : loc.general;
   return {
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     options: [
-      ...opts.map((o) => ({
+      ...loc.dateConnect.map((o) => ({
         id: o.id,
         label: o.label,
-        disabled: !!o.requiresGift && playerState.giftsOwned <= 0,
-        costLabel: o.requiresGift && playerState.giftsOwned <= 0 ? "NO GIFT" : undefined,
-        onSelect: () => resolveMeetupPick(npc, location, o),
+        onSelect: () => resolveConnectPick(npc, location, type, o),
       })),
       {
         id: "back",
         label: "‹ Back",
         onSelect: () => {
-          meetupDialogueView = "categories";
+          meetupDialogueView = "main";
         },
       },
     ],
@@ -2292,10 +2423,19 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
         id: "continue",
         label: "Continue",
         onSelect: () => {
-          dialogueBox.close();
-          playerState.activeMeetup = null;
-          if (scene.type === "interior") {
-            scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+          if (lastMeetupWasOvernight) {
+            // Overnight Stay already advanced the phase itself — the visit
+            // is over; rebuild the room so she shows up as the asleep
+            // overnight guest instead of the meetup NPC.
+            playerState.activeMeetup = null;
+            meetupConnectUsedThisVisit = false;
+            meetupGiftUsedThisVisit = false;
+            dialogueBox.close();
+            if (scene.type === "interior") {
+              scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+            }
+          } else {
+            meetupDialogueView = "main";
           }
         },
       },
@@ -2303,14 +2443,30 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
   };
 }
 
-function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId) {
-  meetupDialogueView = "categories";
-  activeMeetupCategory = null;
+function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId, type: MeetupType) {
+  meetupDialogueView = "main";
   dialogueBox.open(() => {
-    if (meetupDialogueView === "options") return buildMeetupDialogueOptions(npc, location);
+    if (meetupDialogueView === "connect-options") return buildMeetupDialogueConnectOptions(npc, location, type);
     if (meetupDialogueView === "response") return buildMeetupDialogueResponse(npc);
-    return buildMeetupDialogueCategories(npc);
+    return buildMeetupDialogueMain(npc, location, type);
   });
+}
+
+/** "Do you want to end the Date/Meetup?" — triggered by walking to the door while a meetup's active in this room. */
+function openEndMeetupConfirm() {
+  const meetup = playerState.activeMeetup;
+  if (!meetup) return;
+  const npc = getNpcById(meetup.npcId);
+  const label = meetup.type === "date" ? "Date" : "Meetup";
+  dialogueBox.open(() => ({
+    portrait: npc?.portrait ?? "🙂",
+    name: npc?.name ?? "",
+    text: `Do you want to end the ${label}?`,
+    options: [
+      { id: "yes", label: "Yes", onSelect: () => endMeetupVisit() },
+      { id: "no", label: "No", onSelect: () => dialogueBox.close() },
+    ],
+  }));
 }
 
 function openElevatorMenu(lot: LotInstance) {
@@ -2413,9 +2569,9 @@ function resolveOvernightStay(npcId: string): string {
   // Asleep at home — see advanceOvernightCommute for how this counts back
   // up to normal as the player enters buildings afterward.
   playerState.overnightCommuteStep[npcId] = 0;
-  bumpRelationship(npcId, MEETUP_OPTION_DELTA);
+  bumpRomance(npcId, MEETUP_CONNECT_DELTA);
 
-  return `You wake up together the next morning. Next: ${nextStage.label}. (${formatTopicResult(MEETUP_OPTION_DELTA)})`;
+  return `You wake up together the next morning. Next: ${nextStage.label}. (${formatRomanceResult(MEETUP_CONNECT_DELTA)})`;
 }
 
 // Airport (Section 5): "Go on Vacation" — $1000, only available right
@@ -2847,6 +3003,9 @@ type Scene =
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
 let scene: Scene = { type: "street" };
+// Latches the end-meetup door confirmation to one prompt per approach to
+// the door, instead of reopening it every frame the player stands there.
+let doorConfirmShown = false;
 
 function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
   if (lot.building.locked) {
@@ -2998,10 +3157,18 @@ function loop(now: number) {
       } else if (mallStore) {
         // Store rooms exit back to the Mall floor, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, computeStationsFor("Mall")) };
+      } else if (playerState.activeMeetup && MEETUP_LOCATION_BUILDING[playerState.activeMeetup.location](lot.building.name)) {
+        // Walking to the door mid-meetup doesn't exit on its own — confirm
+        // first (only once per approach, not every frame standing here).
+        if (!doorConfirmShown) {
+          doorConfirmShown = true;
+          openEndMeetupConfirm();
+        }
       } else {
         exitBuilding();
       }
     } else if (nearStation) {
+      doorConfirmShown = false;
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
       const phaseLock = getStationPhaseLock(nearStation.id);
       let onTrigger: () => void;
@@ -3045,9 +3212,9 @@ function loop(now: number) {
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "meetup-npc" && playerState.activeMeetup) {
-        const { npcId, location } = playerState.activeMeetup;
+        const { npcId, location, type } = playerState.activeMeetup;
         const meetupNpc = getNpcById(npcId);
-        onTrigger = meetupNpc ? () => openMeetupDialogue(meetupNpc, location) : () => {};
+        onTrigger = meetupNpc ? () => openMeetupDialogue(meetupNpc, location, type) : () => {};
       }
       else if (nearStation.id === "overnight-guest") {
         onTrigger = () => buildingUI.showToast("She's still asleep — let her rest.", pos, "bottom");
@@ -3068,6 +3235,7 @@ function loop(now: number) {
       // the street building-entrance prompt keeps its default "ENTER".
       buildingUI.setEnterPrompt(promptPos, onTrigger, "INTERACT");
     } else {
+      doorConfirmShown = false;
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "heavybag") {
