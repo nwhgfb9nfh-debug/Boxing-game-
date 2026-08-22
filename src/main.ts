@@ -2727,10 +2727,11 @@ function buildDialogueActionsBreakupConfirm(npc: NpcDef): DialogueData {
         onSelect: () => {
           playerState.dating[npc.id] = false;
           playerState.romanceEnded[npc.id] = true;
-          // Relationship resets to 0 — she's a non-romance character from
-          // here on, same as any friend-only NPC. Rebuild it from scratch.
-          playerState.contacts[npc.id] = 0;
-          lastActionResult = `You and ${npc.name} have broken up. You're just friends now — back to square one.`;
+          // Relationship resets to Tier 2 (Acquaintance) — she's a
+          // non-romance character from here on, same as any friend-only
+          // NPC, but not a total stranger again.
+          playerState.contacts[npc.id] = 20;
+          lastActionResult = `You and ${npc.name} have broken up. You're just friends now.`;
           dialogueView = "actions-response";
         },
       },
