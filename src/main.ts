@@ -29,6 +29,7 @@ import {
   getTopicDelta,
   formatTopicResult,
   formatRomanceResult,
+  formatFamilyReveal,
   tierLabel,
   FLIRTY_ROMANCE_DELTA,
   TEXT_TALK_NOT_ROMANCED,
@@ -1757,6 +1758,10 @@ const EXCHANGE_NUMBER_COST = 30;
 const GIVE_GIFT_COST = 10;
 const ASK_HER_OUT_COST = 20; // not given an explicit number in the spec's Actions list — placeholder
 const PROPOSE_COST = 20; // same placeholder logic as Ask Her Out
+// "Invite to Next Fight" — same placeholder logic, once per NPC per
+// scheduled fight (see playerState.fightInvites).
+const INVITE_TO_FIGHT_COST = 15;
+const INVITE_TO_FIGHT_DELTA = 10;
 // "Meaningful relationship progress within Tier 3" (spec) — not just
 // entering Friend tier (score 50) — placeholder threshold, easy to retune.
 const PRIYA_EXCHANGE_THRESHOLD = 70;
@@ -1842,7 +1847,12 @@ const PRIYA: NpcDef = {
     },
   ],
   personalTopics: [
-    { id: "family", label: "Family", ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" } },
+    {
+      id: "family",
+      label: "Family",
+      ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" },
+      special: "family-reveal",
+    },
     { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
     {
       id: "weekend",
@@ -1875,6 +1885,10 @@ const PRIYA: NpcDef = {
   // defined condition yet (spec: "not yet defined"), so homeRegularUnlock
   // stays omitted — locked with the same placeholder as Beach/Lounge.
   homeDateUnlock: (dateCount, tier) => dateCount >= 2 && tier === "close",
+  // Marriage System: no kids yet, wants just one — placeholder numbers,
+  // easy to retune. Matches the Family topic's own rating map above
+  // (reluctant at Acquaintance, opens up at Friend+).
+  familyInfo: { kidsHas: 0, kidsWants: 1, revealTier: "friend" },
 };
 
 const CAROL_ACTIONS: NpcActionRules = {
@@ -2192,6 +2206,13 @@ function buildDialogueTalkTopics(npc: NpcDef): DialogueData {
         disabled: !affordable,
         onSelect: () => {
           if (!socialBattery.spend(20)) return;
+          if (topic.special === "family-reveal" && npc.familyInfo) {
+            // Marriage System: purely informational — no Relationship/
+            // Romance change, and can be asked again any time it's unlocked.
+            lastTalkResult = formatFamilyReveal(npc.familyInfo, tier);
+            dialogueView = "talk-response";
+            return;
+          }
           const delta = getTopicDelta(topic, tier);
           bumpRelationship(npc.id, delta);
           let resultText = formatTopicResult(delta);
@@ -2270,6 +2291,27 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
         onSelect: () => {
           if (!hasGift) return;
           dialogueView = "actions-gift-picker";
+        },
+      },
+      {
+        id: "invite-fight",
+        label: "Invite to Next Fight",
+        costLabel: playerState.fightInvites[npc.id]
+          ? "INVITED"
+          : !playerState.fightScheduled
+            ? "NO FIGHT"
+            : `${INVITE_TO_FIGHT_COST} EN`,
+        disabled:
+          !!playerState.fightInvites[npc.id] ||
+          !playerState.fightScheduled ||
+          !energy.canAfford(INVITE_TO_FIGHT_COST),
+        onSelect: () => {
+          if (playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
+          if (!energy.spend(INVITE_TO_FIGHT_COST)) return;
+          playerState.fightInvites[npc.id] = true;
+          bumpRelationship(npc.id, INVITE_TO_FIGHT_DELTA);
+          lastActionResult = `She's happy you asked. "I'll be there!" (${formatTopicResult(INVITE_TO_FIGHT_DELTA)})`;
+          dialogueView = "actions-response";
         },
       },
       ...(npc.romanceEligible && !isRomanceLockedOut(npc)
@@ -2746,6 +2788,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
+    playerState.fightInvites = {};
   }
 
   buildingUI.showToast(
@@ -2778,6 +2821,7 @@ function resolveOvernightStay(npcId: string): string {
   if (nextStage.type === "nofight") {
     playerState.fightScheduled = false;
     playerState.cashAdvanceTaken = false;
+    playerState.fightInvites = {};
   }
   // Asleep at home — see advanceOvernightCommute for how this counts back
   // up to normal as the player enters buildings afterward.

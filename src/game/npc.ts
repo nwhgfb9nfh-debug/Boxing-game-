@@ -37,6 +37,11 @@ export interface TalkTopicDef {
   // (Personal from T2, Heart to Heart/Flirty from T3) don't need earlier
   // entries.
   ratingByTier: Partial<Record<RelationshipTier, TopicRating>>;
+  // Marriage System: routes this pick to the bespoke family/kids reveal
+  // (see formatFamilyReveal) instead of the generic rating delta above —
+  // purely informational, no Relationship/Romance change either way, and
+  // repeatable any time it's unlocked.
+  special?: "family-reveal";
 }
 
 export interface ExchangeNumberResult {
@@ -99,6 +104,16 @@ export interface NpcDef {
   // Home-as-Regular-Meetup has its own separate, simpler unlock — omitted
   // means not yet designed (shown the same placeholder as Beach/Lounge).
   homeRegularUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
+  // Marriage System: how many kids (if any) she already has, and how many
+  // she wants total — this is the number the player will actually get once
+  // married to her. Romance-eligible NPCs only; revealed via the Personal
+  // → Family topic (special: "family-reveal") once relationship clears
+  // revealTier, and stays fixed regardless of what the player later says.
+  familyInfo?: {
+    kidsHas: number;
+    kidsWants: number;
+    revealTier: RelationshipTier;
+  };
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.
@@ -165,6 +180,19 @@ export function formatRomanceResult(delta: number): string {
   if (delta > 0) return `+${delta} Romance`;
   if (delta < 0) return `−${Math.abs(delta)} Romance`;
   return "No change.";
+}
+
+// Marriage System: the Personal → Family topic's special reveal (see
+// TalkTopicDef.special) — below revealTier she deflects, at/above it she
+// tells the player exactly how many kids she wants (the number they'll
+// get once married to her).
+export function formatFamilyReveal(info: NonNullable<NpcDef["familyInfo"]>, tier: RelationshipTier): string {
+  if (!tierAtLeast(tier, info.revealTier)) {
+    return 'She waves it off. "Let\'s not get into that — not yet, anyway."';
+  }
+  const hasText = info.kidsHas === 0 ? "no kids yet" : `${info.kidsHas} kid${info.kidsHas === 1 ? "" : "s"} already`;
+  const wantsText = `wants ${info.kidsWants} kid${info.kidsWants === 1 ? "" : "s"} total, someday`;
+  return `She opens up a little: ${hasText}, and ${wantsText}.`;
 }
 
 const TIER_LABELS: Record<RelationshipTier, string> = {

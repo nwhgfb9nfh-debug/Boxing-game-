@@ -85,6 +85,11 @@ export interface PlayerState {
   // fightScheduled just gates Cash Advance and re-selecting Set Next Fight.
   fightScheduled: boolean;
   cashAdvanceTaken: boolean;
+  // NPC Dialogue Actions: "Invite to Next Fight" — once per scheduled
+  // fight per NPC, keyed by NPC id. Cleared alongside fightScheduled/
+  // cashAdvanceTaken whenever a fresh camp starts back at "No Fight
+  // Scheduled" (see sleepAtBed/resolveOvernightStay).
+  fightInvites: Record<string, boolean>;
   sponsorships: SponsorshipContract[];
   // Manager Lvl 2+'s "Invest in Portfolio" — a placeholder money sink until
   // a real returns system exists.
@@ -187,6 +192,7 @@ export function createPlayerState(): PlayerState {
     gymLevels: { weightArea: 1, power: 1, speed: 1, endurance: 1 },
     fightScheduled: false,
     cashAdvanceTaken: false,
+    fightInvites: {},
     sponsorships: [],
     portfolioInvested: 0,
     pressConferenceDone: false,
