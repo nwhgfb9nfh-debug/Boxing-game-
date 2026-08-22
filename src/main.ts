@@ -288,17 +288,17 @@ const phoneApi: PhoneApi = {
   getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
-    // Married to her — she already lives at home, nothing left to arrange.
-    if (playerState.married[npcId]) {
-      return [
-        { id: "regular", label: "Regular Meetup", available: false, reason: "She lives with you now." },
-        ...(npc.romanceEligible
-          ? [{ id: "date" as MeetupType, label: "Date", available: false, reason: "She lives with you now." }]
-          : []),
-      ];
-    }
+    // Married to her — Regular Meetup is redundant with just talking to
+    // her at home, but Date (a real night out) still stands. She's still
+    // permanently "dating" so the normal Date logic below covers it.
+    const isSpouse = !!playerState.married[npcId];
     const types: { id: MeetupType; label: string; available: boolean; reason?: string }[] = [
-      { id: "regular", label: "Regular Meetup", available: true },
+      {
+        id: "regular",
+        label: "Regular Meetup",
+        available: !isSpouse,
+        reason: isSpouse ? "She lives with you now." : undefined,
+      },
     ];
     if (npc.romanceEligible) {
       const lockedOut = isRomanceLockedOut(npc);
@@ -330,6 +330,11 @@ const phoneApi: PhoneApi = {
         };
       }
       if (loc.id === "home") {
+        // She already lives here — "arranging" a Home Date doesn't mean
+        // anything once she's your wife.
+        if (playerState.married[npcId]) {
+          return { id: loc.id, label: loc.label, available: false, reason: "She already lives here." };
+        }
         const unlockFn = meetupType === "date" ? npc.homeDateUnlock : npc.homeRegularUnlock;
         const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
         const unlocked = hasContent && !!unlockFn && unlockFn(dateCount, tier);
@@ -1961,7 +1966,12 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   carol: "Office",
 };
 function isNpcInCurrentBuilding(npcId: string): boolean {
-  return scene.type === "interior" && scene.lot.building.name === NPC_HOME_BUILDING[npcId];
+  if (scene.type !== "interior") return false;
+  // Married — her "home building" becomes wherever the player's houses
+  // are (all of them, since she isn't tied to one specific unit) instead
+  // of her old station, so Text/Meetup lock while standing in any house.
+  if (playerState.married[npcId]) return HOUSE_NAMES.has(scene.lot.building.name);
+  return scene.lot.building.name === NPC_HOME_BUILDING[npcId];
 }
 
 function getRelationshipScore(npcId: string): number {
