@@ -3573,6 +3573,11 @@ const HOUSE_NAMES = new Set([
 // receptionists, purely visual (see Decoration in game/interior.ts).
 const OFFICE_DECORATIONS: Decoration[] = [
   { id: "reception-desk", nx: 0.3, ny: 0.4, width: 200, height: 36, blocking: true },
+  // Lobby seating, opposite the reception desk — purely visual, not
+  // blocking (nothing to route around like the desk). Derek's station
+  // sits right at the left one.
+  { nx: 0.75, ny: 0.72, width: 50, height: 70, color: "#3a5a78" },
+  { nx: 0.88, ny: 0.72, width: 50, height: 70, color: "#3a5a78" },
 ];
 
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
@@ -3608,7 +3613,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
       radius: 24,
       approachDecorationId: "reception-desk",
     },
-    { id: "elevator", label: "Elevator", nx: 0.7, ny: 0.4 },
+    { id: "elevator", label: "Elevator", nx: 0.78, ny: 0.15 },
   ],
   Beach: [
     { id: "sunbathe", label: "Sunbathe", nx: 0.35, ny: 0.4 },
@@ -3747,7 +3752,8 @@ function advanceOvernightCommute() {
 /** Derek's Lobby spot — only present some phases (see isDerekPresentThisPhase), so this is additive rather than a static STATIONS_BY_BUILDING entry. */
 function getDerekStation(buildingName: string): Station | null {
   if (buildingName !== "Office" || !isDerekPresentThisPhase()) return null;
-  return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.5, ny: 0.75 };
+  // Parked in the left of the two lobby seats, opposite Reception.
+  return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.75, ny: 0.72 };
 }
 
 function computeStationsFor(buildingName: string): Station[] {
