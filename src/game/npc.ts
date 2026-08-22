@@ -189,9 +189,9 @@ export const TEXT_TALK_NOT_ROMANCED: TextTalkOption[] = [
 
 export const TEXT_TALK_ROMANCED: TextTalkOption[] = [
   { id: "morning", label: "Good Morning Text" },
-  { id: "flirty", label: "Flirty Text" },
   { id: "day", label: "Ask How Their Day's Going" },
   { id: "selfie", label: "Send a Selfie" },
+  { id: "flirty", label: "Flirty Text" },
 ];
 
 // Flat, reusable bump — spec doesn't specify a value ("low-content-cost
