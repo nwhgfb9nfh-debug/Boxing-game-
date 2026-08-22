@@ -1965,13 +1965,18 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   priya: "Office",
   carol: "Office",
 };
+// True whenever she's actually physically standing in the room the player
+// is currently in — covers every way she can be present, not just her
+// regular station: an active meetup/date visit, an overnight guest asleep
+// the morning after, or (once married) any house. Text/Initiate Meetup
+// only make sense when none of these are true.
 function isNpcInCurrentBuilding(npcId: string): boolean {
   if (scene.type !== "interior") return false;
-  // Married — her "home building" becomes wherever the player's houses
-  // are (all of them, since she isn't tied to one specific unit) instead
-  // of her old station, so Text/Meetup lock while standing in any house.
-  if (playerState.married[npcId]) return HOUSE_NAMES.has(scene.lot.building.name);
-  return scene.lot.building.name === NPC_HOME_BUILDING[npcId];
+  const buildingName = scene.lot.building.name;
+  if (playerState.married[npcId]) return HOUSE_NAMES.has(buildingName);
+  if (playerState.activeMeetup?.npcId === npcId && scene.interior.hasStation("meetup-npc")) return true;
+  if (playerState.overnightCommuteStep[npcId] === 0 && scene.interior.hasStation("overnight-guest")) return true;
+  return buildingName === NPC_HOME_BUILDING[npcId] && !isNpcAwayFromOffice(npcId);
 }
 
 function getRelationshipScore(npcId: string): number {
@@ -2007,7 +2012,7 @@ function resolveProposeAttempt(npc: NpcDef): string {
   const rules = npc.actions!;
   const result = rules.propose(getRelationshipScore(npc.id), getRomanceScore(npc.id), playerState.dateCounts[npc.id] ?? 0);
   if (result.success) {
-    playerState.ringsOwned -= 1;
+    playerState.giftInventory.ring = getGiftCount("ring") - 1;
     playerState.married[npc.id] = true;
   }
   return result.message;
@@ -2020,6 +2025,8 @@ type DialogueView =
   | "talk-topics"
   | "talk-response"
   | "actions"
+  | "actions-gift-picker"
+  | "actions-propose-confirm"
   | "actions-response"
   | "not-written";
 let dialogueView: DialogueView = "main";
@@ -2235,14 +2242,11 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
   const rules = npc.actions!;
   const hasNumber = !!playerState.exchangedNumbers[npc.id];
   const affordExchange = energy.canAfford(EXCHANGE_NUMBER_COST);
-  const hasGift = playerState.giftsOwned > 0;
-  const affordGift = hasGift && energy.canAfford(GIVE_GIFT_COST);
+  const hasGift = totalGiftsOwned() > 0;
   return {
     portrait: npc.portrait,
     name: npc.name,
-    text: `Energy: ${energy.remaining}/100  ·  Gifts owned: ${playerState.giftsOwned}${
-      npc.romanceEligible && !isRomanceLockedOut(npc) ? `  ·  Rings owned: ${playerState.ringsOwned}` : ""
-    }`,
+    text: `Energy: ${energy.remaining}/100  ·  Gifts owned: ${totalGiftsOwned()}`,
     options: [
       {
         id: "exchange-number",
@@ -2261,15 +2265,11 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
       {
         id: "give-gift",
         label: "Give a Gift",
-        costLabel: !hasGift ? "NO GIFTS" : `${GIVE_GIFT_COST} EN`,
-        disabled: !affordGift,
+        costLabel: hasGift ? undefined : "NO GIFTS",
+        disabled: !hasGift,
         onSelect: () => {
-          if (!affordGift || !energy.spend(GIVE_GIFT_COST)) return;
-          playerState.giftsOwned -= 1;
-          const result = rules.giftReaction(tier);
-          bumpRelationship(npc.id, result.delta);
-          lastActionResult = `${result.message} (${formatTopicResult(result.delta)})`;
-          dialogueView = "actions-response";
+          if (!hasGift) return;
+          dialogueView = "actions-gift-picker";
         },
       },
       ...(npc.romanceEligible && !isRomanceLockedOut(npc)
@@ -2287,28 +2287,6 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
                 dialogueView = "actions-response";
               },
             },
-            {
-              id: "propose",
-              label: "Propose",
-              costLabel: playerState.married[npc.id]
-                ? "MARRIED"
-                : !playerState.dating[npc.id]
-                  ? "NOT DATING"
-                  : playerState.ringsOwned <= 0
-                    ? "NO RING"
-                    : `${PROPOSE_COST} EN`,
-              disabled:
-                !!playerState.married[npc.id] ||
-                !playerState.dating[npc.id] ||
-                playerState.ringsOwned <= 0 ||
-                !energy.canAfford(PROPOSE_COST),
-              onSelect: () => {
-                if (playerState.married[npc.id] || !playerState.dating[npc.id] || playerState.ringsOwned <= 0) return;
-                if (!energy.spend(PROPOSE_COST)) return;
-                lastActionResult = resolveProposeAttempt(npc);
-                dialogueView = "actions-response";
-              },
-            },
           ]
         : []),
       {
@@ -2316,6 +2294,75 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
         label: "‹ Back",
         onSelect: () => {
           dialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+// Marriage System: the Engagement Ring is just another entry in this list
+// — picking it doesn't hand it over immediately like a normal gift, it
+// opens a Yes/No propose confirmation instead (buildDialogueActionsProposeConfirm).
+function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
+  const tier = getRelationshipTier(getRelationshipScore(npc.id));
+  const canProposeHere = npc.romanceEligible && !isRomanceLockedOut(npc) && !playerState.married[npc.id];
+  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && (!g.isRing || canProposeHere));
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Energy: ${energy.remaining}/100 — which gift?`,
+    options: [
+      ...owned.map((g) => ({
+        id: g.id,
+        label: `${g.name} (${getGiftCount(g.id)})`,
+        costLabel: g.isRing ? undefined : `${GIVE_GIFT_COST} EN`,
+        disabled: !g.isRing && !energy.canAfford(GIVE_GIFT_COST),
+        onSelect: () => {
+          if (g.isRing) {
+            dialogueView = "actions-propose-confirm";
+            return;
+          }
+          if (!energy.spend(GIVE_GIFT_COST)) return;
+          playerState.giftInventory[g.id] = getGiftCount(g.id) - 1;
+          const result = npc.actions!.giftReaction(tier);
+          bumpRelationship(npc.id, result.delta);
+          lastActionResult = `${result.message} (${formatTopicResult(result.delta)})`;
+          dialogueView = "actions-response";
+        },
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "actions";
+        },
+      },
+    ],
+  };
+}
+
+function buildDialogueActionsProposeConfirm(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Do you want to propose to ${npc.name}?`,
+    options: [
+      {
+        id: "yes",
+        label: "Yes",
+        costLabel: `${PROPOSE_COST} EN`,
+        disabled: !energy.canAfford(PROPOSE_COST),
+        onSelect: () => {
+          if (!energy.spend(PROPOSE_COST)) return;
+          lastActionResult = resolveProposeAttempt(npc);
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "no",
+        label: "No",
+        onSelect: () => {
+          dialogueView = "actions-gift-picker";
         },
       },
     ],
@@ -2367,6 +2414,8 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
     if (dialogueView === "talk-topics") return buildDialogueTalkTopics(activeNpc!);
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
     if (dialogueView === "actions") return buildDialogueActions(activeNpc!);
+    if (dialogueView === "actions-gift-picker") return buildDialogueActionsGiftPicker(activeNpc!);
+    if (dialogueView === "actions-propose-confirm") return buildDialogueActionsProposeConfirm(activeNpc!);
     if (dialogueView === "actions-response") return buildDialogueActionsResponse(activeNpc!);
     if (dialogueView === "not-written") return buildDialogueNotWritten(activeNpc!);
     return buildDialogueMain(activeNpc!, extraOptions);
@@ -2381,7 +2430,7 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
 // visit; the visit itself only ends via "End Meetup"/"End Date" or a
 // confirmed door-exit (see openEndMeetupConfirm) — both routed through
 // endMeetupVisit.
-type MeetupDialogueView = "main" | "connect-options" | "response";
+type MeetupDialogueView = "main" | "connect-options" | "gift-options" | "propose-confirm" | "response";
 let meetupDialogueView: MeetupDialogueView = "main";
 let meetupConnectUsedThisVisit = false;
 let meetupGiftUsedThisVisit = false;
@@ -2394,6 +2443,7 @@ let lastMeetupWasMarried = false;
 
 function resolveMeetupProposePick(npc: NpcDef) {
   lastMeetupWasOvernight = false;
+  meetupGiftUsedThisVisit = true; // proposing with the ring spends the visit's one Gift action, win or lose
   lastMeetupResult = resolveProposeAttempt(npc);
   lastMeetupWasMarried = !!playerState.married[npc.id];
   meetupDialogueView = "response";
@@ -2419,9 +2469,9 @@ function resolveConnectPick(npc: NpcDef, location: MeetupLocationId, type: Meetu
   meetupDialogueView = "response";
 }
 
-function resolveGiftPick(npc: NpcDef, type: MeetupType) {
-  if (playerState.giftsOwned <= 0) return; // guarded by disabled, shouldn't happen
-  playerState.giftsOwned -= 1;
+function resolveGiftPick(npc: NpcDef, type: MeetupType, giftId: string) {
+  if (getGiftCount(giftId) <= 0) return; // guarded by disabled, shouldn't happen
+  playerState.giftInventory[giftId] = getGiftCount(giftId) - 1;
   meetupGiftUsedThisVisit = true;
   lastMeetupWasOvernight = false;
   if (type === "date") {
@@ -2449,7 +2499,7 @@ function endMeetupVisit() {
 }
 
 function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
-  const hasGift = playerState.giftsOwned > 0;
+  const hasGift = totalGiftsOwned() > 0;
   const options: DialogueOption[] = [];
 
   if (!meetupConnectUsedThisVisit) {
@@ -2465,22 +2515,17 @@ function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
     });
   }
   if (!meetupGiftUsedThisVisit) {
+    // The Engagement Ring lives in this same list (see
+    // buildMeetupDialogueGiftOptions) — picking it asks to Propose instead
+    // of just handing it over, same as the regular Actions menu.
     options.push({
       id: "gift",
       label: "Give a Gift",
       costLabel: hasGift ? undefined : "NO GIFTS",
       disabled: !hasGift,
-      onSelect: () => resolveGiftPick(npc, type),
-    });
-  }
-  if (npc.romanceEligible && playerState.dating[npc.id] && !playerState.married[npc.id] && !isRomanceLockedOut(npc)) {
-    const hasRing = playerState.ringsOwned > 0;
-    options.push({
-      id: "propose",
-      label: "Propose",
-      costLabel: hasRing ? undefined : "NO RING",
-      disabled: !hasRing,
-      onSelect: () => resolveMeetupProposePick(npc),
+      onSelect: () => {
+        meetupDialogueView = "gift-options";
+      },
     });
   }
   options.push({
@@ -2495,6 +2540,55 @@ function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     options,
+  };
+}
+
+function buildMeetupDialogueGiftOptions(npc: NpcDef, type: MeetupType): DialogueData {
+  const canProposeHere =
+    npc.romanceEligible && !!playerState.dating[npc.id] && !playerState.married[npc.id] && !isRomanceLockedOut(npc);
+  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && (!g.isRing || canProposeHere));
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `${npc.name} is happy to see you.`,
+    options: [
+      ...owned.map((g) => ({
+        id: g.id,
+        label: `${g.name} (${getGiftCount(g.id)})`,
+        onSelect: () => {
+          if (g.isRing) {
+            meetupDialogueView = "propose-confirm";
+            return;
+          }
+          resolveGiftPick(npc, type, g.id);
+        },
+      })),
+      {
+        id: "back",
+        label: "‹ Back",
+        onSelect: () => {
+          meetupDialogueView = "main";
+        },
+      },
+    ],
+  };
+}
+
+function buildMeetupDialogueProposeConfirm(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Do you want to propose to ${npc.name}?`,
+    options: [
+      { id: "yes", label: "Yes", onSelect: () => resolveMeetupProposePick(npc) },
+      {
+        id: "no",
+        label: "No",
+        onSelect: () => {
+          meetupDialogueView = "gift-options";
+        },
+      },
+    ],
   };
 }
 
@@ -2564,6 +2658,8 @@ function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId, type: Meetu
   meetupDialogueView = "main";
   dialogueBox.open(() => {
     if (meetupDialogueView === "connect-options") return buildMeetupDialogueConnectOptions(npc, location, type);
+    if (meetupDialogueView === "gift-options") return buildMeetupDialogueGiftOptions(npc, type);
+    if (meetupDialogueView === "propose-confirm") return buildMeetupDialogueProposeConfirm(npc);
     if (meetupDialogueView === "response") return buildMeetupDialogueResponse(npc);
     return buildMeetupDialogueMain(npc, type);
   });
@@ -2835,46 +2931,40 @@ function openClothesMenu() {
   }));
 }
 
-const GIFT_OPTIONS: ShopItem[] = [
+// Marriage System: the ring is just another gift item in the catalog —
+// what makes it special is handled where gifts are GIVEN (isRing routes to
+// a Propose confirmation instead of an immediate hand-over), not here.
+interface GiftCatalogItem extends ShopItem {
+  isRing?: boolean;
+}
+const GIFT_CATALOG: GiftCatalogItem[] = [
   { id: "flowers", name: "Flowers", price: 50 },
   { id: "jewelry", name: "Jewelry", price: 500 },
+  { id: "ring", name: "Engagement Ring", price: 3000, isRing: true },
 ];
-const RING_PRICE = 3000;
+function getGiftCount(id: string): number {
+  return playerState.giftInventory[id] ?? 0;
+}
+function totalGiftsOwned(): number {
+  return Object.values(playerState.giftInventory).reduce((sum, n) => sum + n, 0);
+}
 
 function openGiftShopMenu() {
   locationMenu.open(() => ({
     title: "🎁 Gift Shop",
-    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${playerState.giftsOwned}  ·  Rings owned: ${playerState.ringsOwned}`,
-    actions: [
-      ...GIFT_OPTIONS.map((g) => ({
-        id: g.id,
-        label: g.name,
-        cost: 0,
-        costLabel: `$${g.price}`,
-        run: () => {
-          if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
-          playerState.money -= g.price;
-          playerState.giftsOwned += 1;
-          return `Bought ${g.name}!`;
-        },
-      })),
-      {
-        id: "ring",
-        // Kept separate from the generic Gifts count — an Engagement Ring
-        // is reserved for Propose, not the flat Give a Gift action.
-        label: "Engagement Ring",
-        cost: 0,
-        costLabel: `$${RING_PRICE}`,
-        run: () => {
-          if (playerState.money < RING_PRICE) {
-            return `Not enough money — need $${RING_PRICE}, have $${playerState.money}.`;
-          }
-          playerState.money -= RING_PRICE;
-          playerState.ringsOwned += 1;
-          return "Bought an Engagement Ring!";
-        },
+    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${totalGiftsOwned()}`,
+    actions: GIFT_CATALOG.map((g) => ({
+      id: g.id,
+      label: g.name,
+      cost: 0,
+      costLabel: `$${g.price}`,
+      run: () => {
+        if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
+        playerState.money -= g.price;
+        playerState.giftInventory[g.id] = getGiftCount(g.id) + 1;
+        return `Bought ${g.name}!`;
       },
-    ],
+    })),
   }));
 }
 

@@ -115,10 +115,11 @@ export interface PlayerState {
   // once the NPC/romance system exists to receive them.
   vehicleOwned: string | null;
   petOwned: string | null;
-  giftsOwned: number;
-  // Marriage System: bought separately from generic Gifts — reserved for
-  // Propose, not the flat Give a Gift action.
-  ringsOwned: number;
+  // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
+  // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
+  // are owned; giving the Engagement Ring asks to Propose instead of
+  // handing it straight over.
+  giftInventory: Record<string, number>;
   // Phone app feeds (Section 5).
   buzzerHistory: BuzzerPostRecord[]; // newest first, capped at BUZZER_HISTORY_LIMIT
   availablePhotos: Photo[]; // taken but not yet posted to Imagestar
@@ -200,8 +201,7 @@ export function createPlayerState(): PlayerState {
     vacationEnergyBonusUses: 0,
     vehicleOwned: null,
     petOwned: null,
-    giftsOwned: 0,
-    ringsOwned: 0,
+    giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],
     imagestarPosts: [],
