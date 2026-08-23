@@ -131,8 +131,12 @@ export interface PlayerState {
   // Vehicle Dealer (Section 5, updated): vehicles have real gameplay
   // mechanics, so unlike Pet the player can own several at once and
   // switches which one is "active" (driven) rather than replacing it.
+  // standardVehicle is the Garage's default — walking out onto the street
+  // from any house resets activeVehicle to it, unless the Garage's Drive
+  // option was just used for that same visit (see main.ts's exitBuilding).
   vehiclesOwned: string[];
   activeVehicle: string | null;
+  standardVehicle: string | null;
   petOwned: string | null;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
@@ -269,6 +273,7 @@ export function createPlayerState(): PlayerState {
     vacationEnergyBonusUses: 0,
     vehiclesOwned: [],
     activeVehicle: null,
+    standardVehicle: null,
     petOwned: null,
     giftInventory: {},
     buzzerHistory: [],

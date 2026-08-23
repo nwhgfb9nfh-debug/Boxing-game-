@@ -5312,10 +5312,15 @@ function skillsetLabel(s: VehicleSkillset): string {
 }
 
 // Exact per-skillset numbers are flagged "TBD" in the catalogue doc —
-// picked as clearly-retunable placeholders. Speed Boost raises top speed;
-// Reverse Driving's own speed (REVERSE_MAX_SPEED) lives in street.ts next
-// to MAX_SPEED, since both are pure driving-physics constants.
-const SPEED_BOOST_MULTIPLIER = 1.35;
+// picked as clearly-retunable placeholders, scaled by tier so the jump
+// between tiers actually feels different behind the wheel rather than a
+// flat "has it or doesn't" bonus. Speed Boost multiplies MAX_SPEED (420
+// px/sec) by tier; Reverse Driving's top speed is a tier-based fraction of
+// that same vehicle's forward top speed — the Supercar (tier 4) backs up
+// exactly as fast as it drives forward, and tier 3 (Muscle Car/Luxury
+// Sedan) is close behind at 90%.
+const TIER_SPEED_MULTIPLIER: Record<VehicleDef["tier"], number> = { 1: 1, 2: 1.2, 3: 1.6, 4: 2.2 };
+const TIER_REVERSE_RATIO: Record<VehicleDef["tier"], number> = { 1: 0, 2: 0.55, 3: 0.9, 4: 1 };
 
 function activeVehicleDef(): VehicleDef | null {
   return VEHICLE_CATALOG.find((v) => v.id === playerState.activeVehicle) ?? null;
@@ -5325,8 +5330,8 @@ function activeVehicleDef(): VehicleDef | null {
 function applyVehiclePerformance() {
   const v = activeVehicleDef();
   street.setPerformance(
-    v?.skillsets.includes("speed") ? SPEED_BOOST_MULTIPLIER : 1,
-    v?.skillsets.includes("reverse") ?? false,
+    v?.skillsets.includes("speed") ? TIER_SPEED_MULTIPLIER[v.tier] : 1,
+    v?.skillsets.includes("reverse") ? TIER_REVERSE_RATIO[v.tier] : 0,
     v?.skillsets.includes("fasttravel") ?? false,
   );
 }
@@ -5386,6 +5391,99 @@ function openFastTravelMenu() {
       },
     })),
   }));
+}
+
+// Garage (Section 5, updated): a Home station, not a Mall one — every
+// owned vehicle lives here. Two-step menu (select a vehicle, then Drive or
+// Set as Standard for it) mirrors the Manager Desk's drill-down menus
+// elsewhere in this file. Drive/Set as Standard both flip
+// garageDriveOverride so the choice survives leaving Home this same visit
+// (see exitBuilding) instead of being immediately overwritten by the
+// standard-vehicle reset.
+let garageSelectedVehicleId: string | null = null;
+
+function openGarageMenu() {
+  garageSelectedVehicleId = null;
+  locationMenu.open(buildGarageMenu);
+}
+
+function buildGarageMenu(): MenuData {
+  const owned = VEHICLE_CATALOG.filter((v) => playerState.vehiclesOwned.includes(v.id));
+  const standard = VEHICLE_CATALOG.find((v) => v.id === playerState.standardVehicle) ?? null;
+  const active = activeVehicleDef();
+  const statusText = `Standard: ${standard ? standard.name : "None"}  ·  Driving: ${active ? active.name : "None"}`;
+
+  const selected = owned.find((v) => v.id === garageSelectedVehicleId) ?? null;
+  if (selected) {
+    const isActive = active?.id === selected.id;
+    const isStandard = standard?.id === selected.id;
+    return {
+      title: `🏠 Garage — ${selected.name}`,
+      energyText: statusText,
+      actions: [
+        {
+          id: "back",
+          label: "‹ Back",
+          cost: 0,
+          costLabel: "",
+          run: () => {
+            garageSelectedVehicleId = null;
+            return "";
+          },
+        },
+        {
+          id: "drive",
+          label: "🚗 Drive",
+          cost: 0,
+          costLabel: isActive ? "DRIVING" : "SELECT",
+          disabled: isActive,
+          run: () => {
+            playerState.activeVehicle = selected.id;
+            garageDriveOverride = true;
+            applyVehiclePerformance();
+            garageSelectedVehicleId = null;
+            return `Driving the ${selected.name}.`;
+          },
+        },
+        {
+          id: "standard",
+          label: "⭐ Set as Standard",
+          cost: 0,
+          costLabel: isStandard ? "STANDARD" : "SELECT",
+          disabled: isStandard,
+          run: () => {
+            playerState.standardVehicle = selected.id;
+            playerState.activeVehicle = selected.id;
+            garageDriveOverride = true;
+            applyVehiclePerformance();
+            garageSelectedVehicleId = null;
+            return `${selected.name} is now your standard vehicle.`;
+          },
+        },
+      ],
+    };
+  }
+
+  return {
+    title: "🏠 Garage",
+    energyText: owned.length === 0 ? "No vehicles owned yet — visit the Vehicle Dealer at the Mall." : statusText,
+    actions: owned.map((v) => {
+      const isActive = active?.id === v.id;
+      const isStandard = standard?.id === v.id;
+      const badge = [isActive ? "DRIVING" : null, isStandard ? "STD" : null].filter(Boolean).join(" · ");
+      const skillsetText = v.skillsets.length ? ` (${v.skillsets.map(skillsetLabel).join(" + ")})` : "";
+      return {
+        id: v.id,
+        label: `${v.name}${skillsetText}`,
+        cost: 0,
+        costLabel: badge || "›",
+        run: () => {
+          garageSelectedVehicleId = v.id;
+          return "";
+        },
+      };
+    }),
+  };
 }
 
 interface OutfitOption extends ShopItem {
@@ -5607,7 +5705,11 @@ tapZone.onTap((x, y) => {
 // and its prompt surfaces the same way the street's ENTER prompt does.
 // Every purchasable home (Real Estate App) gets the same bed — not just
 // the starting Trailer.
-const HOUSE_STATIONS: Station[] = [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }];
+const HOUSE_STATIONS: Station[] = [
+  { id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 },
+  // Bottom-right corner of the room — walk up to enter the Garage menu.
+  { id: "garage", label: "Garage", nx: 0.88, ny: 0.82 },
+];
 const BED_STATION_ID = HOUSE_STATIONS[0].id;
 // True for exactly one room-view: right after sleepAtBed/an Overnight Stay
 // resolves, so whoever the player just slept with (spouse or an overnight
@@ -5615,6 +5717,13 @@ const BED_STATION_ID = HOUSE_STATIONS[0].id;
 // next time the player enters ANY building (see enterBuilding), so leaving
 // Home and walking back in puts her back at her regular spot.
 let justSleptTogether = false;
+// Garage (Section 5, updated): true only for the rest of the current Home
+// visit right after using Drive/Set as Standard there — makes that choice
+// stick when the player walks out this once, instead of exitBuilding's
+// standard-vehicle reset immediately overwriting it. Cleared on every
+// fresh entry into a house (see enterBuilding) and consumed on exit (see
+// exitBuilding), so it never persists past the visit it was set in.
+let garageDriveOverride = false;
 const HOUSE_NAMES = new Set([
   "Trailer",
   "Apartment",
@@ -5933,6 +6042,9 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
   // after it happens — a fresh entry (even right back into the same house)
   // returns her to her regular spot.
   justSleptTogether = false;
+  // A fresh Home visit starts assuming the standard vehicle again — only
+  // this visit's own Garage choice (see buildGarageMenu) overrides that.
+  if (HOUSE_NAMES.has(lot.building.name)) garageDriveOverride = false;
   scene = { type: "interior", lot, interior: buildInteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
@@ -5940,6 +6052,20 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
 }
 
 function exitBuilding() {
+  // Garage (Section 5, updated): walking out of Home always puts you back
+  // on the street in your standard vehicle, unless this same visit's
+  // Garage Drive/Set as Standard already picked one (garageDriveOverride).
+  if (
+    scene.type === "interior" &&
+    HOUSE_NAMES.has(scene.lot.building.name) &&
+    !garageDriveOverride &&
+    playerState.standardVehicle &&
+    playerState.activeVehicle !== playerState.standardVehicle
+  ) {
+    playerState.activeVehicle = playerState.standardVehicle;
+    applyVehiclePerformance();
+  }
+  garageDriveOverride = false;
   scene = { type: "street" };
   controls.root.style.display = "flex";
   joystick.setActive(false);
@@ -6072,6 +6198,7 @@ function loop(now: number) {
         const bedLock = getBedLock();
         onTrigger = bedLock ? () => buildingUI.showToast(bedLock, pos, "bottom") : () => sleepAtBed(pos);
       }
+      else if (nearStation.id === "garage") onTrigger = openGarageMenu;
       else if (nearStation.id === "workoutclip") onTrigger = openWeightAreaMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;

@@ -18,8 +18,7 @@ import {
 } from "./world";
 import type { DriveControls } from "../ui/controls";
 
-const MAX_SPEED = 420; // world px/sec
-const REVERSE_MAX_SPEED = 220; // world px/sec while backing up — slower than driving forward, and not affected by Speed Boost
+const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
 const DECEL = 1400; // px/sec^2 while released
 const STOPPED_EPS = 4;
@@ -49,11 +48,14 @@ export class StreetScene {
 
   // Vehicle Dealer skillsets (Section 5): Speed Boost raises top speed;
   // Reverse Driving unlocks the hold-to-back-up control (see the REVERSE
-  // button in DriveControls); Fast Travel unlocks the destination-jump
-  // button. Set via setPerformance() whenever the active vehicle changes;
-  // all default to no bonus (a Tier 1 car, or no car at all).
+  // button in DriveControls) — its own top speed is reverseRatio * this
+  // vehicle's forward top speed, so a higher-tier car backs up faster too
+  // (0 means no Reverse Driving skillset, hiding the button entirely);
+  // Fast Travel unlocks the destination-jump button. Set via
+  // setPerformance() whenever the active vehicle changes; all default to
+  // no bonus (a Tier 1 car, or no car at all).
   private speedMultiplier = 1;
-  private reverseCapable = false;
+  private reverseRatio = 0;
 
   private controls: DriveControls;
 
@@ -71,10 +73,10 @@ export class StreetScene {
   }
 
   /** Vehicle Dealer (Section 5): applies the active vehicle's skillsets. Called on purchase/switch. */
-  setPerformance(speedMultiplier: number, reverseCapable: boolean, fastTravelCapable: boolean) {
+  setPerformance(speedMultiplier: number, reverseRatio: number, fastTravelCapable: boolean) {
     this.speedMultiplier = speedMultiplier;
-    this.reverseCapable = reverseCapable;
-    this.controls.setReverseVisible(reverseCapable);
+    this.reverseRatio = reverseRatio;
+    this.controls.setReverseVisible(reverseRatio > 0);
     this.controls.setFastTravelVisible(fastTravelCapable);
   }
 
@@ -107,7 +109,7 @@ export class StreetScene {
     }
 
     const gasHeld = this.controls.isGasHeld();
-    const reverseHeld = !gasHeld && this.reverseCapable && this.controls.isReverseHeld();
+    const reverseHeld = !gasHeld && this.reverseRatio > 0 && this.controls.isReverseHeld();
 
     if (gasHeld) {
       const target = MAX_SPEED * this.speedMultiplier * this.facing;
@@ -117,8 +119,9 @@ export class StreetScene {
     } else if (reverseHeld) {
       // Backs straight up opposite the way the car is facing, without
       // flipping facing — a shorter, cheaper repositioning move than a
-      // full U-turn-and-drive-back.
-      const target = -REVERSE_MAX_SPEED * this.facing;
+      // full U-turn-and-drive-back. Top reverse speed is a fraction of
+      // this vehicle's own forward top speed (see reverseRatio above).
+      const target = -(MAX_SPEED * this.speedMultiplier * this.reverseRatio) * this.facing;
       const diff = target - this.speed;
       const step = ACCEL * dt;
       this.speed += Math.sign(diff) * Math.min(Math.abs(diff), step);
