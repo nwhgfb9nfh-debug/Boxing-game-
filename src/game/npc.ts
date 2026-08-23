@@ -122,6 +122,10 @@ export interface NpcDef {
   // Some NPCs (e.g. a Manager) are always at the player's fights regardless
   // — Invite to Next Fight doesn't apply to them at all, not even gated.
   hideInviteToFight?: boolean;
+  // Vinnie (Manager Lvl 1): the whole Energy-Star Actions menu doesn't
+  // apply to him — his dialogue is just Talk plus his own Manager Desk
+  // extra option.
+  hideActions?: boolean;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.

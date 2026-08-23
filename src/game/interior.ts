@@ -103,9 +103,21 @@ export class InteriorScene {
     this.blockedZone = blockedZone;
     this.decorations = decorations;
     this.hasDoor = hasDoor;
-    // Door rooms spawn just above the door; door-less rooms spawn centered
-    // instead, since there's no door to spawn "above".
-    this.py = hasDoor ? 0.88 : 0.5;
+    if (hasDoor) {
+      // Spawn just above the door.
+      this.py = 0.88;
+    } else {
+      // Door-less rooms (e.g. Office floors) are only ever entered by
+      // riding their "elevator" station — arrive right in front of it
+      // instead of some generic center point.
+      const elevatorStation = stations.find((s) => s.id === "elevator");
+      if (elevatorStation) {
+        this.px = elevatorStation.nx;
+        this.py = Math.min(0.95, elevatorStation.ny + 0.12);
+      } else {
+        this.py = 0.5;
+      }
+    }
   }
 
   /** Whether this room's station list (fixed at construction) includes the given id. */
@@ -316,7 +328,17 @@ export class InteriorScene {
 
     ctx.font = "12px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillText("EXIT ▼", width / 2, bounds.bottom - 18);
+    if (this.hasDoor) {
+      ctx.fillText("EXIT ▼", width / 2, bounds.bottom - 18);
+    } else {
+      // Door-less room (e.g. Office floors) — the exit is whichever
+      // station actually leaves (the elevator), not the bottom wall.
+      const exitStation = this.stations.find((s) => s.id === "elevator");
+      if (exitStation) {
+        const pos = this.getStationScreenPos(exitStation, width, height);
+        ctx.fillText("EXIT", pos.x, pos.y - 42);
+      }
+    }
 
     // Player (top-down placeholder)
     const px = bounds.left + this.px * (bounds.right - bounds.left);

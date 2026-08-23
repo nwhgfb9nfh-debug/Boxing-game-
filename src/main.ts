@@ -70,6 +70,9 @@ const tapZone = createTapZone(app);
 const street = new StreetScene(controls);
 
 const playerState = createPlayerState();
+// Vinnie's your manager from the very start — his number's already saved,
+// no need to Exchange Number with him first (see VINNIE further below).
+playerState.exchangedNumbers.vinnie = true;
 const energy = new EnergyStar();
 const campCycle = new CampCycle();
 const socialBattery = new SocialBattery();
@@ -1289,18 +1292,28 @@ const GYM_CATEGORIES: GymCategory[] = [
 // below).
 const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
   1: [
-    { id: "managerdesk", label: "Vinnie", nx: 0.4, ny: 0.55, kind: "npc" },
-    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+    // Behind the L-shaped desk (see OFFICE_FLOOR1_DECORATIONS) — approached
+    // from its horizontal segment's south edge, same mechanic as Reception.
+    { id: "managerdesk", label: "Vinnie", nx: 0.4, ny: 0.5, kind: "npc", radius: 24, approachDecorationId: "vinnie-desk-h" },
+    { id: "elevator", label: "Elevator", nx: 0.88, ny: 0.12 },
   ],
   2: [
     { id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 },
-    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+    { id: "elevator", label: "Elevator", nx: 0.88, ny: 0.12 },
   ],
   3: [
     { id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 },
-    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+    { id: "elevator", label: "Elevator", nx: 0.88, ny: 0.12 },
   ],
 };
+
+// Vinnie's L-shaped desk (per the sketch) — a horizontal segment south of
+// him plus a vertical segment off its right end, wrapping his left/south
+// side the same way Reception's single bar blocks approach from the north.
+const OFFICE_FLOOR1_DECORATIONS: Decoration[] = [
+  { id: "vinnie-desk-h", nx: 0.42, ny: 0.62, width: 170, height: 30, blocking: true },
+  { id: "vinnie-desk-v", nx: 0.5, ny: 0.48, width: 26, height: 90, blocking: true },
+];
 
 const CASH_ADVANCE_AMOUNT = 20000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
 const PORTFOLIO_INVEST_AMOUNT = 5000; // placeholder — returns arrive once a real investment system exists
@@ -2087,24 +2100,6 @@ const DEREK: NpcDef = {
   inviteToFightMinTier: "close",
 };
 
-const VINNIE_ACTIONS: NpcActionRules = {
-  // Easygoing, like Carol — succeeds from Tier 2, no internal sub-threshold.
-  exchangeNumber: (tier) => {
-    if (tier === "stranger") {
-      return { success: false, delta: -5, message: '"Ehh, we just met — let\'s get there first."' };
-    }
-    return { success: true, delta: 10, message: 'He grins and hands you a business card with his cell scrawled on it. "Anytime, pal."' };
-  },
-  // Appreciative personality — well-received from Tier 1.
-  giftReaction: () => {
-    return { delta: 8, message: '"Hey, now THIS is class. I like you." He\'s genuinely pleased.' };
-  },
-  // Never actually reachable — Vinnie isn't romance-eligible, so Ask Her
-  // Out/Propose never appear in his Actions menu. Required by NpcActionRules.
-  askHerOut: () => ({ success: false, message: "" }),
-  propose: () => ({ success: false, message: "" }),
-};
-
 const VINNIE: NpcDef = {
   id: "vinnie",
   name: "Vinnie Castellano",
@@ -2143,9 +2138,10 @@ const VINNIE: NpcDef = {
   ],
   flirtyComplimentTopics: [],
   flirtyCharmTopics: [],
-  actions: VINNIE_ACTIONS,
-  // Managers are always at the player's fights regardless — the invite
-  // mechanic doesn't apply to him.
+  // No Actions menu at all for him — just Talk and his own Manager Desk
+  // option (see vinnieDeskOptions). Exchange Number/Give a Gift/Invite to
+  // Next Fight all live there normally, so he has no use for it.
+  hideActions: true,
   hideInviteToFight: true,
 };
 
@@ -2421,13 +2417,17 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
           }
         },
       },
-      {
-        id: "actions",
-        label: "Actions",
-        onSelect: () => {
-          dialogueView = npc.dialogueWritten === false ? "not-written" : "actions";
-        },
-      },
+      ...(npc.hideActions
+        ? []
+        : [
+            {
+              id: "actions",
+              label: "Actions",
+              onSelect: () => {
+                dialogueView = npc.dialogueWritten === false ? "not-written" : "actions";
+              },
+            },
+          ]),
       ...extraOptions,
       { id: "leave", label: "Leave", onSelect: () => dialogueBox.close() },
     ],
@@ -3297,7 +3297,13 @@ function openElevatorMenu(lot: LotInstance) {
           scene = {
             type: "interior",
             lot,
-            interior: new InteriorScene(lot, OFFICE_FLOOR_STATIONS[floor] ?? [], undefined, undefined, false),
+            interior: new InteriorScene(
+              lot,
+              OFFICE_FLOOR_STATIONS[floor] ?? [],
+              undefined,
+              floor === 1 ? OFFICE_FLOOR1_DECORATIONS : undefined,
+              false,
+            ),
             officeFloor: floor,
           };
           return "";
