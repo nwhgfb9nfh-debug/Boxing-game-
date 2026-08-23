@@ -3439,9 +3439,17 @@ function isMallShopkeeper(storeId: string, npcId: string): boolean {
 }
 
 // Extra dialogue option folded into the shopkeeper's own menu, same pattern
-// as Reception's "Hire Manager"/the Manager Desk option.
+// as Reception's "Hire Manager"/the Manager Desk option. Every store now
+// shops this way — no separate walk-up counter anywhere in the Mall.
+const MALL_STORE_SHOP_OPENERS: Record<string, () => void> = {
+  giftshop: openGiftShopMenu,
+  petstore: openPetStoreMenu,
+  furniture: openFurnitureMenu,
+  clothes: openClothesMenu,
+  vehicles: openVehicleMenu,
+};
 function mallShopOptions(storeId: string): DialogueOption[] {
-  const opener = storeId === "giftshop" ? openGiftShopMenu : storeId === "petstore" ? openPetStoreMenu : null;
+  const opener = MALL_STORE_SHOP_OPENERS[storeId];
   if (!opener) return [];
   return [
     {
@@ -3455,13 +3463,12 @@ function mallShopOptions(storeId: string): DialogueOption[] {
   ];
 }
 
-// Desk decoration for stores with an NPC-driven shop (Gift Shop, Pet
-// Store) — centered in the room, same idea as Office Reception's desk
-// (see OFFICE_DECORATIONS) just without the two-flanking-seats layout,
-// since only one NPC is ever behind it at a time.
+// Desk decoration for every store's shopkeeper — centered in the room,
+// same idea as Office Reception's desk (see OFFICE_DECORATIONS) just
+// without the two-flanking-seats layout, since only one NPC is ever
+// behind it at a time.
 const MALL_SHOP_DESK_ID = "mall-shop-desk";
-function mallShopDeskDecorations(storeId: string): Decoration[] {
-  if (storeId !== "giftshop" && storeId !== "petstore") return [];
+function mallShopDeskDecorations(): Decoration[] {
   return [{ id: MALL_SHOP_DESK_ID, nx: 0.5, ny: 0.4, width: 180, height: 36, blocking: true }];
 }
 function buildMallStoreRoom(storeId: string): { stations: Station[]; decorations: Decoration[] } {
@@ -3490,7 +3497,7 @@ function buildMallStoreRoom(storeId: string): { stations: Station[]; decorations
       stations.push(buildMallStaffStation(npc, nx, ny));
     }
   });
-  return { stations, decorations: mallShopDeskDecorations(storeId) };
+  return { stations, decorations: mallShopDeskDecorations() };
 }
 
 // Rebuilds whichever interior room is currently on screen — the generic
@@ -5416,16 +5423,18 @@ const MALL_STORE_LABELS: Record<string, string> = {
   furniture: "Furniture Store",
 };
 
-// Gift Shop and Pet Store no longer have a separate walk-up counter —
-// shopping happens at whichever staff member is the shopkeeper instead
-// (see isMallShopkeeper/buildMallStoreRoom), same as buying isn't a
-// separate station from Priya/Carol at Office Reception.
+// No store has a separate walk-up counter anymore — shopping happens at
+// whichever staff member is the shopkeeper instead (see
+// isMallShopkeeper/buildMallStoreRoom), same as buying isn't a separate
+// station from Priya/Carol at Office Reception. Every entry is empty; the
+// map's keys still double as the set of valid store-entry station ids on
+// the main Mall floor (see the elevator-style dispatch below).
 const MALL_STORE_STATIONS: Record<string, Station[]> = {
-  vehicles: [{ id: "vehicles-counter", label: "Vehicle Dealer", nx: 0.5, ny: 0.4 }],
-  clothes: [{ id: "clothes-counter", label: "Clothing Store", nx: 0.5, ny: 0.4 }],
+  vehicles: [],
+  clothes: [],
   giftshop: [],
   petstore: [],
-  furniture: [{ id: "furniture-counter", label: "Furniture Store", nx: 0.5, ny: 0.4 }],
+  furniture: [],
 };
 
 type Scene =
@@ -5630,10 +5639,7 @@ function loop(now: number) {
             mallStore: storeId,
           };
         };
-      } else if (nearStation.id === "vehicles-counter") onTrigger = openVehicleMenu;
-      else if (nearStation.id === "clothes-counter") onTrigger = openClothesMenu;
-      else if (nearStation.id === "furniture-counter") onTrigger = openFurnitureMenu;
-      else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
+      } else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
       else if (nearStation.id === "faceoff") onTrigger = openFaceOffMenu;
