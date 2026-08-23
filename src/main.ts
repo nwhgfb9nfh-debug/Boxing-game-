@@ -5396,12 +5396,11 @@ function openFastTravelMenu() {
 // Garage (Section 5, updated): a Home station, not a Mall one — every
 // owned vehicle lives here. Two-step menu (select a vehicle, then Drive or
 // Set as Standard for it) mirrors the Manager Desk's drill-down menus
-// elsewhere in this file. Both Drive and Set as Standard drop the player
-// straight onto the street already in that vehicle — no need to also walk
-// to the front door. The standard-vehicle reset (see exitBuilding) only
-// ever fires on an actual door exit from Home, so a car picked here keeps
-// being driven through every other building visit until the player
-// deliberately walks out Home's door instead of using the Garage.
+// elsewhere in this file. Drive exits straight to the street in that
+// vehicle, no need to also walk to the door. Set as Standard does NOT
+// exit — it just updates the default, leaving the player in the menu to
+// either Drive (this car or another) or back out and walk Home's door,
+// which applies whatever's now Standard (see exitBuilding).
 let garageSelectedVehicleId: string | null = null;
 
 function openGarageMenu() {
@@ -5455,13 +5454,12 @@ function buildGarageMenu(): MenuData {
           costLabel: isStandard ? "STANDARD" : "SELECT",
           disabled: isStandard,
           run: () => {
+            // Unlike Drive, this doesn't exit to the street — just updates
+            // the default. The player picks Drive next (for this car or
+            // another) to actually go, or backs out and walks Home's door
+            // to leave in whichever vehicle is now Standard.
             playerState.standardVehicle = selected.id;
-            playerState.activeVehicle = selected.id;
-            applyVehiclePerformance();
-            garageSelectedVehicleId = null;
-            locationMenu.close();
-            returnToStreet();
-            return "";
+            return `${selected.name} is now your standard vehicle.`;
           },
         },
       ],
