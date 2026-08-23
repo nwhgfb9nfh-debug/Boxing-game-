@@ -2545,6 +2545,28 @@ function buildOfficeFloorRoom(floor: number): { stations: Station[]; decorations
   return { stations, decorations: [] };
 }
 
+// Rebuilds whichever interior room is currently on screen — the generic
+// per-building room, or (if the player is inside one) the specific Office
+// floor sub-room — so a state change that affects who's visible there
+// (Divorce, a successful Propose) shows up immediately instead of only
+// after the player leaves and re-enters. Mirrors the floor-open dispatch's
+// own InteriorScene construction so an Office floor stays an Office floor
+// instead of silently resetting to the Lobby.
+function rebuildCurrentInteriorScene() {
+  if (scene.type !== "interior") return;
+  if (scene.officeFloor !== undefined) {
+    const room = buildOfficeFloorRoom(scene.officeFloor);
+    scene = {
+      type: "interior",
+      lot: scene.lot,
+      interior: new InteriorScene(scene.lot, room.stations, undefined, room.decorations, false),
+      officeFloor: scene.officeFloor,
+    };
+  } else {
+    scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+  }
+}
+
 function getRelationshipScore(npcId: string): number {
   return playerState.contacts[npcId] ?? 0;
 }
@@ -2728,6 +2750,13 @@ let activeCategory: TalkCategory | null = null;
 let activeFlirtySub: FlirtySubcategory | null = null;
 let lastTalkResult = "";
 let lastActionResult = "";
+// Divorce and a successful Propose both end the interaction outright — she's
+// gone from the game (Propose: moved to Home) or off the market either way,
+// so the response screen shouldn't be navigable back into "main" and let the
+// player keep talking to her as if nothing happened. Set true right before
+// showing the "actions-response" screen for exactly those two cases, and
+// consumed (reset false) the moment Continue is pressed.
+let lastActionEndsDialogue = false;
 
 // "Hire Manager" is a shared business function, not tied to either
 // receptionist specifically — Coach/Cutman hiring and Upgrade Gym have
@@ -3240,6 +3269,13 @@ function buildDialogueActionsProposeConfirm(npc: NpcDef): DialogueData {
         onSelect: () => {
           if (!energy.spend(PROPOSE_COST)) return;
           lastActionResult = resolveProposeAttempt(npc);
+          if (playerState.married[npc.id]) {
+            // She just said yes — she's moved to Home and off her regular
+            // station this instant, not once the player happens to close
+            // this dialogue and wander back later.
+            lastActionEndsDialogue = true;
+            rebuildCurrentInteriorScene();
+          }
           dialogueView = "actions-response";
         },
       },
@@ -3315,10 +3351,12 @@ function buildDialogueActionsDivorceConfirm(npc: NpcDef): DialogueData {
             (kidCount > 0
               ? ` You now owe ${playerState.divorceChildSupportPercent}% of every future Purse in child support.`
               : "");
+          // Gone this instant, not once the player happens to close this
+          // dialogue — she shouldn't still be talkable as a wife in the
+          // meantime.
+          lastActionEndsDialogue = true;
+          rebuildCurrentInteriorScene();
           dialogueView = "actions-response";
-          if (scene.type === "interior") {
-            scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
-          }
         },
       },
       {
@@ -3342,6 +3380,11 @@ function buildDialogueActionsResponse(npc: NpcDef): DialogueData {
         id: "continue",
         label: "Continue",
         onSelect: () => {
+          if (lastActionEndsDialogue) {
+            lastActionEndsDialogue = false;
+            dialogueBox.close();
+            return;
+          }
           dialogueView = "main";
         },
       },
