@@ -2896,6 +2896,7 @@ type DialogueView =
   | "talk-response"
   | "actions"
   | "actions-gift-picker"
+  | "actions-askherout-confirm"
   | "actions-propose-confirm"
   | "actions-breakup-confirm"
   | "actions-divorce-confirm"
@@ -3334,14 +3335,9 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
                 !!playerState.dating[npc.id] ||
                 !energy.canAfford(ASK_HER_OUT_COST),
               onSelect: () => {
-                if (playerState.romanceEnded[npc.id] || playerState.dating[npc.id] || !energy.spend(ASK_HER_OUT_COST))
+                if (playerState.romanceEnded[npc.id] || playerState.dating[npc.id] || !energy.canAfford(ASK_HER_OUT_COST))
                   return;
-                const result = rules.askHerOut(getRomanceScore(npc.id));
-                if (result.success) playerState.dating[npc.id] = true;
-                lastActionResult = result.success
-                  ? `${result.message} 💕 You're dating now — her Romance meter is visible in Contacts.`
-                  : result.message;
-                dialogueView = "actions-response";
+                dialogueView = "actions-askherout-confirm";
               },
             },
           ]
@@ -3406,6 +3402,41 @@ function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
       {
         id: "back",
         label: "‹ Back",
+        onSelect: () => {
+          dialogueView = "actions";
+        },
+      },
+    ],
+  };
+}
+
+// Confirms before the attempt happens (win or lose still costs the Energy
+// and still counts as an attempt) rather than firing it straight off the
+// Actions menu tap — same "are you sure" beat as Propose/Break Up/Divorce.
+function buildDialogueActionsAskHerOutConfirm(npc: NpcDef): DialogueData {
+  return {
+    portrait: npc.portrait,
+    name: npc.name,
+    text: `Do you want to pursue romance with ${npc.name}?`,
+    options: [
+      {
+        id: "yes",
+        label: "Yes",
+        costLabel: `${ASK_HER_OUT_COST} EN`,
+        disabled: !energy.canAfford(ASK_HER_OUT_COST),
+        onSelect: () => {
+          if (!energy.spend(ASK_HER_OUT_COST)) return;
+          const result = npc.actions!.askHerOut(getRomanceScore(npc.id));
+          if (result.success) playerState.dating[npc.id] = true;
+          lastActionResult = result.success
+            ? `${result.message} 💕 You're dating now — her Romance meter is visible in Contacts.`
+            : result.message;
+          dialogueView = "actions-response";
+        },
+      },
+      {
+        id: "no",
+        label: "No",
         onSelect: () => {
           dialogueView = "actions";
         },
@@ -3581,6 +3612,7 @@ function openNpcDialogue(npc: NpcDef, extraOptions: DialogueOption[] = []) {
     if (dialogueView === "talk-response") return buildDialogueTalkResponse(activeNpc!);
     if (dialogueView === "actions") return buildDialogueActions(activeNpc!);
     if (dialogueView === "actions-gift-picker") return buildDialogueActionsGiftPicker(activeNpc!);
+    if (dialogueView === "actions-askherout-confirm") return buildDialogueActionsAskHerOutConfirm(activeNpc!);
     if (dialogueView === "actions-propose-confirm") return buildDialogueActionsProposeConfirm(activeNpc!);
     if (dialogueView === "actions-breakup-confirm") return buildDialogueActionsBreakupConfirm(activeNpc!);
     if (dialogueView === "actions-divorce-confirm") return buildDialogueActionsDivorceConfirm(activeNpc!);
