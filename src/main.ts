@@ -29,6 +29,11 @@ import {
   BIANCA_PORTRAIT,
   ROSA_PORTRAIT,
   KEVIN_PORTRAIT,
+  MALIK_PORTRAIT,
+  MEI_PORTRAIT,
+  TYLER_PORTRAIT,
+  SIMONE_PORTRAIT,
+  CHRIS_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -2758,7 +2763,7 @@ const MALIK_ACTIONS: NpcActionRules = {
 const MALIK: NpcDef = {
   id: "malik",
   name: "Malik Hassan",
-  portrait: "🧔🏽",
+  portrait: MALIK_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Welcome in — everything here's built to last, take your time looking around.",
@@ -2829,7 +2834,7 @@ const MEI_ACTIONS: NpcActionRules = {
 const MEI: NpcDef = {
   id: "mei",
   name: "Mei Chen",
-  portrait: "👩🏻",
+  portrait: MEI_PORTRAIT,
   romanceEligible: true,
   greetings: {
     stranger: "Oh — hi! Welcome to the Pet Store! Did you know a betta fish can recognize its owner's face?",
@@ -2889,7 +2894,7 @@ const TYLER_ACTIONS: NpcActionRules = {
 const TYLER: NpcDef = {
   id: "tyler",
   name: "Tyler Brooks",
-  portrait: "🧑🏼",
+  portrait: TYLER_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Hey, welcome in. Dogs are around back if you want to say hi.",
@@ -2944,7 +2949,7 @@ const SIMONE_ACTIONS: NpcActionRules = {
 const SIMONE: NpcDef = {
   id: "simone",
   name: "Simone Reyes",
-  portrait: "👩🏽",
+  portrait: SIMONE_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Hi, welcome in! Let me know if you want a hand putting something together.",
@@ -2991,7 +2996,7 @@ const CHRIS_ACTIONS: NpcActionRules = {
 const CHRIS: NpcDef = {
   id: "chris",
   name: "Chris Sullivan",
-  portrait: "🧑🏻",
+  portrait: CHRIS_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Hey there! Chris Sullivan — take a look around, let me know if anything catches your eye.",
