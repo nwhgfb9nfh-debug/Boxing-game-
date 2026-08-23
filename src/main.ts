@@ -66,6 +66,12 @@ import {
   MEETUP_GIFT_DELTA,
   MEETUP_NO_CONNECT_PENALTY,
   getMeetupLocation,
+  type GiftCategory,
+  type GiftPreferences,
+  type GiftReactionTone,
+  type GiftResult,
+  getGiftReactionTone,
+  getGiftReactionDelta,
 } from "./game/npc";
 import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
 
@@ -1999,6 +2005,24 @@ function buildGymCategoryMenu(catId: GymCategory["id"], onBack: () => void): Men
 // engine, first wired up here for Office's two receptionists. Relationship
 // score lives in playerState.contacts, keyed by NPC id.
 
+// Mall Item Catalogues spec: delta/rules live in the shared engine
+// (game/npc.ts's getGiftReactionTone/getGiftReactionDelta) — each NPC's
+// own giftReaction just supplies her flavor text per tone, matching her
+// GiftPreferences (favorite general category, and for romance-eligible
+// NPCs, her favorite/disliked Romantic item). A tone this NPC can never
+// actually reach (e.g. Romantic for a friend-only NPC, since Romantic/
+// Jewelry items are filtered out of her gift picker) doesn't need an
+// entry — falls back to a generic line instead.
+function buildGiftResult(
+  prefs: GiftPreferences,
+  category: GiftCategory,
+  itemId: string,
+  messages: Partial<Record<GiftReactionTone, string>>,
+): GiftResult {
+  const tone = getGiftReactionTone(prefs, category, itemId);
+  return { delta: getGiftReactionDelta(tone), message: messages[tone] ?? "Thanks for this." };
+}
+
 const EXCHANGE_NUMBER_COST = 30;
 const GIVE_GIFT_COST = 10;
 const ASK_HER_OUT_COST = 20; // not given an explicit number in the spec's Actions list — placeholder
@@ -2019,6 +2043,11 @@ const PRIYA_ROMANCE_THRESHOLD = 5;
 const PRIYA_PROPOSE_DATE_THRESHOLD = 4;
 const PRIYA_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
 const PRIYA_PROPOSE_ROMANCE_THRESHOLD = 15;
+const PRIYA_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  favoriteRomanticItemId: "necklace",
+  dislikedRomanticItemId: "chocolates",
+};
 
 const PRIYA_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier, score) => {
@@ -2030,14 +2059,18 @@ const PRIYA_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: "She actually smiles and hands over her number." };
   },
-  giftReaction: (tier) => {
+  giftReaction: (tier, category, itemId) => {
     if (tier === "stranger" || tier === "acquaintance") {
       return { delta: -5, message: "She declines politely but firmly." };
     }
-    // From Friend+ the reaction should depend on the specific gift once
-    // Gift Shop items carry NPC preferences (spec: "item preferences
-    // TBD") — placeholder positive default until that data exists.
-    return { delta: 8, message: "She's genuinely touched." };
+    return buildGiftResult(PRIYA_GIFT_PREFS, category, itemId, {
+      "romantic-favorite": '"...A necklace." She touches it, quietly thrown. "You paid attention."',
+      "romantic-baseline": "She's genuinely touched.",
+      "romantic-disliked": '"Chocolates. That\'s sweet." She smiles, though it doesn\'t quite reach her eyes.',
+      jewelry: '"...This is a lot." She\'s stunned, in a good way.',
+      "category-match": "Exactly her kind of practical — she's delighted.",
+      "category-mismatch-neutral": '"Thanks." She sets it aside without much fuss.',
+    });
   },
   askHerOut: (romanceScore) => {
     if (romanceScore >= PRIYA_ROMANCE_THRESHOLD) {
@@ -2134,6 +2167,8 @@ const PRIYA: NpcDef = {
   familyInfo: { kidsHas: 0, kidsWants: 1, revealTier: "friend" },
 };
 
+const CAROL_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const CAROL_ACTIONS: NpcActionRules = {
   // Unlike Priya, succeeds starting at Acquaintance (T2) — no internal
   // sub-threshold, matching her simple/straightforward nature.
@@ -2143,11 +2178,12 @@ const CAROL_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: "She beams and jots her number down without a second thought." };
   },
-  // Well-received starting at Tier 1 — placeholder positive default until
-  // Gift Shop items carry real per-NPC preferences.
-  giftReaction: () => {
-    return { delta: 8, message: 'She lights up. "Oh, you shouldn\'t have!"' };
-  },
+  // Well-received from Tier 1, as long as the item actually suits her.
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(CAROL_GIFT_PREFS, category, itemId, {
+      "category-match": 'She lights up. "Oh, you shouldn\'t have!"',
+      "category-mismatch-neutral": '"Oh, thank you." She\'s pleasant about it either way.',
+    }),
   // Never actually reachable — Carol isn't romance-eligible, so Ask Her
   // Out/Propose never appear in her Actions menu. Required by NpcActionRules.
   askHerOut: () => ({ success: false, message: "" }),
@@ -2211,6 +2247,14 @@ const CAROL: NpcDef = {
 // easy to retune once real gameplay testing begins.
 const DEREK_EXCHANGE_THRESHOLD = 70;
 
+const DEREK_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  // Grumpy exception (Mall Item Catalogues spec) — unlike most NPCs, a
+  // mismatched Fun/Practical gift genuinely annoys him instead of landing
+  // as neutral/lower-positive.
+  negativeOnCategoryMismatch: true,
+};
+
 const DEREK_ACTIONS: NpcActionRules = {
   // Doesn't hand out his number easily — fails outright before Tier 3,
   // then needs real progress within it too.
@@ -2224,11 +2268,14 @@ const DEREK_ACTIONS: NpcActionRules = {
     return { success: true, delta: 10, message: 'He shrugs and rattles off his number. "Whatever."' };
   },
   // Rejected at every tier below Friend.
-  giftReaction: (tier) => {
+  giftReaction: (tier, category, itemId) => {
     if (tier === "stranger" || tier === "acquaintance") {
       return { delta: -5, message: '"I don\'t want this." He hands it right back.' };
     }
-    return { delta: 8, message: '"...Huh. Thanks, actually."' };
+    return buildGiftResult(DEREK_GIFT_PREFS, category, itemId, {
+      "category-match": '"...Huh. Actually useful. Thanks."',
+      "category-mismatch-negative": '"What am I supposed to do with this." He doesn\'t even pretend to be pleased.',
+    });
   },
   // Never actually reachable — Derek isn't romance-eligible, so Ask Her
   // Out/Propose never appear in his Actions menu. Required by NpcActionRules.
@@ -2407,6 +2454,8 @@ const MARCUS: NpcDef = {
   managerTier: 3,
 };
 
+const KYLE_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const KYLE_ACTIONS: NpcActionRules = {
   // Easygoing, like Carol — succeeds from Tier 2, no internal sub-threshold.
   exchangeNumber: (tier) => {
@@ -2416,7 +2465,11 @@ const KYLE_ACTIONS: NpcActionRules = {
     return { success: true, delta: 10, message: 'He beams and rattles off his number. "Anytime! Really!"' };
   },
   // Well-received from Tier 1 — eager to please.
-  giftReaction: () => ({ delta: 8, message: '"For me? Wow, thank you so much!" He\'s thrilled.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(KYLE_GIFT_PREFS, category, itemId, {
+      "category-match": '"For me? Wow, thank you so much!" He\'s thrilled.',
+      "category-mismatch-neutral": '"Oh — thanks!" He\'s pleased regardless.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -2460,6 +2513,8 @@ const KYLE: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+const MARGARET_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "practical" };
+
 const MARGARET_ACTIONS: NpcActionRules = {
   // Guards her personal number much longer than her Gift/Invite openness
   // would suggest — succeeds only from Close (Tier 4).
@@ -2470,11 +2525,14 @@ const MARGARET_ACTIONS: NpcActionRules = {
     return { success: true, delta: 10, message: 'She nods, satisfied. "Alright. You\'ve earned it." She writes it down.' };
   },
   // Well-received from Tier 2 onward.
-  giftReaction: (tier) => {
+  giftReaction: (tier, category, itemId) => {
     if (tier === "stranger") {
       return { delta: -5, message: '"Oh, that\'s not necessary." She sets it aside, polite but distant.' };
     }
-    return { delta: 8, message: '"Well, aren\'t you thoughtful." She\'s genuinely pleased.' };
+    return buildGiftResult(MARGARET_GIFT_PREFS, category, itemId, {
+      "category-match": '"Well, aren\'t you thoughtful." She\'s genuinely pleased — practical, just like her.',
+      "category-mismatch-neutral": '"That\'s kind of you." Polite, if a little bemused.',
+    });
   },
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
@@ -2534,9 +2592,23 @@ const BIANCA_PROPOSE_DATE_THRESHOLD = 2;
 const BIANCA_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
 const BIANCA_PROPOSE_ROMANCE_THRESHOLD = 3;
 
+const BIANCA_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  favoriteRomanticItemId: "perfume",
+  dislikedRomanticItemId: "chocolates",
+};
+
 const BIANCA_ACTIONS: NpcActionRules = {
   exchangeNumber: () => ({ success: true, delta: 10, message: '"Ooh, of course!" She hands over her number without a second thought.' }),
-  giftReaction: () => ({ delta: 8, message: '"You didn\'t have to!" She\'s delighted regardless.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(BIANCA_GIFT_PREFS, category, itemId, {
+      "romantic-favorite": '"...You remembered." She actually looks caught off guard, just for a second.',
+      "romantic-baseline": '"You didn\'t have to!" She\'s delighted regardless.',
+      "romantic-disliked": '"Chocolates, aw." She smiles, already reaching for one.',
+      jewelry: '"Oh, wow." For once, she\'s the one at a loss for words.',
+      "category-match": '"Yes! You get me." She\'s thrilled.',
+      "category-mismatch-neutral": '"Aw, thank you!" She\'s delighted regardless.',
+    }),
   askHerOut: (romanceScore) => {
     if (romanceScore < BIANCA_ROMANCE_THRESHOLD) {
       return { success: false, message: '"Ha — a little more than that. But I like where your head\'s at."' };
@@ -2625,6 +2697,12 @@ const ROSA_PROPOSE_DATE_THRESHOLD = 3;
 const ROSA_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
 const ROSA_PROPOSE_ROMANCE_THRESHOLD = 8;
 
+const ROSA_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  favoriteRomanticItemId: "bouquet",
+  dislikedRomanticItemId: "necklace",
+};
+
 const ROSA_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2632,7 +2710,15 @@ const ROSA_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'She grins and rattles off her number. "There — now text me sometime!"' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Oh my gosh, you didn\'t have to!" She\'s beaming.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(ROSA_GIFT_PREFS, category, itemId, {
+      "romantic-favorite": '"Flowers! You know me." She\'s glowing.',
+      "romantic-baseline": '"Oh my gosh, you didn\'t have to!" She\'s beaming.',
+      "romantic-disliked": '"Oh, it\'s beautiful!" She\'s still genuinely happy, if a touch more reserved.',
+      jewelry: '"...Is this for me?" She\'s stunned.',
+      "category-match": '"Yes! This is so fun!" She\'s thrilled.',
+      "category-mismatch-neutral": '"Aw, thank you!" She\'s sweet about it regardless.',
+    }),
   askHerOut: (romanceScore) => {
     if (romanceScore >= ROSA_ROMANCE_THRESHOLD) {
       return { success: true, message: 'Her face lights up. "I was hoping you\'d ask!"' };
@@ -2696,6 +2782,8 @@ const ROSA: NpcDef = {
   homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
 };
 
+const KEVIN_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const KEVIN_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2703,7 +2791,11 @@ const KEVIN_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'He nods easily. "Yeah, sure — here you go."' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Hey, appreciate that, man. Didn\'t need to." He means it.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(KEVIN_GIFT_PREFS, category, itemId, {
+      "category-match": '"Hey, appreciate that, man. Didn\'t need to." He means it.',
+      "category-mismatch-neutral": '"Aw, thanks, man." Easygoing about it either way.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -2746,6 +2838,8 @@ const KEVIN: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+const MALIK_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "practical" };
+
 const MALIK_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2753,11 +2847,14 @@ const MALIK_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'He nods, writing his number down himself. "Good. Call if you need anything."' };
   },
-  giftReaction: (tier) => {
+  giftReaction: (tier, category, itemId) => {
     if (tier === "stranger") {
       return { delta: -5, message: '"That\'s kind, but I barely know you." He\'s polite but keeps his distance.' };
     }
-    return { delta: 8, message: '"Now that\'s thoughtful." He looks genuinely touched.' };
+    return buildGiftResult(MALIK_GIFT_PREFS, category, itemId, {
+      "category-match": '"Now that\'s thoughtful — good craftsmanship, too." He looks genuinely touched.',
+      "category-mismatch-neutral": '"Appreciate it." Polite, if a little indifferent.',
+    });
   },
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
@@ -2804,6 +2901,12 @@ const MEI_PROPOSE_DATE_THRESHOLD = 4;
 const MEI_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
 const MEI_PROPOSE_ROMANCE_THRESHOLD = 15;
 
+const MEI_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  favoriteRomanticItemId: "bouquet",
+  dislikedRomanticItemId: "necklace",
+};
+
 const MEI_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2815,7 +2918,15 @@ const MEI_ACTIONS: NpcActionRules = {
       message: 'She scribbles her number on a receipt. "Here! Text me pictures if you get a pet!"',
     };
   },
-  giftReaction: () => ({ delta: 8, message: '"For me? Aw, that\'s so sweet!" She\'s genuinely delighted.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(MEI_GIFT_PREFS, category, itemId, {
+      "romantic-favorite": '"Flowers?! You\'re the best." She\'s already looking for a vase.',
+      "romantic-baseline": '"For me? Aw, that\'s so sweet!" She\'s genuinely delighted.',
+      "romantic-disliked": '"Oh, pretty!" Happy, if a little more subdued than usual.',
+      jewelry: '"...Whoa." She\'s at a genuine loss for words.',
+      "category-match": '"Yes!! This is so fun!" She\'s thrilled.',
+      "category-mismatch-neutral": '"Aw, thank you!" Sweet about it regardless.',
+    }),
   askHerOut: (romanceScore) => {
     if (romanceScore >= MEI_ROMANCE_THRESHOLD) {
       return { success: true, message: 'She blinks, then smiles wide. "...Yeah. Yeah, I\'d really like that."' };
@@ -2880,6 +2991,8 @@ const MEI: NpcDef = {
   homeDateUnlock: (dateCount, tier) => dateCount >= 2 && tier === "close",
 };
 
+const TYLER_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const TYLER_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2887,7 +3000,11 @@ const TYLER_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'He shrugs easily. "Sure, man, here you go."' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Aw, didn\'t have to do that, man. Thanks." He\'s genuinely pleased.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(TYLER_GIFT_PREFS, category, itemId, {
+      "category-match": '"Aw, didn\'t have to do that, man. Thanks." He\'s genuinely pleased.',
+      "category-mismatch-neutral": '"Hey, thanks, man." Easygoing about it either way.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -2930,6 +3047,8 @@ const TYLER: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+const SIMONE_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const SIMONE_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (!tierAtLeast(tier, "friend")) {
@@ -2937,11 +3056,14 @@ const SIMONE_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'She smiles. "Alright, sure — for emergencies only, though!"' };
   },
-  giftReaction: (tier) => {
+  giftReaction: (tier, category, itemId) => {
     if (tier === "stranger") {
       return { delta: -5, message: '"Oh — that\'s very sweet, but I couldn\'t possibly." She\'s polite but firm.' };
     }
-    return { delta: 8, message: '"That\'s so thoughtful of you!" She\'s genuinely touched.' };
+    return buildGiftResult(SIMONE_GIFT_PREFS, category, itemId, {
+      "category-match": '"That\'s so thoughtful of you!" She\'s genuinely touched.',
+      "category-mismatch-neutral": '"Oh, that\'s kind." Pleasant, if not her usual taste.',
+    });
   },
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
@@ -2985,6 +3107,8 @@ const SIMONE: NpcDef = {
   inviteToFightMinTier: "friend",
 };
 
+const CHRIS_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "practical" };
+
 const CHRIS_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -2992,7 +3116,11 @@ const CHRIS_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'He hands over a card with his cell scrawled on the back. "Anytime, champ."' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Well, aren\'t you something." He\'s grinning, genuinely pleased.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(CHRIS_GIFT_PREFS, category, itemId, {
+      "category-match": '"Well, aren\'t you something — a man who thinks practical." He\'s grinning, genuinely pleased.',
+      "category-mismatch-neutral": '"Ha, appreciate it." Good-natured about it either way.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -3046,6 +3174,12 @@ const JASMINE_PROPOSE_DATE_THRESHOLD = 3;
 const JASMINE_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
 const JASMINE_PROPOSE_ROMANCE_THRESHOLD = 8;
 
+const JASMINE_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  favoriteRomanticItemId: "chocolates",
+  dislikedRomanticItemId: "necklace",
+};
+
 const JASMINE_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -3053,7 +3187,15 @@ const JASMINE_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'She hands over her phone to save your number. "There. Don\'t waste my time."' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Oh — that\'s really sweet of you." She seems genuinely touched.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(JASMINE_GIFT_PREFS, category, itemId, {
+      "romantic-favorite": '"...Chocolate. Okay, you get points for that." She\'s trying not to smile.',
+      "romantic-baseline": '"Oh — that\'s really sweet of you." She seems genuinely touched.',
+      "romantic-disliked": '"It\'s pretty." A little more reserved than usual, but she means it.',
+      jewelry: '"...Okay, that\'s a lot." She\'s stunned, in a good way.',
+      "category-match": '"Okay, actually useful. I like that." She\'s genuinely pleased.',
+      "category-mismatch-neutral": '"Thanks." Polite, no-nonsense as ever.',
+    }),
   askHerOut: (romanceScore) => {
     if (romanceScore >= JASMINE_ROMANCE_THRESHOLD) {
       return { success: true, message: '"...Yeah. Yeah, okay. Let\'s do that."' };
@@ -3087,7 +3229,7 @@ const JASMINE: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "nursing", label: "Nursing", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "health", label: "Health", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -3118,6 +3260,8 @@ const JASMINE: NpcDef = {
   homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
 };
 
+const DOROTHY_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "fun" };
+
 const DOROTHY_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -3129,7 +3273,11 @@ const DOROTHY_ACTIONS: NpcActionRules = {
       message: 'She writes her number on a little notepad from her purse. "There you go, sweetheart."',
     };
   },
-  giftReaction: () => ({ delta: 8, message: '"Oh, you shouldn\'t have!" She\'s clearly delighted.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(DOROTHY_GIFT_PREFS, category, itemId, {
+      "category-match": '"Oh, you shouldn\'t have!" She\'s clearly delighted — and a little too excited for a "sweet old lady."',
+      "category-mismatch-neutral": '"Oh, aren\'t you thoughtful." Warm about it regardless.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -3173,6 +3321,8 @@ const DOROTHY: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+const TONY_GIFT_PREFS: GiftPreferences = { favoriteGeneralCategory: "practical" };
+
 const TONY_ACTIONS: NpcActionRules = {
   exchangeNumber: (tier) => {
     if (tier === "stranger") {
@@ -3180,7 +3330,11 @@ const TONY_ACTIONS: NpcActionRules = {
     }
     return { success: true, delta: 10, message: 'He shrugs, easy about it. "Yeah, sure, man. Here."' };
   },
-  giftReaction: () => ({ delta: 8, message: '"Aw, man, didn\'t need to do that." He\'s got a big soft grin.' }),
+  giftReaction: (_tier, category, itemId) =>
+    buildGiftResult(TONY_GIFT_PREFS, category, itemId, {
+      "category-match": '"Aw, man, didn\'t need to do that. Actually useful, too." He\'s got a big soft grin.',
+      "category-mismatch-neutral": '"Hey, thanks, man." Easygoing about it either way.',
+    }),
   askHerOut: () => ({ success: false, message: "" }),
   propose: () => ({ success: false, message: "" }),
 };
@@ -4199,7 +4353,7 @@ function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
           }
           if (!energy.spend(GIVE_GIFT_COST)) return;
           playerState.giftInventory[g.id] = getGiftCount(g.id) - 1;
-          const result = npc.actions!.giftReaction(tier);
+          const result = npc.actions!.giftReaction(tier, g.category, g.id);
           bumpRelationship(npc.id, result.delta);
           lastActionResult = `${result.message} (${formatTopicResult(result.delta)})`;
           dialogueView = "actions-response";
@@ -4975,11 +5129,9 @@ function openClothesMenu() {
 // Practical are fine for any NPC. The ring is just another Jewelry entry —
 // what makes it special is handled where gifts are GIVEN (isRing routes to
 // a Propose confirmation instead of an immediate hand-over), not here.
-// The doc flags per-NPC favorite/disliked-item preferences within Romantic,
-// and a favorite general category (Fun vs. Practical), as a still-pending
-// follow-up pass — giftReaction stays tier-only (not item-aware) until
-// that data exists; every item currently lands the same reaction.
-type GiftCategory = "romantic" | "fun" | "practical" | "jewelry";
+// Per-NPC favorite/disliked-item preferences and reaction tone/delta live
+// in game/npc.ts (GiftPreferences/getGiftReactionTone) — each NPC's own
+// giftReaction picks flavor text per tone.
 interface GiftCatalogItem extends ShopItem {
   category: GiftCategory;
   isRing?: boolean;

@@ -55,6 +55,65 @@ export interface GiftResult {
   message: string;
 }
 
+// Mall Item Catalogues spec: 4 categories. Romantic/Special Jewelry are
+// romance-eligible-only (gated where gifts are given, not here); Fun/
+// Practical are universal.
+export type GiftCategory = "romantic" | "fun" | "practical" | "jewelry";
+
+// Per-NPC gift-preference data feeding into getGiftReactionTone below —
+// every NPC has a favorite general category; only romance-eligible NPCs
+// have Romantic-item preferences (favorite/disliked, by item id).
+export interface GiftPreferences {
+  favoriteGeneralCategory: "fun" | "practical";
+  favoriteRomanticItemId?: string;
+  dislikedRomanticItemId?: string;
+  // Mall Item Catalogues spec: most NPCs never go negative on a Fun/
+  // Practical mismatch, just lower-positive or neutral — a documented
+  // per-NPC exception (e.g. Derek) can react negatively instead.
+  negativeOnCategoryMismatch?: boolean;
+}
+
+export type GiftReactionTone =
+  | "romantic-favorite"
+  | "romantic-disliked"
+  | "romantic-baseline"
+  | "jewelry"
+  | "category-match"
+  | "category-mismatch-neutral"
+  | "category-mismatch-negative";
+
+// Mall Item Catalogues spec's reaction rules, as engine-level data rather
+// than per-NPC: within Romantic, never negative (the disliked item is
+// just lower-positive than the rest); a Fun/Practical mismatch is
+// neutral/lower-positive for most NPCs, negative only for the documented
+// per-NPC exception. Placeholder magnitudes, easy to retune — same spirit
+// as Talk topics' RATING_DELTA.
+const GIFT_REACTION_DELTA: Record<GiftReactionTone, number> = {
+  "romantic-favorite": 12,
+  "romantic-baseline": 8,
+  "romantic-disliked": 4,
+  jewelry: 10,
+  "category-match": 10,
+  "category-mismatch-neutral": 3,
+  "category-mismatch-negative": -5,
+};
+
+/** Which reaction bucket a given item falls into for this NPC's preferences — the actual delta/flavor text is then looked up by the caller. */
+export function getGiftReactionTone(prefs: GiftPreferences, category: GiftCategory, itemId: string): GiftReactionTone {
+  if (category === "jewelry") return "jewelry";
+  if (category === "romantic") {
+    if (itemId === prefs.favoriteRomanticItemId) return "romantic-favorite";
+    if (itemId === prefs.dislikedRomanticItemId) return "romantic-disliked";
+    return "romantic-baseline";
+  }
+  if (category === prefs.favoriteGeneralCategory) return "category-match";
+  return prefs.negativeOnCategoryMismatch ? "category-mismatch-negative" : "category-mismatch-neutral";
+}
+
+export function getGiftReactionDelta(tone: GiftReactionTone): number {
+  return GIFT_REACTION_DELTA[tone];
+}
+
 export interface AskHerOutResult {
   success: boolean;
   message: string;
@@ -70,7 +129,7 @@ export interface ProposeResult {
 // like Talk topics — each written NPC supplies her own rules.
 export interface NpcActionRules {
   exchangeNumber: (tier: RelationshipTier, score: number) => ExchangeNumberResult;
-  giftReaction: (tier: RelationshipTier) => GiftResult;
+  giftReaction: (tier: RelationshipTier, category: GiftCategory, itemId: string) => GiftResult;
   // Only ever called for romance-eligible NPCs. romanceScore is the
   // player's current Romance meter value with her.
   askHerOut: (romanceScore: number) => AskHerOutResult;
