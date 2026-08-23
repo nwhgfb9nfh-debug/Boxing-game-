@@ -34,6 +34,9 @@ import {
   TYLER_PORTRAIT,
   SIMONE_PORTRAIT,
   CHRIS_PORTRAIT,
+  TONY_PORTRAIT,
+  DOROTHY_PORTRAIT,
+  JASMINE_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -3029,6 +3032,196 @@ const CHRIS: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+// --- Mall Shoppers (wandering cast, Phase 1) ---------------------------
+// No camp-phase restriction given in the doc (unlike Derek, whose spec
+// explicitly limits him to "No Fight Scheduled" for now) — these three are
+// just always around, gated only by the same generic isNpcAway checks
+// (married/divorced/meetup/overnight-commute) every other NPC gets.
+// Propose thresholds for Jasmine aren't given (same gap as Rosa/Mei) —
+// mirrors Rosa's exactly, since her Ask Her Out threshold and Home-Date
+// unlock condition are identical.
+
+const JASMINE_ROMANCE_THRESHOLD = 3;
+const JASMINE_PROPOSE_DATE_THRESHOLD = 3;
+const JASMINE_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const JASMINE_PROPOSE_ROMANCE_THRESHOLD = 8;
+
+const JASMINE_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, let\'s see if you\'re actually normal first."' };
+    }
+    return { success: true, delta: 10, message: 'She hands over her phone to save your number. "There. Don\'t waste my time."' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Oh — that\'s really sweet of you." She seems genuinely touched.' }),
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= JASMINE_ROMANCE_THRESHOLD) {
+      return { success: true, message: '"...Yeah. Yeah, okay. Let\'s do that."' };
+    }
+    return { success: false, message: '"Slow down. We\'re not there yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= JASMINE_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= JASMINE_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= JASMINE_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: 'Her eyes go glassy for just a second. "...Yes. Okay. Yes."' };
+    }
+    return { success: false, message: '"Ask me again when you mean it more."' };
+  },
+};
+
+// Mall Lobby wanderer, not tied to any one store — see getJasmineStation.
+const JASMINE: NpcDef = {
+  id: "jasmine",
+  name: "Jasmine Carter",
+  portrait: JASMINE_PORTRAIT,
+  romanceEligible: true,
+  greetings: {
+    stranger: "Oh, hey — sorry, just people-watching on my break. I'm Jasmine, by the way.",
+    acquaintance: "Hey, good to see you again!",
+    friend: "Hey you! Come sit, I've got a few minutes.",
+    close: "Hey! Perfect timing, come here.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "nursing", label: "Nursing", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "style", label: "Style", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "neutral", close: "neutral" } },
+  ],
+  actions: JASMINE_ACTIONS,
+  homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
+};
+
+const DOROTHY_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Oh, maybe once I know you a bit better, dear."' };
+    }
+    return {
+      success: true,
+      delta: 10,
+      message: 'She writes her number on a little notepad from her purse. "There you go, sweetheart."',
+    };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Oh, you shouldn\'t have!" She\'s clearly delighted.' }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// Wanders the Vehicle Dealer alongside Chris — see MALL_STORE_SHOPPERS.
+const DOROTHY: NpcDef = {
+  id: "dorothy",
+  name: "Dorothy Mae Winters",
+  portrait: DOROTHY_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "Oh, hello dear! Just admiring the cars — don't let the cardigan fool you.",
+    acquaintance: "Well hello again, sweetheart!",
+    friend: "There you are! Come sit with me a minute.",
+    close: "Oh, hello you! Come here, I want to tell you something.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Her secret passion — this is the one topic where the sweet-old-lady
+    // act drops and she genuinely lights up.
+    { id: "cars", label: "Cars", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Fast cars, same passion as above.
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: DOROTHY_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const TONY_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Eh, let\'s hang out a bit more first, man."' };
+    }
+    return { success: true, delta: 10, message: 'He shrugs, easy about it. "Yeah, sure, man. Here."' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Aw, man, didn\'t need to do that." He\'s got a big soft grin.' }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// Wanders the Pet Store alongside Mei/Tyler — see MALL_STORE_SHOPPERS.
+const TONY: NpcDef = {
+  id: "tony",
+  name: "Tony Santos",
+  portrait: TONY_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "Oh — hey. Just, uh, saying hi to the cats. They know me here.",
+    acquaintance: "Hey, good to see you, man.",
+    friend: "Hey man! Come here, you gotta see this kitten.",
+    close: "Hey, good to see you, man. Come on.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    // Cats specifically, not just animals in general — that's his thing.
+    { id: "cats", label: "Cats", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: TONY_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
 // Manager Lvl 1/2/3 and, where designed, their secretary/second-assistant —
 // used to lay out each Office floor (see buildOfficeFloorRoom) and to
 // resolve which NPC a floor's manager desk belongs to at dispatch time.
@@ -3075,6 +3268,9 @@ const ALL_NPCS: NpcDef[] = [
   TYLER,
   SIMONE,
   CHRIS,
+  JASMINE,
+  DOROTHY,
+  TONY,
 ];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
@@ -3100,6 +3296,9 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   tyler: "Mall",
   simone: "Mall",
   chris: "Mall",
+  jasmine: "Mall",
+  dorothy: "Mall",
+  tony: "Mall",
 };
 // Which Office floor an NPC's own station lives on, if any — derived from
 // the same manager/staff layout used to build the floors themselves,
@@ -3174,9 +3373,20 @@ const MALL_STORE_STAFF: Record<string, NpcDef[]> = {
   clothes: [SIMONE],
   vehicles: [CHRIS],
 };
+// Wandering shoppers (Mall NPC spec, Phase 1) — placed alongside a store's
+// real staff but not staff themselves: no Gift-Shop-style alternation, no
+// "if married, X takes over" replacement rule, just the same generic
+// isNpcAway presence check every other NPC gets.
+const MALL_STORE_SHOPPERS: Record<string, NpcDef[]> = {
+  vehicles: [DOROTHY],
+  petstore: [TONY],
+};
 function getNpcMallStore(npcId: string): string | undefined {
   for (const storeId of Object.keys(MALL_STORE_STAFF)) {
     if (MALL_STORE_STAFF[storeId].some((n) => n.id === npcId)) return storeId;
+  }
+  for (const storeId of Object.keys(MALL_STORE_SHOPPERS)) {
+    if (MALL_STORE_SHOPPERS[storeId].some((n) => n.id === npcId)) return storeId;
   }
   return undefined;
 }
@@ -3200,16 +3410,18 @@ function isGiftShopStaffOnDuty(npcId: string): boolean {
 function buildMallStaffStation(npc: NpcDef, nx: number, ny: number): Station {
   return { id: `mall-staff-${npc.id}`, label: npc.name, nx, ny, kind: "npc" };
 }
-// Pet Store places its two simultaneous staff side by side; every other
-// store gets its one staff member centered below the counter.
+// Up to 3 people share a store room now (Pet Store: Mei/Tyler + Tony) —
+// spread evenly below the counter; a single-occupant store just uses the
+// first slot.
 const MALL_STAFF_POSITIONS: [number, number][] = [
-  [0.35, 0.65],
-  [0.65, 0.65],
+  [0.25, 0.65],
+  [0.5, 0.65],
+  [0.75, 0.65],
 ];
 function buildMallStoreRoom(storeId: string): Station[] {
-  const staff = MALL_STORE_STAFF[storeId] ?? [];
+  const npcsHere = [...(MALL_STORE_STAFF[storeId] ?? []), ...(MALL_STORE_SHOPPERS[storeId] ?? [])];
   const stations: Station[] = [...(MALL_STORE_STATIONS[storeId] ?? [])];
-  staff.forEach((npc, i) => {
+  npcsHere.forEach((npc, i) => {
     const onDuty = storeId === "giftshop" ? isGiftShopStaffOnDuty(npc.id) : true;
     if (onDuty && !isNpcAway(npc.id)) {
       const [nx, ny] = MALL_STAFF_POSITIONS[i] ?? MALL_STAFF_POSITIONS[MALL_STAFF_POSITIONS.length - 1];
@@ -5007,6 +5219,13 @@ function getDerekStation(buildingName: string): Station | null {
   return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.75, ny: 0.72 };
 }
 
+/** Jasmine's Mall Lobby spot — a wanderer like Derek, but no camp-phase restriction, just the generic isNpcAway check. */
+function getJasmineStation(buildingName: string): Station | null {
+  if (buildingName !== "Mall" || isNpcAway("jasmine")) return null;
+  // Central, away from the 5 store-entry stations around the edges.
+  return { id: "jasmine-lobby", label: "Jasmine", kind: "npc", nx: 0.5, ny: 0.55 };
+}
+
 // Right after sleeping together, her spouse-npc/overnight-guest marker
 // moves to sit beside the bed instead of her regular spot (see
 // justSleptTogether) — offset slightly from the bed's own position so the
@@ -5027,6 +5246,8 @@ function computeStationsFor(buildingName: string): Station[] {
   }
   const derekStation = getDerekStation(buildingName);
   if (derekStation) base = [...base, derekStation];
+  const jasmineStation = getJasmineStation(buildingName);
+  if (jasmineStation) base = [...base, jasmineStation];
   const spouseStation = getSpouseStation(buildingName);
   if (spouseStation) return [...base, applyBedPositionIfJustSlept(spouseStation), ...getChildStations(buildingName)];
   const meetupStation = getActiveMeetupStation(buildingName);
@@ -5299,6 +5520,7 @@ function loop(now: number) {
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "derek-lobby") onTrigger = () => openNpcDialogue(DEREK);
+      else if (nearStation.id === "jasmine-lobby") onTrigger = () => openNpcDialogue(JASMINE);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
         onTrigger = staffNpc ? () => openNpcDialogue(staffNpc) : () => {};
