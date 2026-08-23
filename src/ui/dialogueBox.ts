@@ -11,6 +11,9 @@ export interface DialogueOption {
   costLabel?: string;
   disabled?: boolean;
   onSelect: () => void;
+  // Grid layout only (see DialogueData.optionsLayout) — an emoji shown
+  // large above the label, e.g. for a gift-catalog item icon.
+  icon?: string;
 }
 
 // Free-text input row (Family System: naming a new child) — rendered above
@@ -31,6 +34,11 @@ export interface DialogueData {
   text: string;
   options: DialogueOption[];
   textInput?: DialogueTextInput;
+  // "grid" is a 4-per-row icon grid (each option shows its icon above a
+  // short label) instead of the normal one-per-row list — for an option
+  // set too long to read comfortably as a vertical list, e.g. the full
+  // 16-item Gift catalog.
+  optionsLayout?: "list" | "grid";
 }
 
 export interface DialogueBox {
@@ -66,7 +74,7 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
 
   function render() {
     if (!builder) return;
-    const { portrait: portraitSrc, name, text, options, textInput } = builder();
+    const { portrait: portraitSrc, name, text, options, textInput, optionsLayout } = builder();
 
     portrait.innerHTML = "";
     if (portraitSrc.startsWith("data:") || portraitSrc.startsWith("http")) {
@@ -132,12 +140,19 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
       box.appendChild(inputRow);
     }
 
+    const isGrid = optionsLayout === "grid";
     const optionsEl = document.createElement("div");
-    optionsEl.className = "dialogue-box__options";
+    optionsEl.className = isGrid ? "dialogue-box__options dialogue-box__options--grid" : "dialogue-box__options";
     for (const option of options) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "dialogue-box__option";
+      btn.className = isGrid ? "dialogue-box__option dialogue-box__option--grid" : "dialogue-box__option";
+      if (isGrid && option.icon) {
+        const iconEl = document.createElement("span");
+        iconEl.className = "dialogue-box__option-icon";
+        iconEl.textContent = option.icon;
+        btn.appendChild(iconEl);
+      }
       const labelEl = document.createElement("span");
       labelEl.textContent = option.label;
       btn.appendChild(labelEl);

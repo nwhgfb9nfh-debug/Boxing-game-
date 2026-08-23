@@ -415,6 +415,41 @@ canvas {
   font-weight: 700;
 }
 
+/* 4-per-row icon grid (e.g. the full Gift catalog) instead of a tall
+   one-per-row list — same box, taller max-height since it now scrolls a
+   grid of squares rather than a handful of rows. */
+.dialogue-box__options--grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.dialogue-box__option--grid {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 4px;
+  text-align: center;
+}
+
+.dialogue-box__option--grid span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-box__option-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.dialogue-box__option--grid .dialogue-box__cost {
+  font-size: 10px;
+}
+
 /* Family System: naming a new child — free-text row above the options. */
 .dialogue-box__input-row {
   display: flex;

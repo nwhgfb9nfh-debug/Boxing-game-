@@ -4340,9 +4340,13 @@ function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
     portrait: npc.portrait,
     name: npc.name,
     text: `Energy: ${energy.remaining}/100 — which gift?`,
+    // Grid, not a list — up to all 16 catalog items can be owned at once
+    // for a romance-eligible NPC, which doesn't fit a one-per-row list.
+    optionsLayout: "grid",
     options: [
       ...owned.map((g) => ({
         id: g.id,
+        icon: g.icon,
         label: `${g.name} (${getGiftCount(g.id)})`,
         costLabel: g.isRing ? undefined : `${GIVE_GIFT_COST} EN`,
         disabled: !g.isRing && !energy.canAfford(GIVE_GIFT_COST),
@@ -4361,7 +4365,8 @@ function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
       })),
       {
         id: "back",
-        label: "‹ Back",
+        icon: "↩️",
+        label: "Back",
         onSelect: () => {
           dialogueView = "actions";
         },
@@ -4712,9 +4717,11 @@ function buildMeetupDialogueGiftOptions(npc: NpcDef, type: MeetupType): Dialogue
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
+    optionsLayout: "grid",
     options: [
       ...owned.map((g) => ({
         id: g.id,
+        icon: g.icon,
         label: `${g.name} (${getGiftCount(g.id)})`,
         onSelect: () => {
           if (g.isRing) {
@@ -4726,7 +4733,8 @@ function buildMeetupDialogueGiftOptions(npc: NpcDef, type: MeetupType): Dialogue
       })),
       {
         id: "back",
-        label: "‹ Back",
+        icon: "↩️",
+        label: "Back",
         onSelect: () => {
           meetupDialogueView = "main";
         },
@@ -5135,24 +5143,27 @@ function openClothesMenu() {
 interface GiftCatalogItem extends ShopItem {
   category: GiftCategory;
   isRing?: boolean;
+  // Placeholder art — a real icon/image can replace this per item later,
+  // same "emoji until real art exists" convention as NPC portraits.
+  icon: string;
 }
 const GIFT_CATALOG: GiftCatalogItem[] = [
-  { id: "bouquet", name: "Bouquet of Flowers", price: 20, category: "romantic" },
-  { id: "chocolates", name: "Box of Chocolates", price: 15, category: "romantic" },
-  { id: "perfume", name: "Perfume", price: 50, category: "romantic" },
-  { id: "necklace", name: "Silver Necklace", price: 100, category: "romantic" },
-  { id: "board-game", name: "Board Game", price: 30, category: "fun" },
-  { id: "novelty-mug", name: "Novelty Mug", price: 12, category: "fun" },
-  { id: "video-game", name: "Video Game", price: 60, category: "fun" },
-  { id: "concert-tickets", name: "Concert Tickets", price: 80, category: "fun" },
-  { id: "umbrella", name: "Umbrella", price: 15, category: "practical" },
-  { id: "wallet", name: "Wallet", price: 35, category: "practical" },
-  { id: "tool-kit", name: "Tool Kit", price: 45, category: "practical" },
-  { id: "watch", name: "Watch", price: 70, category: "practical" },
-  { id: "ring", name: "Engagement Ring", price: 2000, category: "jewelry", isRing: true },
-  { id: "luxury-watch", name: "Luxury Watch", price: 800, category: "jewelry" },
-  { id: "custom-jewelry", name: "Custom Jewelry Piece", price: 500, category: "jewelry" },
-  { id: "diamond-earrings", name: "Diamond Earrings", price: 600, category: "jewelry" },
+  { id: "bouquet", name: "Bouquet of Flowers", price: 20, category: "romantic", icon: "💐" },
+  { id: "chocolates", name: "Box of Chocolates", price: 15, category: "romantic", icon: "🍫" },
+  { id: "perfume", name: "Perfume", price: 50, category: "romantic", icon: "🧴" },
+  { id: "necklace", name: "Silver Necklace", price: 100, category: "romantic", icon: "📿" },
+  { id: "board-game", name: "Board Game", price: 30, category: "fun", icon: "🎲" },
+  { id: "novelty-mug", name: "Novelty Mug", price: 12, category: "fun", icon: "☕" },
+  { id: "video-game", name: "Video Game", price: 60, category: "fun", icon: "🎮" },
+  { id: "concert-tickets", name: "Concert Tickets", price: 80, category: "fun", icon: "🎫" },
+  { id: "umbrella", name: "Umbrella", price: 15, category: "practical", icon: "☂️" },
+  { id: "wallet", name: "Wallet", price: 35, category: "practical", icon: "👛" },
+  { id: "tool-kit", name: "Tool Kit", price: 45, category: "practical", icon: "🧰" },
+  { id: "watch", name: "Watch", price: 70, category: "practical", icon: "⌚" },
+  { id: "ring", name: "Engagement Ring", price: 2000, category: "jewelry", isRing: true, icon: "💍" },
+  { id: "luxury-watch", name: "Luxury Watch", price: 800, category: "jewelry", icon: "🕰️" },
+  { id: "custom-jewelry", name: "Custom Jewelry Piece", price: 500, category: "jewelry", icon: "💎" },
+  { id: "diamond-earrings", name: "Diamond Earrings", price: 600, category: "jewelry", icon: "✨" },
 ];
 const GIFT_CATEGORY_LABELS: Record<GiftCategory, string> = {
   romantic: "💐 Romantic",
