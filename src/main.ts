@@ -27,6 +27,8 @@ import {
   KYLE_PORTRAIT,
   MARGARET_PORTRAIT,
   BIANCA_PORTRAIT,
+  ROSA_PORTRAIT,
+  KEVIN_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -2604,6 +2606,423 @@ const BIANCA: NpcDef = {
   familyInfo: { kidsHas: 0, kidsWants: 3, revealTier: "acquaintance" },
 };
 
+// --- Mall NPCs (Mall — NPC Dialogue Content spec) ---------------------
+// Propose thresholds aren't given in that doc (only the Ask Her Out
+// Romance threshold and the Home-as-Date unlock condition) — scaled
+// against Priya/Bianca's existing thresholds as first-pass placeholders,
+// same "easy to retune" status as everything else here.
+
+const ROSA_ROMANCE_THRESHOLD = 3;
+const ROSA_PROPOSE_DATE_THRESHOLD = 3;
+const ROSA_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const ROSA_PROPOSE_ROMANCE_THRESHOLD = 8;
+
+const ROSA_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ohh, maybe once I know you a little better!" She laughs it off.' };
+    }
+    return { success: true, delta: 10, message: 'She grins and rattles off her number. "There — now text me sometime!"' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Oh my gosh, you didn\'t have to!" She\'s beaming.' }),
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= ROSA_ROMANCE_THRESHOLD) {
+      return { success: true, message: 'Her face lights up. "I was hoping you\'d ask!"' };
+    }
+    return { success: false, message: '"Aw — I don\'t think we\'re quite there yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= ROSA_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= ROSA_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= ROSA_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: 'She gasps, hands over her mouth. "Yes! Yes, of course — yes!"' };
+    }
+    return { success: false, message: '"...Ask me again a little later, okay?"' };
+  },
+};
+
+const ROSA: NpcDef = {
+  id: "rosa",
+  name: "Rosa Delgado",
+  portrait: ROSA_PORTRAIT,
+  romanceEligible: true,
+  greetings: {
+    stranger: "Hi there! Welcome to the Gift Shop — let me know if you need help finding anything!",
+    acquaintance: "Hey, you're back! Good to see a familiar face.",
+    friend: "There you are! I was hoping you'd stop by today.",
+    close: "Hey you! Come here, I've been dying to talk to you.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "style", label: "Style", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  actions: ROSA_ACTIONS,
+  homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
+};
+
+const KEVIN_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, let\'s get to know each other a bit first, yeah?"' };
+    }
+    return { success: true, delta: 10, message: 'He nods easily. "Yeah, sure — here you go."' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Hey, appreciate that, man. Didn\'t need to." He means it.' }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// If Rosa marries the player she leaves the Gift Shop for good — Kevin
+// covers it full-time from then on, no more alternating (see
+// isGiftShopStaffOnDuty).
+const KEVIN: NpcDef = {
+  id: "kevin",
+  name: "Kevin Park",
+  portrait: KEVIN_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hey, welcome in. Let me know if you need a hand with anything.",
+    acquaintance: "Hey, good to see you again.",
+    friend: "Hey man, good to see you.",
+    close: "Hey, man. Always good when you swing by.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: KEVIN_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const MALIK_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Let\'s talk shop a bit more first, yeah?"' };
+    }
+    return { success: true, delta: 10, message: 'He nods, writing his number down himself. "Good. Call if you need anything."' };
+  },
+  giftReaction: (tier) => {
+    if (tier === "stranger") {
+      return { delta: -5, message: '"That\'s kind, but I barely know you." He\'s polite but keeps his distance.' };
+    }
+    return { delta: 8, message: '"Now that\'s thoughtful." He looks genuinely touched.' };
+  },
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const MALIK: NpcDef = {
+  id: "malik",
+  name: "Malik Hassan",
+  portrait: "🧔🏽",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Welcome in — everything here's built to last, take your time looking around.",
+    acquaintance: "Good to see you again. Come on in.",
+    friend: "Hey, good to see you. Come, take a look at what just came in.",
+    close: "There you are. Come on back, I want to show you something.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Craftsmanship — genuinely lights up talking about it.
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: MALIK_ACTIONS,
+  inviteToFightMinTier: "friend",
+};
+
+const MEI_ROMANCE_THRESHOLD = 4;
+const MEI_PROPOSE_DATE_THRESHOLD = 4;
+const MEI_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const MEI_PROPOSE_ROMANCE_THRESHOLD = 15;
+
+const MEI_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Oh — maybe once you\'ve been in a few more times!"' };
+    }
+    return {
+      success: true,
+      delta: 10,
+      message: 'She scribbles her number on a receipt. "Here! Text me pictures if you get a pet!"',
+    };
+  },
+  giftReaction: () => ({ delta: 8, message: '"For me? Aw, that\'s so sweet!" She\'s genuinely delighted.' }),
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= MEI_ROMANCE_THRESHOLD) {
+      return { success: true, message: 'She blinks, then smiles wide. "...Yeah. Yeah, I\'d really like that."' };
+    }
+    return { success: false, message: '"Oh! Um — I don\'t think I\'m ready for that yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= MEI_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= MEI_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= MEI_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: 'Her eyes well up. "Yes — a thousand times, yes."' };
+    }
+    return { success: false, message: '"...Too soon. But ask me again, okay?"' };
+  },
+};
+
+const MEI: NpcDef = {
+  id: "mei",
+  name: "Mei Chen",
+  portrait: "👩🏻",
+  romanceEligible: true,
+  greetings: {
+    stranger: "Oh — hi! Welcome to the Pet Store! Did you know a betta fish can recognize its owner's face?",
+    acquaintance: "Hey, you're back! Come see, we got a new litter in this week.",
+    friend: "Hi! I was just thinking about you, actually — perfect timing.",
+    close: "Hey you. Come here, I want to show you something.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Animals — her actual passion, bordering on obsessive.
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "style", label: "Style", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "neutral", close: "neutral" } },
+  ],
+  actions: MEI_ACTIONS,
+  homeDateUnlock: (dateCount, tier) => dateCount >= 2 && tier === "close",
+};
+
+const TYLER_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Eh, maybe once I know you a bit better, man."' };
+    }
+    return { success: true, delta: 10, message: 'He shrugs easily. "Sure, man, here you go."' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Aw, didn\'t have to do that, man. Thanks." He\'s genuinely pleased.' }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// If Mei marries the player she leaves the Pet Store for good — Tyler
+// becomes the sole permanent employee from then on.
+const TYLER: NpcDef = {
+  id: "tyler",
+  name: "Tyler Brooks",
+  portrait: "🧑🏼",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hey, welcome in. Dogs are around back if you want to say hi.",
+    acquaintance: "Hey, good to see you.",
+    friend: "Hey man, what's up.",
+    close: "Hey, good to see you, man. Come hang out.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: TYLER_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const SIMONE_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (!tierAtLeast(tier, "friend")) {
+      return { success: false, delta: -5, message: '"Oh, I don\'t really give my number out — not much of a texter!"' };
+    }
+    return { success: true, delta: 10, message: 'She smiles. "Alright, sure — for emergencies only, though!"' };
+  },
+  giftReaction: (tier) => {
+    if (tier === "stranger") {
+      return { delta: -5, message: '"Oh — that\'s very sweet, but I couldn\'t possibly." She\'s polite but firm.' };
+    }
+    return { delta: 8, message: '"That\'s so thoughtful of you!" She\'s genuinely touched.' };
+  },
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// Canonically already married in-world — the romance door is narratively
+// closed, not just "not yet interested." No Flirty category at all,
+// permanently hidden, same treatment as any friend-only NPC.
+const SIMONE: NpcDef = {
+  id: "simone",
+  name: "Simone Reyes",
+  portrait: "👩🏽",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hi, welcome in! Let me know if you want a hand putting something together.",
+    acquaintance: "Hey, good to see you again!",
+    friend: "Hey! Good to see you — come here, let me show you something.",
+    close: "Hey you! Perfect timing, come here.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "neutral", close: "neutral" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: SIMONE_ACTIONS,
+  inviteToFightMinTier: "friend",
+};
+
+const CHRIS_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, let\'s do a few more laps around the lot first."' };
+    }
+    return { success: true, delta: 10, message: 'He hands over a card with his cell scrawled on the back. "Anytime, champ."' };
+  },
+  giftReaction: () => ({ delta: 8, message: '"Well, aren\'t you something." He\'s grinning, genuinely pleased.' }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const CHRIS: NpcDef = {
+  id: "chris",
+  name: "Chris Sullivan",
+  portrait: "🧑🏻",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hey there! Chris Sullivan — take a look around, let me know if anything catches your eye.",
+    acquaintance: "Hey, good to see you again!",
+    friend: "Hey, good to see you, man. Come on over.",
+    close: "Hey! There he is. Good to see you.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "neutral", close: "neutral" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: CHRIS_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
 // Manager Lvl 1/2/3 and, where designed, their secretary/second-assistant —
 // used to lay out each Office floor (see buildOfficeFloorRoom) and to
 // resolve which NPC a floor's manager desk belongs to at dispatch time.
@@ -2633,7 +3052,24 @@ function managerDeskOptions(floor: number): DialogueOption[] {
 // Registry of every dialogue-capable NPC — used by the Contacts app to look
 // up whoever has had their number exchanged, regardless of which building
 // they're physically found in.
-const ALL_NPCS: NpcDef[] = [PRIYA, CAROL, DEREK, VINNIE, ANGELA, MARCUS, KYLE, MARGARET, BIANCA];
+const ALL_NPCS: NpcDef[] = [
+  PRIYA,
+  CAROL,
+  DEREK,
+  VINNIE,
+  ANGELA,
+  MARCUS,
+  KYLE,
+  MARGARET,
+  BIANCA,
+  ROSA,
+  KEVIN,
+  MALIK,
+  MEI,
+  TYLER,
+  SIMONE,
+  CHRIS,
+];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
 }
@@ -2651,6 +3087,13 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   kyle: "Office",
   margaret: "Office",
   bianca: "Office",
+  rosa: "Mall",
+  kevin: "Mall",
+  malik: "Mall",
+  mei: "Mall",
+  tyler: "Mall",
+  simone: "Mall",
+  chris: "Mall",
 };
 // Which Office floor an NPC's own station lives on, if any — derived from
 // the same manager/staff layout used to build the floors themselves,
@@ -2678,7 +3121,12 @@ function isNpcInCurrentBuilding(npcId: string): boolean {
   // another floor shouldn't lock Text for them.
   const officeFloor = getNpcOfficeFloor(npcId);
   if (officeFloor !== undefined) return buildingName === "Office" && scene.officeFloor === officeFloor;
-  return buildingName === NPC_HOME_BUILDING[npcId] && !isNpcAwayFromOffice(npcId);
+  // Mall staff (Gift Shop/Pet Store/Furniture Store/Clothing Store/Vehicle
+  // Dealer) are on their own specific store, not just "somewhere in the
+  // Mall" — same idea as Office floors above.
+  const mallStore = getNpcMallStore(npcId);
+  if (mallStore !== undefined) return buildingName === "Mall" && scene.mallStore === mallStore;
+  return buildingName === NPC_HOME_BUILDING[npcId] && !isNpcAway(npcId);
 }
 
 // Manager floors (1-3): no desks/dividers/decorations at all — just the
@@ -2696,7 +3144,7 @@ function buildOfficeFloorRoom(floor: number): { stations: Station[]; decorations
   // eligible floor NPC (e.g. Bianca) never actually leaves her floor
   // station even mid-meetup or the morning after an Overnight Stay.
   const addIfPresent = (npc: NpcDef, nx: number, ny: number) => {
-    if (!isNpcAwayFromOffice(npc.id)) stations.push(buildNpcStation(npc, nx, ny));
+    if (!isNpcAway(npc.id)) stations.push(buildNpcStation(npc, nx, ny));
   };
   if (floor === 1) {
     addIfPresent(VINNIE, 0.4, 0.5);
@@ -2711,13 +3159,67 @@ function buildOfficeFloorRoom(floor: number): { stations: Station[]; decorations
   return { stations, decorations: [] };
 }
 
+// Mall NPC spec: which staff belong to which store — Gift Shop and Pet
+// Store both carry two, everyone else just one.
+const MALL_STORE_STAFF: Record<string, NpcDef[]> = {
+  giftshop: [ROSA, KEVIN],
+  petstore: [MEI, TYLER],
+  furniture: [MALIK],
+  clothes: [SIMONE],
+  vehicles: [CHRIS],
+};
+function getNpcMallStore(npcId: string): string | undefined {
+  for (const storeId of Object.keys(MALL_STORE_STAFF)) {
+    if (MALL_STORE_STAFF[storeId].some((n) => n.id === npcId)) return storeId;
+  }
+  return undefined;
+}
+
+// Gift Shop spec: Rosa and Kevin "alternate by camp phase, never work
+// simultaneously" — the doc doesn't pin down which stage belongs to whom,
+// so this splits CAMP_SEQUENCE by index parity (a simple, stable,
+// debug-menu-testable rule): Rosa covers No Fight Scheduled/Private
+// Life/Promotion/After Fight, Kevin covers the 4 Training stages plus
+// FIGHT NIGHT. Once Rosa's married (or divorced) she's gone from the
+// game for good, same as any other romance-eligible NPC — Kevin covers
+// the shop full-time from then on, the alternation no longer applies.
+function isGiftShopStaffOnDuty(npcId: string): boolean {
+  if (playerState.married["rosa"] || playerState.divorced["rosa"]) {
+    return npcId === "kevin";
+  }
+  const rosaOnDuty = campCycle.currentIndex % 2 === 0;
+  return npcId === "rosa" ? rosaOnDuty : !rosaOnDuty;
+}
+
+function buildMallStaffStation(npc: NpcDef, nx: number, ny: number): Station {
+  return { id: `mall-staff-${npc.id}`, label: npc.name, nx, ny, kind: "npc" };
+}
+// Pet Store places its two simultaneous staff side by side; every other
+// store gets its one staff member centered below the counter.
+const MALL_STAFF_POSITIONS: [number, number][] = [
+  [0.35, 0.65],
+  [0.65, 0.65],
+];
+function buildMallStoreRoom(storeId: string): Station[] {
+  const staff = MALL_STORE_STAFF[storeId] ?? [];
+  const stations: Station[] = [...(MALL_STORE_STATIONS[storeId] ?? [])];
+  staff.forEach((npc, i) => {
+    const onDuty = storeId === "giftshop" ? isGiftShopStaffOnDuty(npc.id) : true;
+    if (onDuty && !isNpcAway(npc.id)) {
+      const [nx, ny] = MALL_STAFF_POSITIONS[i] ?? MALL_STAFF_POSITIONS[MALL_STAFF_POSITIONS.length - 1];
+      stations.push(buildMallStaffStation(npc, nx, ny));
+    }
+  });
+  return stations;
+}
+
 // Rebuilds whichever interior room is currently on screen — the generic
 // per-building room, or (if the player is inside one) the specific Office
-// floor sub-room — so a state change that affects who's visible there
-// (Divorce, a successful Propose) shows up immediately instead of only
-// after the player leaves and re-enters. Mirrors the floor-open dispatch's
-// own InteriorScene construction so an Office floor stays an Office floor
-// instead of silently resetting to the Lobby.
+// floor/Mall store sub-room — so a state change that affects who's
+// visible there (Divorce, a successful Propose) shows up immediately
+// instead of only after the player leaves and re-enters. Mirrors each
+// sub-room's own InteriorScene construction so it stays that same
+// sub-room instead of silently resetting to the Lobby/Mall floor.
 function rebuildCurrentInteriorScene() {
   if (scene.type !== "interior") return;
   if (scene.officeFloor !== undefined) {
@@ -2727,6 +3229,13 @@ function rebuildCurrentInteriorScene() {
       lot: scene.lot,
       interior: new InteriorScene(scene.lot, room.stations, undefined, room.decorations, false),
       officeFloor: scene.officeFloor,
+    };
+  } else if (scene.mallStore !== undefined) {
+    scene = {
+      type: "interior",
+      lot: scene.lot,
+      interior: new InteriorScene(scene.lot, buildMallStoreRoom(scene.mallStore)),
+      mallStore: scene.mallStore,
     };
   } else {
     scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
@@ -3538,7 +4047,7 @@ function buildDialogueActionsDivorceConfirm(npc: NpcDef): DialogueData {
           playerState.dating[npc.id] = false;
           playerState.romanceEnded[npc.id] = true;
           // She's gone from the game entirely — not just off the market
-          // like Break Up leaves her (see isNpcAwayFromOffice/getContacts).
+          // like Break Up leaves her (see isNpcAway/getContacts).
           playerState.divorced[npc.id] = true;
           delete playerState.children[npc.id];
           delete playerState.marriageCampNumber[npc.id];
@@ -4447,10 +4956,12 @@ function getChildStations(buildingName: string): Station[] {
   }));
 }
 
-// True while an NPC is away from her normal Office spot — either because
+// True while an NPC is away from her normal station — either because
 // a meetup's been arranged elsewhere and not yet fulfilled, or she's
 // mid-commute after an Overnight Stay (still asleep at home, or on her
-// way in but not yet arrived — see advanceOvernightCommute).
+// way in but not yet arrived — see advanceOvernightCommute). Generic
+// across every building (Office floors, Mall stores, Reception) — not
+// Office-specific despite the historical name of its call sites.
 // Lobby Wanderer: Derek isn't fixed to the desk like the receptionists —
 // wandering-cast rather than permanent. Content is only being designed
 // for "No Fight Scheduled" right now, so this only covers that phase for
@@ -4461,7 +4972,7 @@ function isDerekPresentThisPhase(): boolean {
   return campCycle.current.type === "nofight";
 }
 
-function isNpcAwayFromOffice(npcId: string): boolean {
+function isNpcAway(npcId: string): boolean {
   if (playerState.divorced[npcId]) return true; // permanent — she's gone from the game for good
   if (playerState.married[npcId]) return true; // permanent — she's moved out for good
   if (playerState.activeMeetup?.npcId === npcId) return true;
@@ -4505,7 +5016,7 @@ function computeStationsFor(buildingName: string): Station[] {
   let base = STATIONS_BY_BUILDING[buildingName] ?? [];
   // Her marker shouldn't just be non-interactive while she's away — it
   // shouldn't be there to look confusingly clickable in the first place.
-  if (buildingName === "Office" && isNpcAwayFromOffice("priya")) {
+  if (buildingName === "Office" && isNpcAway("priya")) {
     base = base.filter((s) => s.id !== "reception-priya");
   }
   const derekStation = getDerekStation(buildingName);
@@ -4747,7 +5258,7 @@ function loop(now: number) {
           scene = {
             type: "interior",
             lot,
-            interior: new InteriorScene(lot, MALL_STORE_STATIONS[storeId]),
+            interior: new InteriorScene(lot, buildMallStoreRoom(storeId)),
             mallStore: storeId,
           };
         };
@@ -4776,12 +5287,16 @@ function loop(now: number) {
         onTrigger = () => openNpcDialogue(staffNpc);
       }
       else if (nearStation.id === "reception-priya") {
-        onTrigger = isNpcAwayFromOffice("priya")
+        onTrigger = isNpcAway("priya")
           ? () => buildingUI.showToast("Priya isn't at her desk right now.", pos, "bottom")
           : () => openNpcDialogue(PRIYA, receptionSharedOptions());
       }
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "derek-lobby") onTrigger = () => openNpcDialogue(DEREK);
+      else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
+        const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
+        onTrigger = staffNpc ? () => openNpcDialogue(staffNpc) : () => {};
+      }
       else if (nearStation.id === "meetup-npc" && playerState.activeMeetup) {
         const { npcId, location, type } = playerState.activeMeetup;
         const meetupNpc = getNpcById(npcId);
