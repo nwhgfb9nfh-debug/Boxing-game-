@@ -95,7 +95,11 @@ export class StreetScene {
 
   update(dt: number) {
     if (this.isUTurning) {
-      this.uturnT += dt / UTURN_DURATION;
+      // Faster cars spin around faster too — U-turn duration scales
+      // inversely with Speed Boost (a Tier 1 car with no boost still takes
+      // the full baseline time; the Supercar's 2.4x speed multiplier makes
+      // its turn-around correspondingly quicker).
+      this.uturnT += dt / (UTURN_DURATION / this.speedMultiplier);
       if (this.uturnT >= 1) {
         this.uturnT = 1;
         this.facing = this.uturnToFacing;

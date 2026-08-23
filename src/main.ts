@@ -5319,7 +5319,7 @@ function skillsetLabel(s: VehicleSkillset): string {
 // that same vehicle's forward top speed — the Supercar (tier 4) backs up
 // exactly as fast as it drives forward, and tier 3 (Muscle Car/Luxury
 // Sedan) is close behind at 90%.
-const TIER_SPEED_MULTIPLIER: Record<VehicleDef["tier"], number> = { 1: 1, 2: 1.2, 3: 1.6, 4: 2.2 };
+const TIER_SPEED_MULTIPLIER: Record<VehicleDef["tier"], number> = { 1: 1, 2: 1.5, 3: 2.0, 4: 2.4 };
 const TIER_REVERSE_RATIO: Record<VehicleDef["tier"], number> = { 1: 0, 2: 0.55, 3: 0.9, 4: 1 };
 
 function activeVehicleDef(): VehicleDef | null {
@@ -5396,10 +5396,12 @@ function openFastTravelMenu() {
 // Garage (Section 5, updated): a Home station, not a Mall one — every
 // owned vehicle lives here. Two-step menu (select a vehicle, then Drive or
 // Set as Standard for it) mirrors the Manager Desk's drill-down menus
-// elsewhere in this file. Drive/Set as Standard both flip
-// garageDriveOverride so the choice survives leaving Home this same visit
-// (see exitBuilding) instead of being immediately overwritten by the
-// standard-vehicle reset.
+// elsewhere in this file. Both Drive and Set as Standard drop the player
+// straight onto the street already in that vehicle — no need to also walk
+// to the front door. The standard-vehicle reset (see exitBuilding) only
+// ever fires on an actual door exit from Home, so a car picked here keeps
+// being driven through every other building visit until the player
+// deliberately walks out Home's door instead of using the Garage.
 let garageSelectedVehicleId: string | null = null;
 
 function openGarageMenu() {
@@ -5439,10 +5441,11 @@ function buildGarageMenu(): MenuData {
           disabled: isActive,
           run: () => {
             playerState.activeVehicle = selected.id;
-            garageDriveOverride = true;
             applyVehiclePerformance();
             garageSelectedVehicleId = null;
-            return `Driving the ${selected.name}.`;
+            locationMenu.close();
+            returnToStreet();
+            return "";
           },
         },
         {
@@ -5454,10 +5457,11 @@ function buildGarageMenu(): MenuData {
           run: () => {
             playerState.standardVehicle = selected.id;
             playerState.activeVehicle = selected.id;
-            garageDriveOverride = true;
             applyVehiclePerformance();
             garageSelectedVehicleId = null;
-            return `${selected.name} is now your standard vehicle.`;
+            locationMenu.close();
+            returnToStreet();
+            return "";
           },
         },
       ],
@@ -5717,13 +5721,6 @@ const BED_STATION_ID = HOUSE_STATIONS[0].id;
 // next time the player enters ANY building (see enterBuilding), so leaving
 // Home and walking back in puts her back at her regular spot.
 let justSleptTogether = false;
-// Garage (Section 5, updated): true only for the rest of the current Home
-// visit right after using Drive/Set as Standard there — makes that choice
-// stick when the player walks out this once, instead of exitBuilding's
-// standard-vehicle reset immediately overwriting it. Cleared on every
-// fresh entry into a house (see enterBuilding) and consumed on exit (see
-// exitBuilding), so it never persists past the visit it was set in.
-let garageDriveOverride = false;
 const HOUSE_NAMES = new Set([
   "Trailer",
   "Apartment",
@@ -6042,33 +6039,29 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
   // after it happens — a fresh entry (even right back into the same house)
   // returns her to her regular spot.
   justSleptTogether = false;
-  // A fresh Home visit starts assuming the standard vehicle again — only
-  // this visit's own Garage choice (see buildGarageMenu) overrides that.
-  if (HOUSE_NAMES.has(lot.building.name)) garageDriveOverride = false;
   scene = { type: "interior", lot, interior: buildInteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
 }
 
-function exitBuilding() {
-  // Garage (Section 5, updated): walking out of Home always puts you back
-  // on the street in your standard vehicle, unless this same visit's
-  // Garage Drive/Set as Standard already picked one (garageDriveOverride).
-  if (
-    scene.type === "interior" &&
-    HOUSE_NAMES.has(scene.lot.building.name) &&
-    !garageDriveOverride &&
-    playerState.standardVehicle &&
-    playerState.activeVehicle !== playerState.standardVehicle
-  ) {
-    playerState.activeVehicle = playerState.standardVehicle;
-    applyVehiclePerformance();
-  }
-  garageDriveOverride = false;
+/** Leaves the current interior for the street, no vehicle change — used by both a plain door exit and the Garage's Drive/Set as Standard. */
+function returnToStreet() {
   scene = { type: "street" };
   controls.root.style.display = "flex";
   joystick.setActive(false);
+}
+
+function exitBuilding() {
+  // Garage (Section 5, updated): walking out of Home's actual door always
+  // resets to the standard vehicle — the only way to leave in something
+  // else is the Garage's Drive/Set as Standard, which exit straight to the
+  // street themselves (see buildGarageMenu) and never call this function.
+  if (scene.type === "interior" && HOUSE_NAMES.has(scene.lot.building.name) && playerState.standardVehicle) {
+    playerState.activeVehicle = playerState.standardVehicle;
+    applyVehiclePerformance();
+  }
+  returnToStreet();
 }
 
 const TRAINING_STATION_IDS = new Set(["heavybag", "reflexdots", "jumprope"]);
