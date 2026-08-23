@@ -102,26 +102,34 @@ export class InteriorScene {
     // floors, elevator-only — no ground-level door to walk out through).
     // No door notch is drawn and walking to the bottom wall does nothing.
     hasDoor: boolean = true,
+    // Explicit override for which station to spawn in front of — e.g. the
+    // Office Lobby (which still has a real door, so wouldn't otherwise
+    // auto-detect this) needs to spawn at its Elevator specifically when
+    // the player's riding back down from a floor, not walking in from the
+    // street. Door-less rooms auto-detect their own "elevator" station
+    // when this is omitted; door rooms fall back to the door spawn.
+    spawnStationId?: string,
   ) {
     this.lot = lot;
     this.stations = stations;
     this.blockedZone = blockedZone;
     this.decorations = decorations;
     this.hasDoor = hasDoor;
-    if (hasDoor) {
+    const spawnStation = spawnStationId
+      ? stations.find((s) => s.id === spawnStationId)
+      : !hasDoor
+        ? stations.find((s) => s.id === "elevator")
+        : undefined;
+    if (spawnStation) {
+      // Arrive right in front of whichever station we're spawning at,
+      // instead of some generic center/door point.
+      this.px = spawnStation.nx;
+      this.py = Math.min(0.95, spawnStation.ny + 0.12);
+    } else if (hasDoor) {
       // Spawn just above the door.
       this.py = 0.88;
     } else {
-      // Door-less rooms (e.g. Office floors) are only ever entered by
-      // riding their "elevator" station — arrive right in front of it
-      // instead of some generic center point.
-      const elevatorStation = stations.find((s) => s.id === "elevator");
-      if (elevatorStation) {
-        this.px = elevatorStation.nx;
-        this.py = Math.min(0.95, elevatorStation.ny + 0.12);
-      } else {
-        this.py = 0.5;
-      }
+      this.py = 0.5;
     }
   }
 

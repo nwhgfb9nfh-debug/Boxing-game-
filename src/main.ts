@@ -294,7 +294,7 @@ const phoneApi: PhoneApi = {
     return npc.romanceEligible && !isRomanceLockedOut(npc) ? TEXT_TALK_ROMANCED : TEXT_TALK_NOT_ROMANCED;
   },
   sendTextTalk: (npcId, optionId) => {
-    if (isNpcInCurrentBuilding(npcId)) return "She's right here — talk to her in person instead.";
+    if (isNpcInCurrentBuilding(npcId)) return "They're right here — talk to them in person instead.";
     bumpRelationship(npcId, TEXT_TALK_DELTA);
     let resultText = formatTopicResult(TEXT_TALK_DELTA);
     const npc = getNpcById(npcId);
@@ -400,7 +400,7 @@ const phoneApi: PhoneApi = {
   },
   payForMeetup: (npcId, type, locationId) => {
     if (isNpcInCurrentBuilding(npcId)) {
-      return { ok: false, message: "She's right here — no need to set up a meetup." };
+      return { ok: false, message: "They're right here — no need to set up a meetup." };
     }
     if (playerState.activeMeetup) return { ok: false, message: "You already have a meetup arranged." };
     const meetupType = type as MeetupType;
@@ -4596,7 +4596,9 @@ function loop(now: number) {
               scene = {
                 type: "interior",
                 lot,
-                interior: new InteriorScene(lot, computeStationsFor("Office"), undefined, OFFICE_DECORATIONS),
+                // Arrive right in front of the Lobby's own Elevator, not
+                // the street-side door spawn.
+                interior: new InteriorScene(lot, computeStationsFor("Office"), undefined, OFFICE_DECORATIONS, true, "elevator"),
               };
             }
           : () => openElevatorMenu(lot);
