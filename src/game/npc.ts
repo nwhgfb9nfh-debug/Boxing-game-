@@ -126,6 +126,12 @@ export interface NpcDef {
   // apply to him — his dialogue is just Talk plus his own Manager Desk
   // extra option.
   hideActions?: boolean;
+  // Which manager tier this NPC is (1/2/3), for NPCs who are also the
+  // player's hired Manager — Meetup only makes sense once he's no longer
+  // the one currently on staff (playerState.managerLevel !== this),
+  // otherwise he's already around at the Office all the time. Omitted for
+  // every non-manager NPC.
+  managerTier?: number;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.

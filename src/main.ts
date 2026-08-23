@@ -303,12 +303,30 @@ const phoneApi: PhoneApi = {
   getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
+    // Managers: while he's your currently-hired manager, Meetup doesn't
+    // apply — he's already around at the Office constantly, no need to
+    // schedule anything. Only once you've moved on to a different manager
+    // tier, AND built real Friend-tier trust with him, does Regular
+    // Meetup open up — re-hiring him closes it again.
+    const isActiveManager = npc.managerTier !== undefined && playerState.managerLevel === npc.managerTier;
+    const managerEligible =
+      npc.managerTier === undefined ||
+      (!isActiveManager && tierAtLeast(getRelationshipTier(getRelationshipScore(npcId)), "friend"));
     // Married to her — meetups aren't disabled outright (spec correction):
     // only the Home location is redundant (she already lives there — see
     // getMeetupLocations). Diner/Beach/Lounge stay fully available, both
     // Regular Meetup and Date.
     const types: { id: MeetupType; label: string; available: boolean; reason?: string }[] = [
-      { id: "regular", label: "Regular Meetup", available: true },
+      {
+        id: "regular",
+        label: "Regular Meetup",
+        available: managerEligible,
+        reason: isActiveManager
+          ? "He's still your manager."
+          : npc.managerTier !== undefined && !managerEligible
+            ? "You're not close enough yet."
+            : undefined,
+      },
     ];
     if (npc.romanceEligible) {
       const lockedOut = isRomanceLockedOut(npc);
@@ -1310,9 +1328,16 @@ const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
 // Vinnie's L-shaped desk (per the sketch) — a horizontal segment south of
 // him plus a vertical segment off its right end, wrapping his left/south
 // side the same way Reception's single bar blocks approach from the north.
+// Two more of the same L-shape, empty (no NPC), one above and one below —
+// unoccupied desks so the floor reads as a real shared office space
+// rather than a single guy alone in a big room.
 const OFFICE_FLOOR1_DECORATIONS: Decoration[] = [
   { id: "vinnie-desk-h", nx: 0.42, ny: 0.62, width: 170, height: 30, blocking: true },
   { id: "vinnie-desk-v", nx: 0.5, ny: 0.48, width: 26, height: 90, blocking: true },
+  { id: "empty-desk-1-h", nx: 0.42, ny: 0.3, width: 170, height: 30, blocking: true },
+  { id: "empty-desk-1-v", nx: 0.5, ny: 0.16, width: 26, height: 90, blocking: true },
+  { id: "empty-desk-2-h", nx: 0.42, ny: 0.88, width: 170, height: 30, blocking: true },
+  { id: "empty-desk-2-v", nx: 0.5, ny: 0.74, width: 26, height: 90, blocking: true },
 ];
 
 const CASH_ADVANCE_AMOUNT = 20000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
@@ -2143,6 +2168,7 @@ const VINNIE: NpcDef = {
   // Next Fight all live there normally, so he has no use for it.
   hideActions: true,
   hideInviteToFight: true,
+  managerTier: 1,
 };
 
 function vinnieDeskOptions(): DialogueOption[] {
