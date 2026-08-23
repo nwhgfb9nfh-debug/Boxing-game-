@@ -2521,15 +2521,22 @@ function buildNpcStation(npc: NpcDef, nx: number, ny: number): Station {
 }
 function buildOfficeFloorRoom(floor: number): { stations: Station[]; decorations: Decoration[] } {
   const stations: Station[] = [OFFICE_FLOOR_ELEVATOR];
+  // Same "away from her spot" check the Lobby's reception uses (married/
+  // divorced/active meetup/overnight commute) — without this, a romance-
+  // eligible floor NPC (e.g. Bianca) never actually leaves her floor
+  // station even mid-meetup or the morning after an Overnight Stay.
+  const addIfPresent = (npc: NpcDef, nx: number, ny: number) => {
+    if (!isNpcAwayFromOffice(npc.id)) stations.push(buildNpcStation(npc, nx, ny));
+  };
   if (floor === 1) {
-    stations.push(buildNpcStation(VINNIE, 0.4, 0.5));
+    addIfPresent(VINNIE, 0.4, 0.5);
   } else if (floor === 2) {
-    stations.push(buildNpcStation(KYLE, 0.5, 0.3));
-    stations.push(buildNpcStation(ANGELA, 0.4, 0.65));
+    addIfPresent(KYLE, 0.5, 0.3);
+    addIfPresent(ANGELA, 0.4, 0.65);
   } else if (floor === 3) {
-    stations.push(buildNpcStation(MARGARET, 0.5, 0.3));
-    stations.push(buildNpcStation(MARCUS, 0.35, 0.65));
-    stations.push(buildNpcStation(BIANCA, 0.55, 0.65));
+    addIfPresent(MARGARET, 0.5, 0.3);
+    addIfPresent(MARCUS, 0.35, 0.65);
+    addIfPresent(BIANCA, 0.55, 0.65);
   }
   return { stations, decorations: [] };
 }
