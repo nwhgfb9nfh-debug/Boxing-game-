@@ -528,6 +528,146 @@ function openDebugStatsPanel() {
   renderDebugStats();
 }
 
+// Dev-only: skips the grind to reach any romance/marriage state without
+// playing through it — set an NPC's Relationship/Romance/Dating/Wife/Dates
+// count directly instead of building them up for real. Same custom-overlay
+// pattern as the plain stat editor above, plus an NPC picker row.
+const debugRomanceOverlay = document.createElement("div");
+debugRomanceOverlay.className = "action-menu-overlay";
+debugRomanceOverlay.style.display = "none";
+const debugRomancePanel = document.createElement("div");
+debugRomancePanel.className = "action-menu";
+debugRomanceOverlay.appendChild(debugRomancePanel);
+app.appendChild(debugRomanceOverlay);
+
+let debugRomanceNpcId: string | null = null;
+
+function renderDebugRomance() {
+  debugRomancePanel.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "action-menu__title";
+  title.textContent = "🛠 Relationship Debug";
+  debugRomancePanel.appendChild(title);
+
+  const npcRow = document.createElement("div");
+  npcRow.className = "debug-stats__npc-row";
+  for (const npc of ALL_NPCS.filter((n) => n.romanceEligible)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `debug-stats__set${npc.id === debugRomanceNpcId ? " debug-stats__set--active" : ""}`;
+    btn.textContent = npc.name;
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      debugRomanceNpcId = npc.id;
+      renderDebugRomance();
+    });
+    npcRow.appendChild(btn);
+  }
+  debugRomancePanel.appendChild(npcRow);
+
+  const npc = debugRomanceNpcId ? getNpcById(debugRomanceNpcId) : undefined;
+  const list = document.createElement("div");
+  list.className = "debug-stats__list";
+
+  if (!npc) {
+    const hint = document.createElement("span");
+    hint.className = "debug-stats__label";
+    hint.textContent = "Pick an NPC above.";
+    list.appendChild(hint);
+  } else {
+    const numberRow = (label: string, get: () => number, set: (n: number) => void) => {
+      const row = document.createElement("div");
+      row.className = "debug-stats__row";
+      const labelEl = document.createElement("span");
+      labelEl.className = "debug-stats__label";
+      labelEl.textContent = label;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "debug-stats__input";
+      input.value = String(get());
+      const setBtn = document.createElement("button");
+      setBtn.type = "button";
+      setBtn.className = "debug-stats__set";
+      setBtn.textContent = "Set";
+      setBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        const n = Number(input.value);
+        if (Number.isFinite(n)) set(n);
+        rebuildCurrentInteriorScene();
+        renderDebugRomance();
+      });
+      row.appendChild(labelEl);
+      row.appendChild(input);
+      row.appendChild(setBtn);
+      list.appendChild(row);
+    };
+
+    const boolRow = (label: string, get: () => boolean, set: (v: boolean) => void) => {
+      const row = document.createElement("div");
+      row.className = "debug-stats__row";
+      const labelEl = document.createElement("span");
+      labelEl.className = "debug-stats__label";
+      labelEl.textContent = label;
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "debug-stats__set";
+      toggleBtn.textContent = get() ? "TRUE" : "FALSE";
+      toggleBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        set(!get());
+        rebuildCurrentInteriorScene();
+        renderDebugRomance();
+      });
+      row.appendChild(labelEl);
+      row.appendChild(toggleBtn);
+      list.appendChild(row);
+    };
+
+    numberRow(
+      "Relationship",
+      () => getRelationshipScore(npc.id),
+      (n) => (playerState.contacts[npc.id] = Math.max(0, n)),
+    );
+    numberRow(
+      "Romance",
+      () => getRomanceScore(npc.id),
+      (n) => (playerState.romanceScores[npc.id] = Math.max(0, n)),
+    );
+    boolRow(
+      "Dating",
+      () => !!playerState.dating[npc.id],
+      (v) => (playerState.dating[npc.id] = v),
+    );
+    boolRow(
+      "Wife",
+      () => !!playerState.married[npc.id],
+      (v) => (playerState.married[npc.id] = v),
+    );
+    numberRow(
+      "Dates Count",
+      () => playerState.dateCounts[npc.id] ?? 0,
+      (n) => (playerState.dateCounts[npc.id] = Math.max(0, n)),
+    );
+  }
+  debugRomancePanel.appendChild(list);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "action-menu__close";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    debugRomanceOverlay.style.display = "none";
+  });
+  debugRomancePanel.appendChild(closeBtn);
+}
+
+function openDebugRomancePanel() {
+  debugRomanceOverlay.style.display = "flex";
+  renderDebugRomance();
+}
+
 function openDebugMenu() {
   locationMenu.open(() => ({
     title: "🛠 Debug: Jump to Stage",
@@ -544,6 +684,17 @@ function openDebugMenu() {
         run: () => {
           locationMenu.close();
           openDebugStatsPanel();
+          return "";
+        },
+      },
+      {
+        id: "edit-romance",
+        label: "💕 Relationship Debug",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          locationMenu.close();
+          openDebugRomancePanel();
           return "";
         },
       },

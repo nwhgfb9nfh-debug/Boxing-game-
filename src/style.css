@@ -618,6 +618,18 @@ canvas {
   -webkit-tap-highlight-color: transparent;
 }
 
+.debug-stats__npc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.debug-stats__set--active {
+  background: #ff9f4a;
+  color: #1a1c22;
+}
+
 /* Buzzer app — compose box + reply feed */
 .buzzer-compose {
   width: 100%;
