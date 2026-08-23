@@ -462,24 +462,12 @@ interface DebugStatField {
 }
 
 function getDebugStatFields(): DebugStatField[] {
-  const setTrainingBonus = (stat: keyof TrainingStats) => (n: number) => {
-    playerState.training[stat].bonus = n;
-    playerState.training[stat].trained = true;
-  };
   return [
     { label: "Fame", get: () => playerState.fame, set: (n) => (playerState.fame = n) },
     { label: "Image", get: () => playerState.image, set: (n) => (playerState.image = n) },
     { label: "HP", get: () => playerState.hp, set: (n) => (playerState.hp = n) },
     { label: "Social Battery", get: () => socialBattery.remaining, set: (n) => socialBattery.set(n) },
     { label: "Money", get: () => playerState.money, set: (n) => (playerState.money = n) },
-    { label: "Power bonus", get: () => playerState.training.power.bonus, set: setTrainingBonus("power") },
-    { label: "Speed bonus", get: () => playerState.training.speed.bonus, set: setTrainingBonus("speed") },
-    {
-      label: "Endurance bonus",
-      get: () => playerState.training.endurance.bonus,
-      set: setTrainingBonus("endurance"),
-    },
-    { label: "Chin bonus", get: () => playerState.training.chin.bonus, set: setTrainingBonus("chin") },
   ];
 }
 
@@ -2523,137 +2511,27 @@ function isNpcInCurrentBuilding(npcId: string): boolean {
   return buildingName === NPC_HOME_BUILDING[npcId] && !isNpcAwayFromOffice(npcId);
 }
 
-// Manager floors (1-3): every floor shares only the Elevator, top-right —
-// the rest of the layout is deliberately different per floor, not a
-// repeated template.
+// Manager floors (1-3): no desks/dividers/decorations at all — just the
+// Elevator (top-right, shared by every floor) and each floor's NPC(s)
+// standing directly at a plain point, same bare station style Priya/
+// Carol/Derek use downstairs.
 const OFFICE_FLOOR_ELEVATOR: Station = { id: "elevator", label: "Elevator", nx: 0.88, ny: 0.12 };
-
-// Floor 1 (Vinnie, no staff yet): unchanged from before — a center L-desk
-// (approached from the vertical segment's east edge) with 2 more of the
-// same L-shape flanking it, empty, so the floor still reads as a shared
-// office rather than one guy alone in a big room.
-function buildDeskDecorations(id: string, slot: { h: number; v: number }): Decoration[] {
-  return [
-    { id: `${id}-h`, nx: 0.42, ny: slot.h, width: 170, height: 30, blocking: true },
-    { id: `${id}-v`, nx: 0.5, ny: slot.v, width: 26, height: 90, blocking: true },
-  ];
+function buildNpcStation(npc: NpcDef, nx: number, ny: number): Station {
+  return { id: `office-desk-${npc.id}`, label: npc.name, nx, ny, kind: "npc" };
 }
-function buildDeskStation(npc: NpcDef, id: string): Station {
-  return {
-    id: `office-desk-${npc.id}`,
-    label: npc.name,
-    nx: 0.4,
-    ny: 0.5,
-    kind: "npc",
-    radius: 24,
-    approachDecorationId: `${id}-v`,
-    approachSide: "east",
-  };
-}
-function buildFloor1Room(): { stations: Station[]; decorations: Decoration[] } {
-  const slots: { npc: NpcDef | undefined; slot: { h: number; v: number }; deskId: string }[] = [
-    { npc: undefined, slot: { h: 0.3, v: 0.16 }, deskId: "floor1-desk-top" },
-    { npc: VINNIE, slot: { h: 0.62, v: 0.48 }, deskId: "floor1-desk-center" },
-    { npc: undefined, slot: { h: 0.88, v: 0.74 }, deskId: "floor1-desk-bottom" },
-  ];
-  const stations: Station[] = [OFFICE_FLOOR_ELEVATOR];
-  const decorations: Decoration[] = [];
-  for (const { npc, slot, deskId } of slots) {
-    decorations.push(...buildDeskDecorations(deskId, slot));
-    if (npc) stations.push(buildDeskStation(npc, deskId));
-  }
-  return { stations, decorations };
-}
-
-// Floor 2 (Kyle + Angela): a small desk right by the entrance where Kyle
-// sits — walk past him to reach Angela's own (larger, L-shaped) desk
-// deeper in the room.
-// Shared by Floors 2/3 (per the sketch): a low partial wall with a gap in
-// it, splitting the room into an entrance zone (secretary's square desk,
-// just past the Elevator) and the manager's own zone further in — purely
-// a visual/physical divider, not a separate room/scene, so walking through
-// the gap is instant, same as any other open floor.
-function buildFloorDivider(id: string, ny: number): Decoration[] {
-  return [
-    { id: `${id}-left`, nx: 0.22, ny, width: 220, height: 14, blocking: true },
-    { id: `${id}-right`, nx: 0.72, ny, width: 220, height: 14, blocking: true },
-  ];
-}
-// The secretary's own square desk, right past the Elevator.
-function buildSecretaryDesk(npc: NpcDef, id: string): { station: Station; decorations: Decoration[] } {
-  return {
-    decorations: [{ id, nx: 0.5, ny: 0.34, width: 70, height: 70, blocking: true }],
-    station: {
-      id: `office-desk-${npc.id}`,
-      label: npc.name,
-      nx: 0.5,
-      ny: 0.22,
-      kind: "npc",
-      radius: 24,
-      approachDecorationId: id,
-    },
-  };
-}
-
-// Floor 2 (Kyle + Angela): Kyle's square desk sits right past the
-// Elevator; a low divider wall (with a gap to walk through) separates it
-// from Angela's own L-desk further into the room.
-function buildFloor2Room(): { stations: Station[]; decorations: Decoration[] } {
-  const kyle = buildSecretaryDesk(KYLE, "floor2-kyle-desk");
-  const decorations: Decoration[] = [
-    ...kyle.decorations,
-    ...buildFloorDivider("floor2-divider", 0.56),
-    ...buildDeskDecorations("floor2-angela-desk", { h: 0.85, v: 0.72 }),
-  ];
-  const stations: Station[] = [OFFICE_FLOOR_ELEVATOR, kyle.station, buildDeskStation(ANGELA, "floor2-angela-desk")];
-  return { stations, decorations };
-}
-
-// Floor 3 (Margaret + Marcus + Bianca): Margaret's square desk right past
-// the Elevator, same as Kyle's; past the same divider wall is a big
-// reverse-U desk — a long back segment plus two short arms forming the
-// sides you walk between. Marcus stands at the middle of the long (back)
-// side; Bianca's on the inside of one of the short arms.
-function buildFloor3Room(): { stations: Station[]; decorations: Decoration[] } {
-  const margaret = buildSecretaryDesk(MARGARET, "floor3-margaret-desk");
-  const decorations: Decoration[] = [
-    ...margaret.decorations,
-    ...buildFloorDivider("floor3-divider", 0.56),
-    { id: "floor3-desk-base", nx: 0.3, ny: 0.88, width: 220, height: 30, blocking: true },
-    { id: "floor3-desk-arm-l", nx: 0.19, ny: 0.74, width: 26, height: 90, blocking: true },
-    { id: "floor3-desk-arm-r", nx: 0.41, ny: 0.74, width: 26, height: 90, blocking: true },
-  ];
-  const stations: Station[] = [
-    OFFICE_FLOOR_ELEVATOR,
-    margaret.station,
-    {
-      id: `office-desk-${MARCUS.id}`,
-      label: MARCUS.name,
-      nx: 0.3,
-      ny: 0.8,
-      kind: "npc",
-      radius: 24,
-      approachDecorationId: "floor3-desk-base",
-      approachSide: "north",
-    },
-    {
-      id: `office-desk-${BIANCA.id}`,
-      label: BIANCA.name,
-      nx: 0.36,
-      ny: 0.74,
-      kind: "npc",
-      radius: 24,
-      approachDecorationId: "floor3-desk-arm-r",
-      approachSide: "west",
-    },
-  ];
-  return { stations, decorations };
-}
-
 function buildOfficeFloorRoom(floor: number): { stations: Station[]; decorations: Decoration[] } {
-  if (floor === 2) return buildFloor2Room();
-  if (floor === 3) return buildFloor3Room();
-  return buildFloor1Room();
+  const stations: Station[] = [OFFICE_FLOOR_ELEVATOR];
+  if (floor === 1) {
+    stations.push(buildNpcStation(VINNIE, 0.4, 0.5));
+  } else if (floor === 2) {
+    stations.push(buildNpcStation(KYLE, 0.5, 0.3));
+    stations.push(buildNpcStation(ANGELA, 0.4, 0.65));
+  } else if (floor === 3) {
+    stations.push(buildNpcStation(MARGARET, 0.5, 0.3));
+    stations.push(buildNpcStation(MARCUS, 0.35, 0.65));
+    stations.push(buildNpcStation(BIANCA, 0.55, 0.65));
+  }
+  return { stations, decorations: [] };
 }
 
 function getRelationshipScore(npcId: string): number {
