@@ -277,7 +277,7 @@ const phoneApi: PhoneApi = {
         score,
         maxScore: 100,
         romanceEligible: npc.romanceEligible,
-        romanceScore: npc.romanceEligible ? getRomanceScore(npc.id) : undefined,
+        romanceScore: npc.romanceEligible && !isRomanceLockedOut(npc) ? getRomanceScore(npc.id) : undefined,
         romanceMax: 100,
         dating: !!playerState.dating[npc.id],
         locked: isNpcInCurrentBuilding(npc.id),
@@ -2575,6 +2575,20 @@ function isRomanceLockedOut(npc: NpcDef): boolean {
   return isPlayerMarried() && !playerState.married[npc.id];
 }
 
+// Marriage System: the moment you marry someone, every OTHER
+// romance-eligible NPC's Romance score gets knocked down to 20 if it was
+// higher (left untouched if it was already lower) — you don't get to keep
+// a near-maxed Romance meter with someone else banked for whenever you
+// eventually divorce. Her Contacts entry also hides the Romance bar
+// entirely while locked out (see getContacts) and picks back up from
+// wherever this leaves it once divorced.
+function capOtherRomanceScoresOnMarriage(spouseId: string) {
+  for (const npc of ALL_NPCS) {
+    if (!npc.romanceEligible || npc.id === spouseId) continue;
+    if (getRomanceScore(npc.id) > 20) playerState.romanceScores[npc.id] = 20;
+  }
+}
+
 // Family System: 50/50 every time, independent per child.
 function rollGender(): "boy" | "girl" {
   return Math.random() < 0.5 ? "boy" : "girl";
@@ -2662,6 +2676,7 @@ function resolveProposeAttempt(npc: NpcDef): string {
     const existingKids = npc.familyInfo?.kidsHas ?? 0;
     for (let i = 0; i < existingKids; i++) spawnChild(npc.id);
     playerState.marriageCampNumber[npc.id] = campCycle.campNumber;
+    capOtherRomanceScoresOnMarriage(npc.id);
   }
   return result.message;
 }
@@ -3144,8 +3159,11 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
           ]
         : []),
       // Break Up: only ever shown while actually Dating her — unlike every
-      // other Action here, it's not visible before that at all.
-      ...(playerState.dating[npc.id]
+      // other Action here, it's not visible before that at all. Also hidden
+      // once married to someone ELSE (isRomanceLockedOut) — there's nothing
+      // to break up when the relationship already got silently demoted to
+      // friend status by the marriage; she stays a friend either way.
+      ...(playerState.dating[npc.id] && !isRomanceLockedOut(npc)
         ? [
             {
               id: "break-up",
@@ -3688,7 +3706,17 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   const nextStage = campCycle.advance();
   usedThisPhase.clear();
   socialBattery.reset();
+  // Sleeping a second time (right on top of an Overnight Stay) uses up
+  // whatever energy she left behind and sends her home before the player
+  // wakes — she shouldn't still be standing there next morning. The
+  // currently-rendered scene's station list was frozen at entry, so
+  // clearing overnightCommuteStep alone doesn't make her vanish on screen
+  // until the room is rebuilt (see the identical pattern where an Overnight
+  // Stay meetup response rebuilds the room).
   playerState.overnightCommuteStep = {};
+  if (scene.type === "interior") {
+    scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+  }
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;

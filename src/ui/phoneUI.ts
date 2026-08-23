@@ -312,7 +312,10 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
     scoreEl.textContent = `${contact.score}/${contact.maxScore}`;
     panel.appendChild(scoreEl);
 
-    if (contact.romanceEligible) {
+    // romanceScore comes back undefined while locked out (married to
+    // someone else) — hide the whole Romance section rather than showing a
+    // misleading 0/100.
+    if (contact.romanceEligible && contact.romanceScore !== undefined) {
       const romanceLabel = document.createElement("div");
       romanceLabel.className = "contact-detail__status contact-detail__status--romance";
       romanceLabel.textContent = "Romance";
@@ -322,7 +325,7 @@ export function createPhoneUI(container: HTMLElement, api: PhoneApi): PhoneUI {
       romanceBarTrack.className = "contact-detail__bar contact-detail__bar--romance";
       const romanceBarFill = document.createElement("div");
       romanceBarFill.className = "contact-detail__bar-fill contact-detail__bar-fill--romance";
-      const romanceScore = contact.romanceScore ?? 0;
+      const romanceScore = contact.romanceScore;
       romanceBarFill.style.width = `${Math.min(100, (romanceScore / contact.romanceMax) * 100)}%`;
       romanceBarTrack.appendChild(romanceBarFill);
       panel.appendChild(romanceBarTrack);
