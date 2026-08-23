@@ -55,14 +55,18 @@ export interface GiftResult {
   message: string;
 }
 
-// Mall Item Catalogues spec: 4 categories. Romantic/Special Jewelry are
-// romance-eligible-only (gated where gifts are given, not here); Fun/
-// Practical are universal.
+// Mall Item Catalogues spec: 4 categories. Romantic is romance-eligible-
+// only (gated where gifts are given, not here); Fun/Practical/Special
+// Jewelry are universal — every NPC, romance or friend-only, can receive
+// any of the 3 non-Ring Special Jewelry items now (the Ring itself is
+// still romance-only, but it never reaches this engine at all — giving it
+// always routes to the Propose flow instead of a normal gift reaction).
 export type GiftCategory = "romantic" | "fun" | "practical" | "jewelry";
 
 // Per-NPC gift-preference data feeding into getGiftReactionTone below —
-// every NPC has a favorite general category; only romance-eligible NPCs
-// have Romantic-item preferences (favorite/disliked, by item id).
+// every NPC has a favorite general category and a Special Jewelry
+// ranking; only romance-eligible NPCs have Romantic-item preferences
+// (favorite/disliked, by item id).
 export interface GiftPreferences {
   favoriteGeneralCategory: "fun" | "practical";
   favoriteRomanticItemId?: string;
@@ -71,13 +75,22 @@ export interface GiftPreferences {
   // Practical mismatch, just lower-positive or neutral — a documented
   // per-NPC exception (e.g. Derek) can react negatively instead.
   negativeOnCategoryMismatch?: boolean;
+  // Special Jewelry (Luxury Watch/Custom Jewelry Piece/Diamond Earrings —
+  // NOT the Ring) fixed personal ranking, 1st-to-3rd favorite by item id.
+  // Every NPC has one; the reaction is universal-tier-gated (see
+  // getGiftReactionTone) and then scaled by where this item ranks.
+  specialJewelryRanking: [string, string, string];
 }
 
 export type GiftReactionTone =
   | "romantic-favorite"
   | "romantic-disliked"
   | "romantic-baseline"
-  | "jewelry"
+  | "jewelry-rejected"
+  | "jewelry-uncertain"
+  | "jewelry-rank1"
+  | "jewelry-rank2"
+  | "jewelry-rank3"
   | "category-match"
   | "category-mismatch-neutral"
   | "category-mismatch-negative";
@@ -86,21 +99,39 @@ export type GiftReactionTone =
 // than per-NPC: within Romantic, never negative (the disliked item is
 // just lower-positive than the rest); a Fun/Practical mismatch is
 // neutral/lower-positive for most NPCs, negative only for the documented
-// per-NPC exception. Placeholder magnitudes, easy to retune — same spirit
-// as Talk topics' RATING_DELTA.
+// per-NPC exception; Special Jewelry is negative below Tier 2, neutral at
+// Tier 2, and positive from Tier 3 on for every NPC, scaled by her fixed
+// personal ranking of the 3 items. Placeholder magnitudes, easy to
+// retune — same spirit as Talk topics' RATING_DELTA.
 const GIFT_REACTION_DELTA: Record<GiftReactionTone, number> = {
   "romantic-favorite": 12,
   "romantic-baseline": 8,
   "romantic-disliked": 4,
-  jewelry: 10,
+  "jewelry-rejected": -8,
+  "jewelry-uncertain": 0,
+  "jewelry-rank1": 14,
+  "jewelry-rank2": 11,
+  "jewelry-rank3": 8,
   "category-match": 10,
   "category-mismatch-neutral": 3,
   "category-mismatch-negative": -5,
 };
 
-/** Which reaction bucket a given item falls into for this NPC's preferences — the actual delta/flavor text is then looked up by the caller. */
-export function getGiftReactionTone(prefs: GiftPreferences, category: GiftCategory, itemId: string): GiftReactionTone {
-  if (category === "jewelry") return "jewelry";
+/** Which reaction bucket a given item falls into for this NPC's preferences (and, for Special Jewelry, the player's tier with her) — the actual delta/flavor text is then looked up by the caller. */
+export function getGiftReactionTone(
+  prefs: GiftPreferences,
+  category: GiftCategory,
+  itemId: string,
+  tier: RelationshipTier,
+): GiftReactionTone {
+  if (category === "jewelry") {
+    if (tier === "stranger") return "jewelry-rejected";
+    if (tier === "acquaintance") return "jewelry-uncertain";
+    const rank = prefs.specialJewelryRanking.indexOf(itemId);
+    if (rank === 1) return "jewelry-rank2";
+    if (rank === 2) return "jewelry-rank3";
+    return "jewelry-rank1";
+  }
   if (category === "romantic") {
     if (itemId === prefs.favoriteRomanticItemId) return "romantic-favorite";
     if (itemId === prefs.dislikedRomanticItemId) return "romantic-disliked";
@@ -187,9 +218,13 @@ export interface NpcDef {
   // Some NPCs (e.g. a Manager) are always at the player's fights regardless
   // — Invite to Next Fight doesn't apply to them at all, not even gated.
   hideInviteToFight?: boolean;
-  // Vinnie (Manager Lvl 1): the whole Energy-Star Actions menu doesn't
-  // apply to him — his dialogue is just Talk plus his own Manager Desk
-  // extra option.
+  // Managers: no Exchange Number needed — his number is auto-saved to
+  // Contacts the moment he's hired (see setStaffLevel). Give a Gift still
+  // applies normally, so unlike hideActions this hides just this one
+  // option, not the whole Actions menu.
+  hideExchangeNumber?: boolean;
+  // Set true only for an NPC whose whole Actions menu genuinely doesn't
+  // apply (none currently — kept for any future NPC that needs it).
   hideActions?: boolean;
   // Which manager tier this NPC is (1/2/3), for NPCs who are also the
   // player's hired Manager — Meetup only makes sense once he's no longer
