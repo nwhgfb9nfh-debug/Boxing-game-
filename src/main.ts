@@ -17,7 +17,17 @@ import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
 import { SocialBattery } from "./game/socialBattery";
-import { PRIYA_PORTRAIT, CAROL_PORTRAIT, DEREK_PORTRAIT, VINNIE_PORTRAIT } from "./assets/portraits";
+import {
+  PRIYA_PORTRAIT,
+  CAROL_PORTRAIT,
+  DEREK_PORTRAIT,
+  VINNIE_PORTRAIT,
+  ANGELA_PORTRAIT,
+  MARCUS_PORTRAIT,
+  KYLE_PORTRAIT,
+  MARGARET_PORTRAIT,
+  BIANCA_PORTRAIT,
+} from "./assets/portraits";
 import {
   type NpcDef,
   type NpcActionRules,
@@ -2152,7 +2162,7 @@ const VINNIE: NpcDef = {
 const ANGELA: NpcDef = {
   id: "angela",
   name: "Angela Whitfield",
-  portrait: "👩‍💼",
+  portrait: ANGELA_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Angela Whitfield. I run things on this floor — let's keep this efficient.",
@@ -2195,7 +2205,7 @@ const ANGELA: NpcDef = {
 const MARCUS: NpcDef = {
   id: "marcus",
   name: "Marcus Diamond",
-  portrait: "👨🏾‍💼",
+  portrait: MARCUS_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Marcus Diamond. Have a seat — let's talk about where this career's headed.",
@@ -2250,7 +2260,7 @@ const KYLE_ACTIONS: NpcActionRules = {
 const KYLE: NpcDef = {
   id: "kyle",
   name: "Kyle Bennett",
-  portrait: "🙋‍♂️",
+  portrait: KYLE_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Oh — hi! Kyle Bennett, I keep things running for Angela. Let me know if you need anything!",
@@ -2309,7 +2319,7 @@ const MARGARET_ACTIONS: NpcActionRules = {
 const MARGARET: NpcDef = {
   id: "margaret",
   name: "Margaret Sinclair",
-  portrait: "👩🏻‍🦳",
+  portrait: MARGARET_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Margaret Sinclair. I keep this floor running for Marcus. What can I do for you?",
@@ -2384,7 +2394,7 @@ const BIANCA_ACTIONS: NpcActionRules = {
 const BIANCA: NpcDef = {
   id: "bianca",
   name: "Bianca Marchetti",
-  portrait: "💁‍♀️",
+  portrait: BIANCA_PORTRAIT,
   romanceEligible: true,
   greetings: {
     stranger: "Well hello there. Bianca Marchetti — I keep things moving for Marcus. And who might you be?",
