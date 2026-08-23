@@ -205,6 +205,27 @@ export interface PlayerState {
   // actually ends (End Meetup/Date, or a confirmed door-exit). Only one
   // meetup can be pending/active at a time.
   activeMeetup: { npcId: string; location: MeetupLocationId; type: MeetupType } | null;
+  // Engine state consolidation: EnergyStar/CampCycle/SocialBattery (see
+  // game/energyStar.ts, game/campCycle.ts, game/socialBattery.ts) read and
+  // write these fields directly instead of keeping their own private
+  // state, so playerState stays the single serializable source of truth
+  // for everything persistent — no separate serialize()/restore() needed
+  // for those systems later.
+  // Energy Star: current value and the cap it was last refilled to (the
+  // cap itself moves — e.g. 110 with the Airport vacation bonus).
+  energyRemaining: number;
+  energyCap: number;
+  // Camp Cycle: index into CAMP_SEQUENCE (game/campCycle.ts) for the
+  // current stage, and which fight camp / opponent cycle this is.
+  campStageIndex: number;
+  campNumber: number;
+  // Social Battery: current value (separate resource from Energy Star,
+  // only gates the Talk topic-menu system).
+  socialBattery: number;
+  // Which one-time-per-phase station ids have already been used this
+  // camp phase (e.g. "order", "bar-drink") — cleared on every phase
+  // advance. An array, not a Set, so it stays plain-JSON-serializable.
+  usedThisPhase: string[];
 }
 
 /** Adds a sent tweet to the Buzzer feed, dropping the oldest once past the cap. */
@@ -261,5 +282,11 @@ export function createPlayerState(): PlayerState {
     dateCounts: {},
     overnightCommuteStep: {},
     activeMeetup: null,
+    energyRemaining: 100,
+    energyCap: 100,
+    campStageIndex: 0,
+    campNumber: 1,
+    socialBattery: 100,
+    usedThisPhase: [],
   };
 }

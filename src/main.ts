@@ -100,9 +100,9 @@ const playerState = createPlayerState();
 // Vinnie's your manager from the very start — his number's already saved,
 // no need to Exchange Number with him first (see VINNIE further below).
 playerState.exchangedNumbers.vinnie = true;
-const energy = new EnergyStar();
-const campCycle = new CampCycle();
-const socialBattery = new SocialBattery();
+const energy = new EnergyStar(playerState);
+const campCycle = new CampCycle(playerState);
+const socialBattery = new SocialBattery(playerState);
 const dialogueBox = createDialogueBox(app);
 
 // Camp stage (Section 2) — always visible, top-center below the frame/
@@ -143,9 +143,16 @@ const PROMOTION_STATIONS = new Set(["pressconf", "photostudio", "faceoff", "fane
 // individually inside their own menu builders (bar-drink/bar-round,
 // press-podcast/press-tv, workoutclip-shoot/workoutclip-training), so
 // they're excluded from the blanket per-station check below.
-const usedThisPhase = new Set<string>();
+// Backed by playerState.usedThisPhase (a plain array, not a Set — stays
+// JSON-serializable) rather than its own module-level Set.
+function hasUsedThisPhase(activityId: string): boolean {
+  return playerState.usedThisPhase.includes(activityId);
+}
 function markUsedThisPhase(activityId: string) {
-  usedThisPhase.add(activityId);
+  if (!hasUsedThisPhase(activityId)) playerState.usedThisPhase.push(activityId);
+}
+function clearUsedThisPhase() {
+  playerState.usedThisPhase = [];
 }
 const MULTI_ACTIVITY_STATIONS = new Set(["bar", "pressreception", "workoutclip"]);
 
@@ -173,7 +180,7 @@ function getStationPhaseLock(stationId: string): string | null {
   if (PRIVATE_LIFE_STATIONS.has(stationId)) {
     const lock = requirePrivateLifePhase();
     if (lock) return lock;
-    if (!MULTI_ACTIVITY_STATIONS.has(stationId) && usedThisPhase.has(stationId)) {
+    if (!MULTI_ACTIVITY_STATIONS.has(stationId) && hasUsedThisPhase(stationId)) {
       return "Already done this Private Life phase.";
     }
     return null;
@@ -752,7 +759,7 @@ function openDebugMenu() {
           playerState.fightScheduled = false;
           playerState.cashAdvanceTaken = false;
           playerState.fightInvites = {};
-          usedThisPhase.clear();
+          clearUsedThisPhase();
           socialBattery.reset();
           playerState.overnightCommuteStep = {};
           energy.sleep(MAX_ENERGY);
@@ -777,7 +784,7 @@ function openDebugMenu() {
           // Every real stage but "No Fight Scheduled" is only reachable
           // after booking a fight — keep that true when jumping there directly.
           playerState.fightScheduled = stage.type !== "nofight";
-          usedThisPhase.clear();
+          clearUsedThisPhase();
           socialBattery.reset();
           playerState.overnightCommuteStep = {};
           // Reset Energy to whatever a real sleep into this stage would
@@ -801,8 +808,8 @@ function openDebugMenu() {
 
 function openWeightAreaMenu() {
   locationMenu.open(() => {
-    const shootUsed = usedThisPhase.has("workoutclip-shoot");
-    const trainUsed = usedThisPhase.has("workoutclip-training");
+    const shootUsed = hasUsedThisPhase("workoutclip-shoot");
+    const trainUsed = hasUsedThisPhase("workoutclip-training");
     return {
       title: "🏋️ Weight Area",
       energyText: `Energy: ${energy.remaining}/100  ·  Fame: ${playerState.fame}  ·  Image: ${playerState.image}  ·  HP: ${playerState.hp}`,
@@ -843,7 +850,7 @@ function openWeightAreaMenu() {
 
 function openDinerMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("order");
+    const used = hasUsedThisPhase("order");
     return {
       title: "🍔 Diner",
       energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
@@ -1182,13 +1189,13 @@ const LOUNGE_VIP_ZONE: BlockedZone = {
   ny0: 0,
   nx1: 1,
   ny1: 0.42,
-  isAllowed: () => usedThisPhase.has("vip-bouncer"),
+  isAllowed: () => hasUsedThisPhase("vip-bouncer"),
   label: "VIP",
 };
 
 function openVipBouncerMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("vip-bouncer");
+    const used = hasUsedThisPhase("vip-bouncer");
     const meetsFame = playerState.fame >= VIP_FAME_REQUIREMENT;
     return {
       title: "🕴️ VIP Bouncer",
@@ -1221,8 +1228,8 @@ const BAR_ROUND = { energyCost: 20, hpCost: 5, imageGain: 3 };
 
 function openBarMenu() {
   locationMenu.open(() => {
-    const drinkUsed = usedThisPhase.has("bar-drink");
-    const roundUsed = usedThisPhase.has("bar-round");
+    const drinkUsed = hasUsedThisPhase("bar-drink");
+    const roundUsed = hasUsedThisPhase("bar-round");
     return {
       title: "🍸 Bar",
       energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Image: ${playerState.image}`,
@@ -1265,7 +1272,7 @@ const VIP_BOTTLE = { energyCost: 30, hpCost: 8, fameGain: 6 };
 
 function openBottleMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("bottle");
+    const used = hasUsedThisPhase("bottle");
     return {
     title: "🍾 Buy a Bottle",
     energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}  ·  Fame: ${playerState.fame}`,
@@ -1356,8 +1363,8 @@ function buildPressChoiceMenu(kind: "podcast" | "tv"): MenuData {
 function buildPressReceptionMenu(): MenuData {
   if (pressReceptionView === "podcast") return buildPressChoiceMenu("podcast");
   if (pressReceptionView === "tv") return buildPressChoiceMenu("tv");
-  const podcastUsed = usedThisPhase.has("press-podcast");
-  const tvUsed = usedThisPhase.has("press-tv");
+  const podcastUsed = hasUsedThisPhase("press-podcast");
+  const tvUsed = hasUsedThisPhase("press-tv");
   return {
     title: "🗞️ Press Reception",
     energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
@@ -1395,7 +1402,7 @@ function openPressReceptionMenu() {
 
 function openSunbatheMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("sunbathe");
+    const used = hasUsedThisPhase("sunbathe");
     return {
       title: "☀️ Sunbathe",
       energyText: `Energy: ${energy.remaining}/100  ·  Image: ${playerState.image}`,
@@ -1421,7 +1428,7 @@ function openSunbatheMenu() {
 
 function openSwimMenu() {
   locationMenu.open(() => {
-    const used = usedThisPhase.has("swim");
+    const used = hasUsedThisPhase("swim");
     return {
       title: "🌊 Swim",
       energyText: `Energy: ${energy.remaining}/100  ·  HP: ${playerState.hp}`,
@@ -1696,8 +1703,8 @@ function buildPrFinanceMenu(floor: number): MenuData {
       id: "media-training",
       label: "Media Training",
       cost: 10,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("media-training") ? "DONE" : "10 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("media-training"),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : hasUsedThisPhase("media-training") ? "DONE" : "10 EN",
+      disabled: !!requirePrivateLifePhase() || hasUsedThisPhase("media-training"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
@@ -1711,8 +1718,8 @@ function buildPrFinanceMenu(floor: number): MenuData {
       id: "charity-event",
       label: "Charity Event",
       cost: 15,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("charity-event") ? "DONE" : "15 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("charity-event"),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : hasUsedThisPhase("charity-event") ? "DONE" : "15 EN",
+      disabled: !!requirePrivateLifePhase() || hasUsedThisPhase("charity-event"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
@@ -1751,8 +1758,8 @@ function buildPrFinanceMenu(floor: number): MenuData {
       id: "networking-event",
       label: "Networking Event",
       cost: 20,
-      costLabel: requirePrivateLifePhase() ? "LOCKED" : usedThisPhase.has("networking-event") ? "DONE" : "20 EN",
-      disabled: !!requirePrivateLifePhase() || usedThisPhase.has("networking-event"),
+      costLabel: requirePrivateLifePhase() ? "LOCKED" : hasUsedThisPhase("networking-event") ? "DONE" : "20 EN",
+      disabled: !!requirePrivateLifePhase() || hasUsedThisPhase("networking-event"),
       run: () => {
         const lock = requirePrivateLifePhase();
         if (lock) return lock;
@@ -5102,7 +5109,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
-  usedThisPhase.clear();
+  clearUsedThisPhase();
   socialBattery.reset();
   // Sleeping a second time (right on top of an Overnight Stay) uses up
   // whatever energy she left behind and sends her home before the player
@@ -5156,7 +5163,7 @@ function resolveOvernightStay(npcId: string): string {
   else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
-  usedThisPhase.clear();
+  clearUsedThisPhase();
   socialBattery.reset();
   playerState.overnightCommuteStep = {};
   if (nextStage.type === "fight" && playerState.hp > 100) playerState.hp = 100;
@@ -5245,7 +5252,7 @@ function openSimulateFightMenu() {
             playerState.hp = 0;
             playerState.justFinishedFight = true;
             const nextStage = campCycle.advance();
-            usedThisPhase.clear();
+            clearUsedThisPhase();
             socialBattery.reset();
             playerState.overnightCommuteStep = {};
             return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;

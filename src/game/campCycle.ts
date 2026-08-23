@@ -12,6 +12,8 @@
 // advances on sleep as normal, looping into a new camp (and back to "No
 // Fight Scheduled") after After Fight.
 
+import type { PlayerState } from "./playerState";
+
 export type CampStageType = "nofight" | "training" | "privatelife" | "promotion" | "fight" | "afterfight";
 
 export interface CampStage {
@@ -34,35 +36,41 @@ export const CAMP_SEQUENCE: CampStage[] = [
   { type: "afterfight", label: "After Fight" },
 ];
 
+// Reads/writes playerState.campStageIndex/campNumber directly rather than
+// keeping its own private fields, so playerState stays the single
+// serializable source of truth for all persistent game state.
 export class CampCycle {
-  private index = 0;
-  private camp = 1; // which fight camp / opponent cycle this is
+  private state: PlayerState;
+
+  constructor(state: PlayerState) {
+    this.state = state;
+  }
 
   get current(): CampStage {
-    return CAMP_SEQUENCE[this.index];
+    return CAMP_SEQUENCE[this.state.campStageIndex];
   }
 
   get currentIndex(): number {
-    return this.index;
+    return this.state.campStageIndex;
   }
 
   get campNumber(): number {
-    return this.camp;
+    return this.state.campNumber;
   }
 
   /** Ends the current stage and moves to the next one, looping into a new camp after FIGHT NIGHT. */
   advance(): CampStage {
-    this.index += 1;
-    if (this.index >= CAMP_SEQUENCE.length) {
-      this.index = 0;
-      this.camp += 1;
+    this.state.campStageIndex += 1;
+    if (this.state.campStageIndex >= CAMP_SEQUENCE.length) {
+      this.state.campStageIndex = 0;
+      this.state.campNumber += 1;
     }
     return this.current;
   }
 
   /** Debug-only: jump straight to any stage by index, skipping the stages between. Doesn't touch campNumber. */
   jumpTo(index: number): CampStage {
-    this.index = Math.max(0, Math.min(CAMP_SEQUENCE.length - 1, index));
+    this.state.campStageIndex = Math.max(0, Math.min(CAMP_SEQUENCE.length - 1, index));
     return this.current;
   }
 }
