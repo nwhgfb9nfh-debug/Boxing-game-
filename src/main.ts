@@ -3644,8 +3644,10 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
             meetupConnectUsedThisVisit = false;
             meetupGiftUsedThisVisit = false;
             dialogueBox.close();
+            // Wake up in the bed area with her, same as a regular sleep.
+            justSleptTogether = true;
             if (scene.type === "interior") {
-              scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+              scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot, "bed") };
             }
           } else if (lastMeetupWasMarried) {
             // She just said yes — nothing left to do at this visit. Ends the
@@ -3757,8 +3759,12 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   // until the room is rebuilt (see the identical pattern where an Overnight
   // Stay meetup response rebuilds the room).
   playerState.overnightCommuteStep = {};
+  // Wake up in the bed area, not standing at the door — and if married,
+  // she wakes up right there with you (see justSleptTogether/
+  // applyBedPositionIfJustSlept).
+  justSleptTogether = true;
   if (scene.type === "interior") {
-    scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot) };
+    scene = { type: "interior", lot: scene.lot, interior: buildInteriorScene(scene.lot, "bed") };
   }
   // HP banked above 100 is pure pre-fight insurance — it never carries
   // into the fight itself as extra usable HP.
@@ -4081,6 +4087,13 @@ tapZone.onTap((x, y) => {
 // Every purchasable home (Real Estate App) gets the same bed — not just
 // the starting Trailer.
 const HOUSE_STATIONS: Station[] = [{ id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 }];
+const BED_STATION_ID = HOUSE_STATIONS[0].id;
+// True for exactly one room-view: right after sleepAtBed/an Overnight Stay
+// resolves, so whoever the player just slept with (spouse or an overnight
+// guest) shows up next to the bed instead of her usual spot — cleared the
+// next time the player enters ANY building (see enterBuilding), so leaving
+// Home and walking back in puts her back at her regular spot.
+let justSleptTogether = false;
 const HOUSE_NAMES = new Set([
   "Trailer",
   "Apartment",
@@ -4277,6 +4290,17 @@ function getDerekStation(buildingName: string): Station | null {
   return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.75, ny: 0.72 };
 }
 
+// Right after sleeping together, her spouse-npc/overnight-guest marker
+// moves to sit beside the bed instead of her regular spot (see
+// justSleptTogether) — offset slightly from the bed's own position so the
+// two markers don't fully overlap.
+function applyBedPositionIfJustSlept(station: Station): Station {
+  if (!justSleptTogether) return station;
+  if (station.id !== "spouse-npc" && station.id !== "overnight-guest") return station;
+  const bed = HOUSE_STATIONS.find((s) => s.id === BED_STATION_ID)!;
+  return { ...station, nx: Math.min(0.95, bed.nx + 0.12), ny: bed.ny };
+}
+
 function computeStationsFor(buildingName: string): Station[] {
   let base = STATIONS_BY_BUILDING[buildingName] ?? [];
   // Her marker shouldn't just be non-interactive while she's away — it
@@ -4287,17 +4311,24 @@ function computeStationsFor(buildingName: string): Station[] {
   const derekStation = getDerekStation(buildingName);
   if (derekStation) base = [...base, derekStation];
   const spouseStation = getSpouseStation(buildingName);
-  if (spouseStation) return [...base, spouseStation, ...getChildStations(buildingName)];
+  if (spouseStation) return [...base, applyBedPositionIfJustSlept(spouseStation), ...getChildStations(buildingName)];
   const meetupStation = getActiveMeetupStation(buildingName);
-  return meetupStation ? [...base, meetupStation] : base;
+  if (meetupStation?.id === "meetup-npc") {
+    // She's here for an arranged Regular Meetup/Date — no wandering off to
+    // the room's own solo self-serve stations (Diner's Order Menu, Beach's
+    // Sunbathe/Swim, Lounge's Bar/VIP Bouncer/Buy a Bottle, Home's bed)
+    // while she's waiting on you instead.
+    base = [];
+  }
+  return meetupStation ? [...base, applyBedPositionIfJustSlept(meetupStation)] : base;
 }
 
 /** Builds a fresh InteriorScene for this lot, including its meetup NPC marker if one's arranged here. */
-function buildInteriorScene(lot: LotInstance): InteriorScene {
+function buildInteriorScene(lot: LotInstance, spawnStationId?: string): InteriorScene {
   const stations = computeStationsFor(lot.building.name);
   const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
   const decorations = lot.building.name === "Office" ? OFFICE_DECORATIONS : undefined;
-  return new InteriorScene(lot, stations, blockedZone, decorations);
+  return new InteriorScene(lot, stations, blockedZone, decorations, true, spawnStationId);
 }
 
 // Each Mall store is its own room, entered through a wall-side station on
@@ -4360,6 +4391,10 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
     return;
   }
   advanceOvernightCommute();
+  // Sleeping together only holds her at the bedside for the room-view right
+  // after it happens — a fresh entry (even right back into the same house)
+  // returns her to her regular spot.
+  justSleptTogether = false;
   scene = { type: "interior", lot, interior: buildInteriorScene(lot) };
   controls.root.style.display = "none";
   buildingUI.setEnterPrompt(null, () => {});
