@@ -125,10 +125,14 @@ export interface PlayerState {
   // booked for). Each sleepAtBed() call that lands on a Private Life stage
   // consumes one use and refills Energy Star to 110 instead of 100.
   vacationEnergyBonusUses: number;
-  // Mall (Section 5): mostly cosmetic, money-only purchases. Vehicle/Pet
-  // are one-time owned collectibles; gifts are bought here but given away
-  // once the NPC/romance system exists to receive them.
-  vehicleOwned: string | null;
+  // Mall (Section 5): mostly cosmetic, money-only purchases. Pet is a
+  // one-time owned collectible; gifts are bought here but given away once
+  // the NPC/romance system exists to receive them.
+  // Vehicle Dealer (Section 5, updated): vehicles have real gameplay
+  // mechanics, so unlike Pet the player can own several at once and
+  // switches which one is "active" (driven) rather than replacing it.
+  vehiclesOwned: string[];
+  activeVehicle: string | null;
   petOwned: string | null;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
@@ -263,7 +267,8 @@ export function createPlayerState(): PlayerState {
     purseMultiplier: 1.0,
     justFinishedFight: false,
     vacationEnergyBonusUses: 0,
-    vehicleOwned: null,
+    vehiclesOwned: [],
+    activeVehicle: null,
     petOwned: null,
     giftInventory: {},
     buzzerHistory: [],

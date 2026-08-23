@@ -74,7 +74,7 @@ import {
   getGiftReactionTone,
   getGiftReactionDelta,
 } from "./game/npc";
-import { nearbyLots, rowForFacing, getHousingBuildings, type LotInstance } from "./game/world";
+import { nearbyLots, rowForFacing, getHousingBuildings, ENTERABLE_LOTS, type LotInstance } from "./game/world";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -484,6 +484,18 @@ app.appendChild(debugBtn);
 debugBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   openDebugMenu();
+});
+
+// Vehicle Dealer Fast Travel skillset (Section 5): only shown on the
+// street, stopped, while driving a vehicle with the Fast Travel skillset.
+const fastTravelBtn = document.createElement("button");
+fastTravelBtn.type = "button";
+fastTravelBtn.className = "btn btn--fasttravel";
+fastTravelBtn.textContent = "⚡ TRAVEL";
+app.appendChild(fastTravelBtn);
+fastTravelBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  openFastTravelMenu();
 });
 
 // Dev-only stat editor — plain number inputs, no polish. Its own overlay
@@ -5275,33 +5287,113 @@ interface ShopItem {
   price: number;
 }
 
-const VEHICLE_OPTIONS: ShopItem[] = [
-  { id: "sedan", name: "Sedan", price: 3000 },
-  { id: "sports-car", name: "Sports Car", price: 8000 },
-  { id: "luxury-suv", name: "Luxury SUV", price: 15000 },
+// Vehicle Dealer (Section 5, updated): real gameplay mechanics, not just
+// cosmetic. The player can own several vehicles at once — buying one adds
+// it to vehiclesOwned and makes it active; an already-owned vehicle can be
+// re-selected as active any time, no repurchase needed. Higher tiers stack
+// skillsets rather than replacing the lower one.
+type VehicleSkillset = "speed" | "reverse" | "fasttravel";
+interface VehicleDef {
+  id: string;
+  name: string;
+  price: number;
+  tier: 1 | 2 | 3 | 4;
+  skillsets: VehicleSkillset[];
+}
+const VEHICLE_CATALOG: VehicleDef[] = [
+  { id: "starter-sedan", name: "Starter Sedan", price: 500, tier: 1, skillsets: [] },
+  { id: "compact-hatchback", name: "Compact Hatchback", price: 500, tier: 1, skillsets: [] },
+  { id: "sport-coupe", name: "Sport Coupe", price: 5000, tier: 2, skillsets: ["speed"] },
+  { id: "racing-convertible", name: "Racing Convertible", price: 5500, tier: 2, skillsets: ["speed"] },
+  { id: "pickup-truck", name: "Pickup Truck", price: 4000, tier: 2, skillsets: ["reverse"] },
+  { id: "suv", name: "SUV", price: 4500, tier: 2, skillsets: ["reverse"] },
+  { id: "muscle-car", name: "Muscle Car", price: 12000, tier: 3, skillsets: ["speed", "reverse"] },
+  { id: "luxury-sedan", name: "Luxury Sedan", price: 13000, tier: 3, skillsets: ["speed", "reverse"] },
+  { id: "supercar", name: "Supercar", price: 50000, tier: 4, skillsets: ["speed", "reverse", "fasttravel"] },
 ];
 
+function skillsetLabel(s: VehicleSkillset): string {
+  if (s === "speed") return "Speed Boost";
+  if (s === "reverse") return "Reverse Driving";
+  return "Fast Travel";
+}
+
+// Exact per-skillset numbers are flagged "TBD" in the catalogue doc —
+// picked as clearly-retunable placeholders. Speed Boost raises top speed;
+// Reverse Driving shortens the existing U-turn animation instead of
+// adding a separate hold-to-reverse control (there's no reverse-gas
+// concept in DriveControls, and the doc itself frames Reverse as
+// "reduces friction from the existing full-U-turn requirement").
+const SPEED_BOOST_MULTIPLIER = 1.35;
+const REVERSE_DRIVING_UTURN_MULTIPLIER = 0.4;
+
+function activeVehicleDef(): VehicleDef | null {
+  return VEHICLE_CATALOG.find((v) => v.id === playerState.activeVehicle) ?? null;
+}
+
+/** Re-applies the active vehicle's skillsets to the street scene. Call whenever activeVehicle changes. */
+function applyVehiclePerformance() {
+  const v = activeVehicleDef();
+  street.setPerformance(
+    v?.skillsets.includes("speed") ? SPEED_BOOST_MULTIPLIER : 1,
+    v?.skillsets.includes("reverse") ? REVERSE_DRIVING_UTURN_MULTIPLIER : 1,
+  );
+}
+
 function openVehicleMenu() {
+  locationMenu.open(() => {
+    const active = activeVehicleDef();
+    return {
+      title: "🚗 Vehicle Dealer",
+      energyText: `Money: $${playerState.money}  ·  Driving: ${active ? active.name : "None"}`,
+      actions: VEHICLE_CATALOG.map((v) => {
+        const owned = playerState.vehiclesOwned.includes(v.id);
+        const isActive = playerState.activeVehicle === v.id;
+        const skillsetText = v.skillsets.length ? ` (${v.skillsets.map(skillsetLabel).join(" + ")})` : "";
+        return {
+          id: v.id,
+          label: `${v.name}${skillsetText}`,
+          cost: 0,
+          costLabel: isActive ? "DRIVING" : owned ? "DRIVE" : `$${v.price}`,
+          disabled: isActive,
+          run: () => {
+            if (owned) {
+              playerState.activeVehicle = v.id;
+              applyVehiclePerformance();
+              return `Switched — now driving the ${v.name}.`;
+            }
+            if (playerState.money < v.price) {
+              return `Not enough money — need $${v.price}, have $${playerState.money}.`;
+            }
+            playerState.money -= v.price;
+            playerState.vehiclesOwned.push(v.id);
+            playerState.activeVehicle = v.id;
+            applyVehiclePerformance();
+            return `Purchased the ${v.name}! Now driving it.`;
+          },
+        };
+      }),
+    };
+  });
+}
+
+/** Vehicle Dealer Fast Travel skillset: jump straight to any unlocked building, skipping the drive. */
+function openFastTravelMenu() {
+  const destinations = ENTERABLE_LOTS.filter((lot) => !lot.building.locked);
   locationMenu.open(() => ({
-    title: "🚗 Vehicle Dealer",
-    energyText: `Money: $${playerState.money}  ·  Owned: ${playerState.vehicleOwned ?? "None"}`,
-    actions: VEHICLE_OPTIONS.map((v) => {
-      const owned = playerState.vehicleOwned === v.id;
-      return {
-        id: v.id,
-        label: v.name,
-        cost: 0,
-        costLabel: owned ? "OWNED" : `$${v.price}`,
-        disabled: owned,
-        run: () => {
-          if (owned) return `You already own the ${v.name}.`;
-          if (playerState.money < v.price) return `Not enough money — need $${v.price}, have $${playerState.money}.`;
-          playerState.money -= v.price;
-          playerState.vehicleOwned = v.id;
-          return `Purchased the ${v.name}! (Cosmetic for now.)`;
-        },
-      };
-    }),
+    title: "⚡ Fast Travel",
+    energyText: `Driving: ${activeVehicleDef()?.name ?? "None"}`,
+    actions: destinations.map((lot) => ({
+      id: `${lot.building.name}-${lot.row}`,
+      label: lot.building.name,
+      cost: 0,
+      costLabel: "GO",
+      run: () => {
+        street.teleportTo(lot.worldX);
+        locationMenu.close();
+        return `Fast traveled to ${lot.building.name}.`;
+      },
+    })),
   }));
 }
 
@@ -5939,6 +6031,14 @@ function loop(now: number) {
     street.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = street.getCurrentFrameLabel();
 
+    fastTravelBtn.style.display =
+      street.isStopped() &&
+      !locationMenu.isOpen() &&
+      !dialogueBox.isOpen() &&
+      activeVehicleDef()?.skillsets.includes("fasttravel")
+        ? "flex"
+        : "none";
+
     // Only the building on the player's current right-hand side is
     // enterable — reaching the other side means U-turning first.
     const [lot] = street.isStopped()
@@ -5952,6 +6052,7 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
+    fastTravelBtn.style.display = "none";
     const { lot, interior, officeFloor, mallStore } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);

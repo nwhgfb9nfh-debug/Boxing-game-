@@ -46,6 +46,15 @@ export class StreetScene {
   private uturnFromFacing: 1 | -1 = 1;
   private uturnToFacing: 1 | -1 = -1;
 
+  // Vehicle Dealer skillsets (Section 5): Speed Boost raises top speed,
+  // Reverse Driving shortens the U-turn animation ("reduces friction from
+  // the existing full-U-turn requirement" — there's no separate
+  // hold-to-reverse control, so a much faster turn-around is that skill's
+  // in-game effect). Set via setPerformance() whenever the active vehicle
+  // changes; both default to no bonus (a Tier 1 car, or no car at all).
+  private speedMultiplier = 1;
+  private uturnMultiplier = 1;
+
   private controls: DriveControls;
 
   constructor(controls: DriveControls) {
@@ -61,9 +70,22 @@ export class StreetScene {
     });
   }
 
+  /** Vehicle Dealer (Section 5): applies the active vehicle's skillsets. Called on purchase/switch and once at startup. */
+  setPerformance(speedMultiplier: number, uturnMultiplier: number) {
+    this.speedMultiplier = speedMultiplier;
+    this.uturnMultiplier = uturnMultiplier;
+  }
+
+  /** Vehicle Dealer Fast Travel skillset: jump straight to a destination, skipping the drive. Only valid while stopped. */
+  teleportTo(worldX: number) {
+    this.isUTurning = false;
+    this.speed = 0;
+    this.worldX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, worldX));
+  }
+
   update(dt: number) {
     if (this.isUTurning) {
-      this.uturnT += dt / UTURN_DURATION;
+      this.uturnT += dt / (UTURN_DURATION * this.uturnMultiplier);
       if (this.uturnT >= 1) {
         this.uturnT = 1;
         this.facing = this.uturnToFacing;
@@ -77,7 +99,7 @@ export class StreetScene {
     const gasHeld = this.controls.isGasHeld();
 
     if (gasHeld) {
-      const target = MAX_SPEED * this.facing;
+      const target = MAX_SPEED * this.speedMultiplier * this.facing;
       const diff = target - this.speed;
       const step = ACCEL * dt;
       this.speed += Math.sign(diff) * Math.min(Math.abs(diff), step);
