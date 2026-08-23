@@ -95,6 +95,11 @@ const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
 const tapZone = createTapZone(app);
 const street = new StreetScene(controls);
+// Fast Travel's REVERSE/⚡ TRAVEL buttons live inside DriveControls itself
+// (visibility gated per-vehicle by applyVehiclePerformance further below);
+// the click just needs to open the destination picker, which is main.ts's
+// job, not StreetScene's.
+controls.onFastTravel(() => openFastTravelMenu());
 
 const playerState = createPlayerState();
 // Vinnie's your manager from the very start — his number's already saved,
@@ -484,18 +489,6 @@ app.appendChild(debugBtn);
 debugBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   openDebugMenu();
-});
-
-// Vehicle Dealer Fast Travel skillset (Section 5): only shown on the
-// street, stopped, while driving a vehicle with the Fast Travel skillset.
-const fastTravelBtn = document.createElement("button");
-fastTravelBtn.type = "button";
-fastTravelBtn.className = "btn btn--fasttravel";
-fastTravelBtn.textContent = "⚡ TRAVEL";
-app.appendChild(fastTravelBtn);
-fastTravelBtn.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  openFastTravelMenu();
 });
 
 // Dev-only stat editor — plain number inputs, no polish. Its own overlay
@@ -5320,23 +5313,21 @@ function skillsetLabel(s: VehicleSkillset): string {
 
 // Exact per-skillset numbers are flagged "TBD" in the catalogue doc —
 // picked as clearly-retunable placeholders. Speed Boost raises top speed;
-// Reverse Driving shortens the existing U-turn animation instead of
-// adding a separate hold-to-reverse control (there's no reverse-gas
-// concept in DriveControls, and the doc itself frames Reverse as
-// "reduces friction from the existing full-U-turn requirement").
+// Reverse Driving's own speed (REVERSE_MAX_SPEED) lives in street.ts next
+// to MAX_SPEED, since both are pure driving-physics constants.
 const SPEED_BOOST_MULTIPLIER = 1.35;
-const REVERSE_DRIVING_UTURN_MULTIPLIER = 0.4;
 
 function activeVehicleDef(): VehicleDef | null {
   return VEHICLE_CATALOG.find((v) => v.id === playerState.activeVehicle) ?? null;
 }
 
-/** Re-applies the active vehicle's skillsets to the street scene. Call whenever activeVehicle changes. */
+/** Re-applies the active vehicle's skillsets to the street scene (top speed, REVERSE/⚡ TRAVEL button visibility). Call whenever activeVehicle changes. */
 function applyVehiclePerformance() {
   const v = activeVehicleDef();
   street.setPerformance(
     v?.skillsets.includes("speed") ? SPEED_BOOST_MULTIPLIER : 1,
-    v?.skillsets.includes("reverse") ? REVERSE_DRIVING_UTURN_MULTIPLIER : 1,
+    v?.skillsets.includes("reverse") ?? false,
+    v?.skillsets.includes("fasttravel") ?? false,
   );
 }
 
@@ -5389,7 +5380,7 @@ function openFastTravelMenu() {
       cost: 0,
       costLabel: "GO",
       run: () => {
-        street.teleportTo(lot.worldX);
+        street.teleportTo(lot);
         locationMenu.close();
         return `Fast traveled to ${lot.building.name}.`;
       },
@@ -6031,14 +6022,6 @@ function loop(now: number) {
     street.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = street.getCurrentFrameLabel();
 
-    fastTravelBtn.style.display =
-      street.isStopped() &&
-      !locationMenu.isOpen() &&
-      !dialogueBox.isOpen() &&
-      activeVehicleDef()?.skillsets.includes("fasttravel")
-        ? "flex"
-        : "none";
-
     // Only the building on the player's current right-hand side is
     // enterable — reaching the other side means U-turning first.
     const [lot] = street.isStopped()
@@ -6052,7 +6035,6 @@ function loop(now: number) {
       buildingUI.setEnterPrompt(null, () => {});
     }
   } else if (scene.type === "interior") {
-    fastTravelBtn.style.display = "none";
     const { lot, interior, officeFloor, mallStore } = scene;
     const { atDoor, nearStation } = interior.update(dt, joystick.getVector(), window.innerWidth, window.innerHeight);
     interior.render(ctx, window.innerWidth, window.innerHeight);

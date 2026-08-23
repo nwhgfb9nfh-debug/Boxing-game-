@@ -19,8 +19,9 @@ import {
 import type { DriveControls } from "../ui/controls";
 
 const MAX_SPEED = 420; // world px/sec
-const ACCEL = 900; // px/sec^2 while gas held
-const DECEL = 1400; // px/sec^2 while gas released
+const REVERSE_MAX_SPEED = 220; // world px/sec while backing up — slower than driving forward, and not affected by Speed Boost
+const ACCEL = 900; // px/sec^2 while gas or reverse held
+const DECEL = 1400; // px/sec^2 while released
 const STOPPED_EPS = 4;
 const START_MARGIN = 80;
 
@@ -46,14 +47,13 @@ export class StreetScene {
   private uturnFromFacing: 1 | -1 = 1;
   private uturnToFacing: 1 | -1 = -1;
 
-  // Vehicle Dealer skillsets (Section 5): Speed Boost raises top speed,
-  // Reverse Driving shortens the U-turn animation ("reduces friction from
-  // the existing full-U-turn requirement" — there's no separate
-  // hold-to-reverse control, so a much faster turn-around is that skill's
-  // in-game effect). Set via setPerformance() whenever the active vehicle
-  // changes; both default to no bonus (a Tier 1 car, or no car at all).
+  // Vehicle Dealer skillsets (Section 5): Speed Boost raises top speed;
+  // Reverse Driving unlocks the hold-to-back-up control (see the REVERSE
+  // button in DriveControls); Fast Travel unlocks the destination-jump
+  // button. Set via setPerformance() whenever the active vehicle changes;
+  // all default to no bonus (a Tier 1 car, or no car at all).
   private speedMultiplier = 1;
-  private uturnMultiplier = 1;
+  private reverseCapable = false;
 
   private controls: DriveControls;
 
@@ -70,22 +70,30 @@ export class StreetScene {
     });
   }
 
-  /** Vehicle Dealer (Section 5): applies the active vehicle's skillsets. Called on purchase/switch and once at startup. */
-  setPerformance(speedMultiplier: number, uturnMultiplier: number) {
+  /** Vehicle Dealer (Section 5): applies the active vehicle's skillsets. Called on purchase/switch. */
+  setPerformance(speedMultiplier: number, reverseCapable: boolean, fastTravelCapable: boolean) {
     this.speedMultiplier = speedMultiplier;
-    this.uturnMultiplier = uturnMultiplier;
+    this.reverseCapable = reverseCapable;
+    this.controls.setReverseVisible(reverseCapable);
+    this.controls.setFastTravelVisible(fastTravelCapable);
   }
 
-  /** Vehicle Dealer Fast Travel skillset: jump straight to a destination, skipping the drive. Only valid while stopped. */
-  teleportTo(worldX: number) {
+  /**
+   * Vehicle Dealer Fast Travel skillset: jump straight to a destination,
+   * skipping the drive. Lands exactly at the lot and facing the direction
+   * that makes its row the enterable (right-hand) side immediately, so the
+   * building is enterable on arrival rather than needing a follow-up U-turn.
+   */
+  teleportTo(lot: LotInstance) {
     this.isUTurning = false;
     this.speed = 0;
-    this.worldX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, worldX));
+    this.worldX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, lot.worldX));
+    this.facing = lot.row === "bottom" ? 1 : -1;
   }
 
   update(dt: number) {
     if (this.isUTurning) {
-      this.uturnT += dt / (UTURN_DURATION * this.uturnMultiplier);
+      this.uturnT += dt / UTURN_DURATION;
       if (this.uturnT >= 1) {
         this.uturnT = 1;
         this.facing = this.uturnToFacing;
@@ -93,13 +101,24 @@ export class StreetScene {
       }
       this.controls.setUTurnEnabled(false);
       this.controls.setGasEnabled(false);
+      this.controls.setReverseEnabled(false);
+      this.controls.setFastTravelEnabled(false);
       return;
     }
 
     const gasHeld = this.controls.isGasHeld();
+    const reverseHeld = !gasHeld && this.reverseCapable && this.controls.isReverseHeld();
 
     if (gasHeld) {
       const target = MAX_SPEED * this.speedMultiplier * this.facing;
+      const diff = target - this.speed;
+      const step = ACCEL * dt;
+      this.speed += Math.sign(diff) * Math.min(Math.abs(diff), step);
+    } else if (reverseHeld) {
+      // Backs straight up opposite the way the car is facing, without
+      // flipping facing — a shorter, cheaper repositioning move than a
+      // full U-turn-and-drive-back.
+      const target = -REVERSE_MAX_SPEED * this.facing;
       const diff = target - this.speed;
       const step = ACCEL * dt;
       this.speed += Math.sign(diff) * Math.min(Math.abs(diff), step);
@@ -116,8 +135,11 @@ export class StreetScene {
     if (clamped !== this.worldX) this.speed = 0;
     this.worldX = clamped;
 
-    this.controls.setUTurnEnabled(Math.abs(this.speed) < STOPPED_EPS);
+    const stopped = Math.abs(this.speed) < STOPPED_EPS;
+    this.controls.setUTurnEnabled(stopped);
     this.controls.setGasEnabled(true);
+    this.controls.setReverseEnabled(true);
+    this.controls.setFastTravelEnabled(stopped);
   }
 
   private laneOffsetForFacing(facing: 1 | -1): number {

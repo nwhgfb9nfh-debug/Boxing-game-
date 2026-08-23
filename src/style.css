@@ -101,6 +101,25 @@ canvas {
   box-shadow: 0 6px 18px rgba(30, 95, 194, 0.45);
 }
 
+/* Vehicle Dealer skillset buttons — sit between U-TURN and GAS in the
+   controls bar, hidden (via inline style) until the active vehicle owns
+   that skillset. */
+.btn--fasttravel {
+  width: 64px;
+  height: 64px;
+  font-size: 11px;
+  background: radial-gradient(circle at 35% 30%, #ffd23f, #b8890a);
+  box-shadow: 0 6px 18px rgba(184, 137, 10, 0.45);
+}
+
+.btn--reverse {
+  width: 72px;
+  height: 72px;
+  font-size: 12px;
+  background: radial-gradient(circle at 35% 30%, #b23fff, #5a1ea8);
+  box-shadow: 0 6px 18px rgba(90, 30, 168, 0.45);
+}
+
 .btn:disabled,
 .btn.is-disabled {
   filter: grayscale(0.6) brightness(0.6);
@@ -501,21 +520,6 @@ canvas {
   height: 66px;
   font-size: 30px;
   background: radial-gradient(circle at 35% 30%, #4a4f5c, #23262e);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  display: none;
-}
-
-/* Vehicle Dealer Fast Travel skillset — top-right, only shown while
-   stopped on the street with a Fast Travel-capable vehicle active. */
-.btn--fasttravel {
-  position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 38px);
-  right: 16px;
-  width: 68px;
-  height: 40px;
-  font-size: 12px;
-  border-radius: 10px;
-  background: radial-gradient(circle at 35% 30%, #ffd23f, #b8890a);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   display: none;
 }
