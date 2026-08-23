@@ -634,6 +634,132 @@ canvas {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Vehicle Dealer info sheet — one car at a time, paged with ‹ ›, instead
+   of a flat list. Same overlay/card treatment as .action-menu. */
+.vehicle-sheet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 6, 9, 0.6);
+  padding: 24px;
+}
+
+.vehicle-sheet {
+  width: min(340px, 100%);
+  background: #1c1f27;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.vehicle-sheet__title {
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.vehicle-sheet__image {
+  font-size: 64px;
+  line-height: 1;
+  padding: 10px 0;
+}
+
+.vehicle-sheet__info {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.vehicle-sheet__price {
+  color: #ffd23f;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vehicle-sheet__message {
+  width: 100%;
+  box-sizing: border-box;
+  color: #3fbf6b;
+  font-size: 13px;
+  background: rgba(63, 191, 107, 0.12);
+  border: 1px solid rgba(63, 191, 107, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.vehicle-sheet__actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.vehicle-sheet__action {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #262a35;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vehicle-sheet__action:disabled {
+  opacity: 0.5;
+}
+
+.vehicle-sheet__nav {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vehicle-sheet__nav-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #262a35;
+  color: #fff;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vehicle-sheet__nav-btn:disabled {
+  opacity: 0.35;
+}
+
+.vehicle-sheet__close {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: inherit;
+  font-size: 13px;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Dev-only stat editor — plain inputs, no polish. */
 .debug-stats__list {
   display: flex;

@@ -7,6 +7,7 @@ import { createTapZone } from "./ui/tapZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { createDialogueBox, type DialogueOption, type DialogueData } from "./ui/dialogueBox";
+import { createVehicleSheet, type VehicleSheetData } from "./ui/vehicleSheet";
 import { StreetScene } from "./game/street";
 import { InteriorScene, type Station, type BlockedZone, type Decoration } from "./game/interior";
 import { HeavyBagScene } from "./game/heavyBag";
@@ -478,6 +479,11 @@ phoneBtn.addEventListener("pointerdown", (e) => {
 // (Gym's Weight Area first; Diner/Beach/Office/Lounge/Press reuse this
 // same instance as they come online — only one can be open at a time).
 const locationMenu = createActionMenu(app);
+
+// Vehicle Dealer's single-car info sheet (Section 5, updated) — its own
+// overlay since it needs a picture/‹ › paging layout ActionMenu's flat
+// button list doesn't support.
+const vehicleSheet = createVehicleSheet(app);
 
 // Dev-only: jump straight to any camp stage without playing through the
 // ones before it. Not part of the real player experience — no polish.
@@ -5292,17 +5298,93 @@ interface VehicleDef {
   price: number;
   tier: 1 | 2 | 3 | 4;
   skillsets: VehicleSkillset[];
+  // Emoji placeholder — no real car art yet, same convention as the Gift
+  // Shop's item icons.
+  image: string;
+  blurb: string;
 }
 const VEHICLE_CATALOG: VehicleDef[] = [
-  { id: "starter-sedan", name: "Starter Sedan", price: 500, tier: 1, skillsets: [] },
-  { id: "compact-hatchback", name: "Compact Hatchback", price: 500, tier: 1, skillsets: [] },
-  { id: "sport-coupe", name: "Sport Coupe", price: 5000, tier: 2, skillsets: ["speed"] },
-  { id: "racing-convertible", name: "Racing Convertible", price: 5500, tier: 2, skillsets: ["speed"] },
-  { id: "pickup-truck", name: "Pickup Truck", price: 4000, tier: 2, skillsets: ["reverse"] },
-  { id: "suv", name: "SUV", price: 4500, tier: 2, skillsets: ["reverse"] },
-  { id: "muscle-car", name: "Muscle Car", price: 12000, tier: 3, skillsets: ["speed", "reverse"] },
-  { id: "luxury-sedan", name: "Luxury Sedan", price: 13000, tier: 3, skillsets: ["speed", "reverse"] },
-  { id: "supercar", name: "Supercar", price: 50000, tier: 4, skillsets: ["speed", "reverse", "fasttravel"] },
+  {
+    id: "starter-sedan",
+    name: "Starter Sedan",
+    price: 500,
+    tier: 1,
+    skillsets: [],
+    image: "🚗",
+    blurb: "A dependable first car — nothing fancy, just four wheels and a full tank.",
+  },
+  {
+    id: "compact-hatchback",
+    name: "Compact Hatchback",
+    price: 500,
+    tier: 1,
+    skillsets: [],
+    image: "🚙",
+    blurb: "Easy to park, easy on gas, easy on the wallet.",
+  },
+  {
+    id: "sport-coupe",
+    name: "Sport Coupe",
+    price: 5000,
+    tier: 2,
+    skillsets: ["speed"],
+    image: "🏎️",
+    blurb: "Low, sleek, and built to leave the Starter Sedan in the dust.",
+  },
+  {
+    id: "racing-convertible",
+    name: "Racing Convertible",
+    price: 5500,
+    tier: 2,
+    skillsets: ["speed"],
+    image: "🚘",
+    blurb: "Top down, engine loud — built for speed and showing off.",
+  },
+  {
+    id: "pickup-truck",
+    name: "Pickup Truck",
+    price: 4000,
+    tier: 2,
+    skillsets: ["reverse"],
+    image: "🛻",
+    blurb: "Sturdy and practical, with room to haul and the muscle to back it up.",
+  },
+  {
+    id: "suv",
+    name: "SUV",
+    price: 4500,
+    tier: 2,
+    skillsets: ["reverse"],
+    image: "🚐",
+    blurb: "Roomy, rugged, and confident backing out of any spot in town.",
+  },
+  {
+    id: "muscle-car",
+    name: "Muscle Car",
+    price: 12000,
+    tier: 3,
+    skillsets: ["speed", "reverse"],
+    image: "🚗💨",
+    blurb: "A roaring engine under the hood — fast forward, fast in reverse.",
+  },
+  {
+    id: "luxury-sedan",
+    name: "Luxury Sedan",
+    price: 13000,
+    tier: 3,
+    skillsets: ["speed", "reverse"],
+    image: "🚘✨",
+    blurb: "Refined power — the comfort of a sedan with a sports car's reflexes.",
+  },
+  {
+    id: "supercar",
+    name: "Supercar",
+    price: 50000,
+    tier: 4,
+    skillsets: ["speed", "reverse", "fasttravel"],
+    image: "🏎️💨",
+    blurb: "The absolute pinnacle — blistering speed, instant reverse, and it can be anywhere in town in an instant.",
+  },
 ];
 
 function skillsetLabel(s: VehicleSkillset): string {
@@ -5336,41 +5418,139 @@ function applyVehiclePerformance() {
   );
 }
 
+function vehicleInfoText(v: VehicleDef): string {
+  const lines = [v.blurb];
+  if (v.skillsets.length === 0) {
+    lines.push("No special skillset — a reliable way to get around town.");
+  } else {
+    if (v.skillsets.includes("speed")) lines.push(`Speed Boost: ${TIER_SPEED_MULTIPLIER[v.tier]}x top speed.`);
+    if (v.skillsets.includes("reverse")) {
+      lines.push(`Reverse Driving: backs up at ${Math.round(TIER_REVERSE_RATIO[v.tier] * 100)}% of forward speed.`);
+    }
+    if (v.skillsets.includes("fasttravel")) lines.push("Fast Travel: jump straight to any unlocked building.");
+  }
+  return lines.join("\n");
+}
+
+// Vehicle Dealer info sheet state (Section 5, updated): one car at a time
+// instead of a flat list — ‹ › pages through VEHICLE_CATALOG, and buying
+// walks through Buy? Yes/No, then (only on a successful purchase) a
+// separate Set as Standard? Yes/No, matching the two questions asked
+// separately elsewhere (see the Garage's own Drive vs. Set as Standard).
+type VehicleDealerView = "browse" | "confirm-buy" | "confirm-standard";
+let vehicleDealerIndex = 0;
+let vehicleDealerView: VehicleDealerView = "browse";
+let vehicleDealerMessage = "";
+
 function openVehicleMenu() {
-  locationMenu.open(() => {
-    const active = activeVehicleDef();
+  vehicleDealerIndex = 0;
+  vehicleDealerView = "browse";
+  vehicleDealerMessage = "";
+  vehicleSheet.open(buildVehicleSheet);
+}
+
+function buildVehicleSheet(): VehicleSheetData {
+  const v = VEHICLE_CATALOG[vehicleDealerIndex];
+  const owned = playerState.vehiclesOwned.includes(v.id);
+  const isActive = playerState.activeVehicle === v.id;
+  const isStandard = playerState.standardVehicle === v.id;
+
+  if (vehicleDealerView === "confirm-buy") {
     return {
-      title: "🚗 Vehicle Dealer",
-      energyText: `Money: $${playerState.money}  ·  Driving: ${active ? active.name : "None"}`,
-      actions: VEHICLE_CATALOG.map((v) => {
-        const owned = playerState.vehiclesOwned.includes(v.id);
-        const isActive = playerState.activeVehicle === v.id;
-        const skillsetText = v.skillsets.length ? ` (${v.skillsets.map(skillsetLabel).join(" + ")})` : "";
-        return {
-          id: v.id,
-          label: `${v.name}${skillsetText}`,
-          cost: 0,
-          costLabel: isActive ? "DRIVING" : owned ? "DRIVE" : `$${v.price}`,
-          disabled: isActive,
+      title: v.name,
+      image: v.image,
+      infoText: `Buy the ${v.name} for $${v.price}?`,
+      priceText: `$${v.price}`,
+      message: vehicleDealerMessage || undefined,
+      actions: [
+        {
+          id: "yes",
+          label: "Yes",
           run: () => {
-            if (owned) {
-              playerState.activeVehicle = v.id;
-              applyVehiclePerformance();
-              return `Switched — now driving the ${v.name}.`;
-            }
             if (playerState.money < v.price) {
-              return `Not enough money — need $${v.price}, have $${playerState.money}.`;
+              vehicleDealerMessage = `Not enough money — need $${v.price}, have $${playerState.money}.`;
+              vehicleDealerView = "browse";
+              return;
             }
             playerState.money -= v.price;
             playerState.vehiclesOwned.push(v.id);
             playerState.activeVehicle = v.id;
             applyVehiclePerformance();
-            return `Purchased the ${v.name}! Now driving it.`;
+            vehicleDealerMessage = "";
+            vehicleDealerView = "confirm-standard";
           },
-        };
-      }),
+        },
+        { id: "no", label: "No", run: () => { vehicleDealerView = "browse"; } },
+      ],
+      onPrev: null,
+      onNext: null,
+      onClose: () => vehicleSheet.close(),
     };
-  });
+  }
+
+  if (vehicleDealerView === "confirm-standard") {
+    return {
+      title: v.name,
+      image: v.image,
+      infoText: `🎉 Congratulations! You now own a brand new ${v.name}. Would you like to set this as your Standard Vehicle?`,
+      priceText: "",
+      actions: [
+        {
+          id: "yes",
+          label: "Yes",
+          run: () => {
+            playerState.standardVehicle = v.id;
+            vehicleDealerView = "browse";
+          },
+        },
+        { id: "no", label: "No", run: () => { vehicleDealerView = "browse"; } },
+      ],
+      onPrev: null,
+      onNext: null,
+      onClose: () => vehicleSheet.close(),
+    };
+  }
+
+  const badge = [isActive ? "DRIVING" : null, isStandard ? "STANDARD" : null].filter(Boolean).join(" · ");
+  return {
+    title: v.name,
+    image: v.image,
+    infoText: `Wallet: $${playerState.money}\n${vehicleInfoText(v)}`,
+    priceText: owned ? badge || "OWNED" : `$${v.price}`,
+    message: vehicleDealerMessage || undefined,
+    actions: owned
+      ? [
+          {
+            id: "drive",
+            label: isActive ? "Driving" : "🚗 Drive",
+            disabled: isActive,
+            run: () => {
+              playerState.activeVehicle = v.id;
+              applyVehiclePerformance();
+              vehicleDealerMessage = `Now driving the ${v.name}.`;
+            },
+          },
+        ]
+      : [
+          {
+            id: "buy",
+            label: `💰 Buy — $${v.price}`,
+            run: () => {
+              vehicleDealerMessage = "";
+              vehicleDealerView = "confirm-buy";
+            },
+          },
+        ],
+    onPrev: () => {
+      vehicleDealerIndex = (vehicleDealerIndex - 1 + VEHICLE_CATALOG.length) % VEHICLE_CATALOG.length;
+      vehicleDealerMessage = "";
+    },
+    onNext: () => {
+      vehicleDealerIndex = (vehicleDealerIndex + 1) % VEHICLE_CATALOG.length;
+      vehicleDealerMessage = "";
+    },
+    onClose: () => vehicleSheet.close(),
+  };
 }
 
 /** Vehicle Dealer Fast Travel skillset: jump straight to any unlocked building, skipping the drive. */
@@ -6128,11 +6308,17 @@ function loop(now: number) {
   // The Phone only works inside a building, not while driving, and stays
   // hidden while another location's action menu is already open.
   phoneBtn.style.display =
-    scene.type === "interior" && !phoneUI.isOpen() && !locationMenu.isOpen() && !dialogueBox.isOpen()
+    scene.type === "interior" &&
+    !phoneUI.isOpen() &&
+    !locationMenu.isOpen() &&
+    !dialogueBox.isOpen() &&
+    !vehicleSheet.isOpen()
       ? "flex"
       : "none";
   debugBtn.style.display =
-    outOfMinigame && !phoneUI.isOpen() && !locationMenu.isOpen() && !dialogueBox.isOpen() ? "flex" : "none";
+    outOfMinigame && !phoneUI.isOpen() && !locationMenu.isOpen() && !dialogueBox.isOpen() && !vehicleSheet.isOpen()
+      ? "flex"
+      : "none";
 
   if (scene.type === "street") {
     street.update(dt);
@@ -6163,8 +6349,15 @@ function loop(now: number) {
 
     if (atDoor) {
       if (mallStore) {
-        // Store rooms exit back to the Mall floor, not the street.
-        scene = { type: "interior", lot, interior: new InteriorScene(lot, computeStationsFor("Mall")) };
+        // Store rooms exit back to the Mall floor, not the street — and
+        // right in front of that store's own entrance (its station id
+        // matches the store id, see STATIONS_BY_BUILDING.Mall), not the
+        // Mall's own street-side lobby door.
+        scene = {
+          type: "interior",
+          lot,
+          interior: new InteriorScene(lot, computeStationsFor("Mall"), undefined, undefined, true, mallStore),
+        };
       } else if (playerState.activeMeetup && interior.hasStation("meetup-npc")) {
         // Checks the room's own station list (fixed at entry), not just
         // whether a meetup's arranged — an arranged-but-not-yet-visited
