@@ -2662,7 +2662,7 @@ const ROSA: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "jewelry", label: "Jewelry", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -2722,7 +2722,7 @@ const KEVIN: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "jewelry", label: "Jewelry", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -2774,7 +2774,7 @@ const MALIK: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "interior-design", label: "Interior Design", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -2845,7 +2845,7 @@ const MEI: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "animals", label: "Animals", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -2905,7 +2905,8 @@ const TYLER: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    // Actually his thing, unlike idle mall chatter — matches his Hobbies rating below.
+    { id: "animals", label: "Animals", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -2960,7 +2961,7 @@ const SIMONE: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "fashion", label: "Fashion", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
@@ -3007,7 +3008,7 @@ const CHRIS: NpcDef = {
   smallTalkTopics: [
     { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
     { id: "gossip", label: "Mall Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
-    { id: "themall", label: "The Mall", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "cars", label: "Cars", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
     { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
   ],
   personalTopics: [
