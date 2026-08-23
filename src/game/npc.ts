@@ -100,10 +100,9 @@ export interface NpcDef {
   // Home-as-Date unlock (Meetup System spec) — per-NPC, e.g. a minimum
   // number of successful Dates elsewhere plus a relationship tier.
   // Omitted means Home isn't designed as a Date location for her yet.
+  // Home's Regular Meetup has no per-NPC gate — purely platonic, same as
+  // Diner/Beach/Lounge, available to anyone whose number you have.
   homeDateUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
-  // Home-as-Regular-Meetup has its own separate, simpler unlock — omitted
-  // means not yet designed (shown the same placeholder as Beach/Lounge).
-  homeRegularUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
   // Normally a Home Date (including Overnight Stay) doesn't add to the
   // Dates counter that gates Home access and Propose — only "real" dates
   // elsewhere do (avoids a circular unlock for most NPCs). Some NPCs (e.g.

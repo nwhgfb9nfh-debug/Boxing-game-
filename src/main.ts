@@ -380,19 +380,30 @@ const phoneApi: PhoneApi = {
         };
       }
       if (loc.id === "home") {
-        // She already lives here — "arranging" a Home Date doesn't mean
+        // She already lives here — "arranging" a Home visit doesn't mean
         // anything once she's your wife.
         if (playerState.married[npcId]) {
           return { id: loc.id, label: loc.label, available: false, reason: "She already lives here." };
         }
-        const unlockFn = meetupType === "date" ? npc.homeDateUnlock : npc.homeRegularUnlock;
-        const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
-        const unlocked = hasContent && !!unlockFn && unlockFn(dateCount, tier);
+        if (meetupType === "date") {
+          const hasContent = loc.dateConnect.length > 0;
+          const unlockFn = npc.homeDateUnlock;
+          const unlocked = hasContent && !!unlockFn && unlockFn(dateCount, tier);
+          return {
+            id: loc.id,
+            label: loc.label,
+            available: unlocked,
+            reason: !hasContent || !unlockFn ? "Not yet designed." : unlocked ? undefined : "Not available yet.",
+          };
+        }
+        // Regular Meetup at Home: purely platonic, same as every other
+        // location — no per-NPC relationship gate, just needs content.
+        const hasContent = loc.regularGeneral.length > 0;
         return {
           id: loc.id,
           label: loc.label,
-          available: unlocked,
-          reason: !hasContent || !unlockFn ? "Not yet designed." : unlocked ? undefined : "Not available yet.",
+          available: hasContent,
+          reason: hasContent ? undefined : "Not yet designed.",
         };
       }
       const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
@@ -2105,9 +2116,7 @@ const PRIYA: NpcDef = {
   ],
   actions: PRIYA_ACTIONS,
   // Requires BOTH 2 successful Dates elsewhere AND Tier 4 (Close) — date
-  // count alone or tier alone isn't enough. Home-as-Regular-Meetup has no
-  // defined condition yet (spec: "not yet defined"), so homeRegularUnlock
-  // stays omitted — locked with the same placeholder as Beach/Lounge.
+  // count alone or tier alone isn't enough.
   homeDateUnlock: (dateCount, tier) => dateCount >= 2 && tier === "close",
   // Marriage System: no kids yet, wants just one — placeholder numbers,
   // easy to retune. Matches the Family topic's own rating map above
