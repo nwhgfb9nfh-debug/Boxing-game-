@@ -2568,57 +2568,69 @@ function buildFloor1Room(): { stations: Station[]; decorations: Decoration[] } {
 // Floor 2 (Kyle + Angela): a small desk right by the entrance where Kyle
 // sits — walk past him to reach Angela's own (larger, L-shaped) desk
 // deeper in the room.
-function buildFloor2Room(): { stations: Station[]; decorations: Decoration[] } {
-  const kyleDeskId = "floor2-kyle-desk";
-  const decorations: Decoration[] = [
-    { id: kyleDeskId, nx: 0.65, ny: 0.26, width: 130, height: 28, blocking: true },
-    ...buildDeskDecorations("floor2-angela-desk", { h: 0.7, v: 0.56 }),
+// Shared by Floors 2/3 (per the sketch): a low partial wall with a gap in
+// it, splitting the room into an entrance zone (secretary's square desk,
+// just past the Elevator) and the manager's own zone further in — purely
+// a visual/physical divider, not a separate room/scene, so walking through
+// the gap is instant, same as any other open floor.
+function buildFloorDivider(id: string, ny: number): Decoration[] {
+  return [
+    { id: `${id}-left`, nx: 0.22, ny, width: 220, height: 14, blocking: true },
+    { id: `${id}-right`, nx: 0.72, ny, width: 220, height: 14, blocking: true },
   ];
-  const stations: Station[] = [
-    OFFICE_FLOOR_ELEVATOR,
-    {
-      id: `office-desk-${KYLE.id}`,
-      label: KYLE.name,
-      nx: 0.65,
-      ny: 0.18,
+}
+// The secretary's own square desk, right past the Elevator.
+function buildSecretaryDesk(npc: NpcDef, id: string): { station: Station; decorations: Decoration[] } {
+  return {
+    decorations: [{ id, nx: 0.5, ny: 0.34, width: 70, height: 70, blocking: true }],
+    station: {
+      id: `office-desk-${npc.id}`,
+      label: npc.name,
+      nx: 0.5,
+      ny: 0.22,
       kind: "npc",
       radius: 24,
-      approachDecorationId: kyleDeskId,
+      approachDecorationId: id,
     },
-    buildDeskStation(ANGELA, "floor2-angela-desk"),
+  };
+}
+
+// Floor 2 (Kyle + Angela): Kyle's square desk sits right past the
+// Elevator; a low divider wall (with a gap to walk through) separates it
+// from Angela's own L-desk further into the room.
+function buildFloor2Room(): { stations: Station[]; decorations: Decoration[] } {
+  const kyle = buildSecretaryDesk(KYLE, "floor2-kyle-desk");
+  const decorations: Decoration[] = [
+    ...kyle.decorations,
+    ...buildFloorDivider("floor2-divider", 0.56),
+    ...buildDeskDecorations("floor2-angela-desk", { h: 0.85, v: 0.72 }),
   ];
+  const stations: Station[] = [OFFICE_FLOOR_ELEVATOR, kyle.station, buildDeskStation(ANGELA, "floor2-angela-desk")];
   return { stations, decorations };
 }
 
-// Floor 3 (Margaret + Marcus + Bianca): Margaret's small desk right by the
-// entrance, same as Kyle's; walking past her leads to a big reverse-U
-// desk — a long back segment plus two short arms forming the sides you
-// walk between. Marcus stands at the middle of the long (back) side;
-// Bianca's on the inside of one of the short arms.
+// Floor 3 (Margaret + Marcus + Bianca): Margaret's square desk right past
+// the Elevator, same as Kyle's; past the same divider wall is a big
+// reverse-U desk — a long back segment plus two short arms forming the
+// sides you walk between. Marcus stands at the middle of the long (back)
+// side; Bianca's on the inside of one of the short arms.
 function buildFloor3Room(): { stations: Station[]; decorations: Decoration[] } {
-  const margaretDeskId = "floor3-margaret-desk";
+  const margaret = buildSecretaryDesk(MARGARET, "floor3-margaret-desk");
   const decorations: Decoration[] = [
-    { id: margaretDeskId, nx: 0.65, ny: 0.26, width: 130, height: 28, blocking: true },
-    { id: "floor3-desk-base", nx: 0.4, ny: 0.78, width: 220, height: 30, blocking: true },
-    { id: "floor3-desk-arm-l", nx: 0.29, ny: 0.62, width: 26, height: 90, blocking: true },
-    { id: "floor3-desk-arm-r", nx: 0.51, ny: 0.62, width: 26, height: 90, blocking: true },
+    ...margaret.decorations,
+    ...buildFloorDivider("floor3-divider", 0.56),
+    { id: "floor3-desk-base", nx: 0.3, ny: 0.88, width: 220, height: 30, blocking: true },
+    { id: "floor3-desk-arm-l", nx: 0.19, ny: 0.74, width: 26, height: 90, blocking: true },
+    { id: "floor3-desk-arm-r", nx: 0.41, ny: 0.74, width: 26, height: 90, blocking: true },
   ];
   const stations: Station[] = [
     OFFICE_FLOOR_ELEVATOR,
-    {
-      id: `office-desk-${MARGARET.id}`,
-      label: MARGARET.name,
-      nx: 0.65,
-      ny: 0.18,
-      kind: "npc",
-      radius: 24,
-      approachDecorationId: margaretDeskId,
-    },
+    margaret.station,
     {
       id: `office-desk-${MARCUS.id}`,
       label: MARCUS.name,
-      nx: 0.4,
-      ny: 0.7,
+      nx: 0.3,
+      ny: 0.8,
       kind: "npc",
       radius: 24,
       approachDecorationId: "floor3-desk-base",
@@ -2627,8 +2639,8 @@ function buildFloor3Room(): { stations: Station[]; decorations: Decoration[] } {
     {
       id: `office-desk-${BIANCA.id}`,
       label: BIANCA.name,
-      nx: 0.46,
-      ny: 0.62,
+      nx: 0.36,
+      ny: 0.74,
       kind: "npc",
       radius: 24,
       approachDecorationId: "floor3-desk-arm-r",
