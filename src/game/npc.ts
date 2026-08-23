@@ -104,6 +104,13 @@ export interface NpcDef {
   // Home-as-Regular-Meetup has its own separate, simpler unlock — omitted
   // means not yet designed (shown the same placeholder as Beach/Lounge).
   homeRegularUnlock?: (dateCount: number, tier: RelationshipTier) => boolean;
+  // Normally a Home Date (including Overnight Stay) doesn't add to the
+  // Dates counter that gates Home access and Propose — only "real" dates
+  // elsewhere do (avoids a circular unlock for most NPCs). Some NPCs (e.g.
+  // Bianca, whose Home Date is unlocked from the start with no prior-Dates
+  // requirement) have no such circularity to worry about and are fine
+  // with Home Dates counting toward Propose too — opt in per-NPC here.
+  homeDatesCountTowardDates?: boolean;
   // Marriage System: how many kids (if any) she already has, and how many
   // she wants total — this is the number the player will actually get once
   // married to her. Romance-eligible NPCs only; revealed via the Personal

@@ -2431,6 +2431,10 @@ const BIANCA: NpcDef = {
   // 0 prior Dates required — available immediately once Dating: true,
   // unlike Priya's "2 Dates + Tier 4" requirement.
   homeDateUnlock: () => true,
+  // No guardedness anywhere in her design — Home Dates (Overnight Stay
+  // included) count toward Propose same as any other Date. No circularity
+  // risk since her Home Date is already unlocked from the start.
+  homeDatesCountTowardDates: true,
   familyInfo: { kidsHas: 0, kidsWants: 3, revealTier: "acquaintance" },
 };
 
@@ -3400,8 +3404,9 @@ function resolveConnectPick(npc: NpcDef, location: MeetupLocationId, type: Meetu
     lastMeetupWasOvernight = true;
     lastMeetupResult = resolveOvernightStay(npc.id);
   } else if (type === "date") {
-    // Home doesn't count toward its own unlock — only "other locations" do.
-    if (location !== "home") {
+    // Home doesn't normally count toward its own unlock — only "other
+    // locations" do — unless this NPC opts in (see homeDatesCountTowardDates).
+    if (location !== "home" || npc.homeDatesCountTowardDates) {
       playerState.dateCounts[npc.id] = (playerState.dateCounts[npc.id] ?? 0) + 1;
     }
     bumpRomance(npc.id, MEETUP_CONNECT_DELTA);
@@ -3736,6 +3741,11 @@ function resolveOvernightStay(npcId: string): string {
   // up to normal as the player enters buildings afterward.
   playerState.overnightCommuteStep[npcId] = 0;
   bumpRomance(npcId, MEETUP_CONNECT_DELTA);
+  // Overnight Stay is a Date too — counts toward Propose for whichever
+  // NPCs opt in (see homeDatesCountTowardDates).
+  if (getNpcById(npcId)?.homeDatesCountTowardDates) {
+    playerState.dateCounts[npcId] = (playerState.dateCounts[npcId] ?? 0) + 1;
+  }
 
   return `You wake up together the next morning. Next: ${nextStage.label}. (${formatRomanceResult(MEETUP_CONNECT_DELTA)})${
     kidMessages.length ? " " + kidMessages.join(" ") : ""
