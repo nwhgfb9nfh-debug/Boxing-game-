@@ -17,7 +17,7 @@ import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
 import { generateBuzzerReplies } from "./game/buzzer";
 import { SocialBattery } from "./game/socialBattery";
-import { PRIYA_PORTRAIT, CAROL_PORTRAIT, DEREK_PORTRAIT } from "./assets/portraits";
+import { PRIYA_PORTRAIT, CAROL_PORTRAIT, DEREK_PORTRAIT, VINNIE_PORTRAIT } from "./assets/portraits";
 import {
   type NpcDef,
   type NpcActionRules,
@@ -1283,12 +1283,23 @@ const GYM_CATEGORIES: GymCategory[] = [
 
 // Office is a multi-room building: Lobby (Reception + Elevator) -> Floor
 // 1-3 (each floor's manager's office). Floor rooms reuse InteriorScene like
-// any other room, but walking out their door returns to the Lobby instead
-// of the street — see the "interior" scene branch below.
+// any other room, but have no ground-level door — entered/exited only via
+// their own "elevator" station, back down to the Lobby (see hasDoor: false
+// on their InteriorScene construction, and the elevator-floor dispatch
+// below).
 const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
-  1: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
-  2: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
-  3: [{ id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 }],
+  1: [
+    { id: "managerdesk", label: "Vinnie", nx: 0.4, ny: 0.55, kind: "npc" },
+    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+  ],
+  2: [
+    { id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 },
+    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+  ],
+  3: [
+    { id: "managerdesk", label: "Manager Desk", nx: 0.5, ny: 0.4 },
+    { id: "elevator", label: "Elevator", nx: 0.75, ny: 0.25 },
+  ],
 };
 
 const CASH_ADVANCE_AMOUNT = 20000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
@@ -2076,10 +2087,85 @@ const DEREK: NpcDef = {
   inviteToFightMinTier: "close",
 };
 
+const VINNIE_ACTIONS: NpcActionRules = {
+  // Easygoing, like Carol — succeeds from Tier 2, no internal sub-threshold.
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ehh, we just met — let\'s get there first."' };
+    }
+    return { success: true, delta: 10, message: 'He grins and hands you a business card with his cell scrawled on it. "Anytime, pal."' };
+  },
+  // Appreciative personality — well-received from Tier 1.
+  giftReaction: () => {
+    return { delta: 8, message: '"Hey, now THIS is class. I like you." He\'s genuinely pleased.' };
+  },
+  // Never actually reachable — Vinnie isn't romance-eligible, so Ask Her
+  // Out/Propose never appear in his Actions menu. Required by NpcActionRules.
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const VINNIE: NpcDef = {
+  id: "vinnie",
+  name: "Vinnie Castellano",
+  portrait: VINNIE_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hey hey, come on in! Vinnie Castellano — I handle business on this floor. You're gonna want to hear what I've got.",
+    acquaintance: "There he is! What can I do you for?",
+    friend: "My guy! Come, sit, sit — what's the word?",
+    close: "There's my guy. You know I always got your back.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Loves talking up his own hustle.
+    { id: "office", label: "The Office", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Loves talking about himself, his deals.
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    // The one place his usual bravado drops — guarded until real trust.
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "negative", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Loves flexing his weekend plans.
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    // Thinks he's great at giving it.
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    // Self-focused, but doesn't dismiss you.
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    // Relates easily, talks a lot himself.
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "neutral", close: "neutral" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: VINNIE_ACTIONS,
+  // Managers are always at the player's fights regardless — the invite
+  // mechanic doesn't apply to him.
+  hideInviteToFight: true,
+};
+
+function vinnieDeskOptions(): DialogueOption[] {
+  return [
+    {
+      id: "manager-desk",
+      label: "Manager Desk",
+      onSelect: () => {
+        dialogueBox.close();
+        openManagerDeskMenu(1);
+      },
+    },
+  ];
+}
+
 // Registry of every dialogue-capable NPC — used by the Contacts app to look
 // up whoever has had their number exchanged, regardless of which building
 // they're physically found in.
-const ALL_NPCS: NpcDef[] = [PRIYA, CAROL, DEREK];
+const ALL_NPCS: NpcDef[] = [PRIYA, CAROL, DEREK, VINNIE];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
 }
@@ -2091,6 +2177,7 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   priya: "Office",
   carol: "Office",
   derek: "Office",
+  vinnie: "Office",
 };
 // True whenever she's actually physically standing in the room the player
 // is currently in — covers every way she can be present, not just her
@@ -2103,6 +2190,9 @@ function isNpcInCurrentBuilding(npcId: string): boolean {
   if (playerState.married[npcId]) return HOUSE_NAMES.has(buildingName);
   if (playerState.activeMeetup?.npcId === npcId && scene.interior.hasStation("meetup-npc")) return true;
   if (playerState.overnightCommuteStep[npcId] === 0 && scene.interior.hasStation("overnight-guest")) return true;
+  // Vinnie's specifically on Floor 1, not just "somewhere in the Office" —
+  // standing in the Lobby or another floor shouldn't lock Text for him.
+  if (npcId === "vinnie") return buildingName === "Office" && scene.officeFloor === 1;
   return buildingName === NPC_HOME_BUILDING[npcId] && !isNpcAwayFromOffice(npcId);
 }
 
@@ -2674,7 +2764,7 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
           dialogueView = "actions-gift-picker";
         },
       },
-      buildInviteToFightOption(npc),
+      ...(npc.hideInviteToFight ? [] : [buildInviteToFightOption(npc)]),
       ...(npc.romanceEligible && !isRomanceLockedOut(npc)
         ? [
             {
@@ -3207,7 +3297,7 @@ function openElevatorMenu(lot: LotInstance) {
           scene = {
             type: "interior",
             lot,
-            interior: new InteriorScene(lot, OFFICE_FLOOR_STATIONS[floor] ?? []),
+            interior: new InteriorScene(lot, OFFICE_FLOOR_STATIONS[floor] ?? [], undefined, undefined, false),
             officeFloor: floor,
           };
           return "";
@@ -3951,14 +4041,7 @@ function loop(now: number) {
         : lot.building.name;
 
     if (atDoor) {
-      if (officeFloor) {
-        // Elevator floors exit back to the Lobby, not the street.
-        scene = {
-          type: "interior",
-          lot,
-          interior: new InteriorScene(lot, computeStationsFor("Office"), undefined, OFFICE_DECORATIONS),
-        };
-      } else if (mallStore) {
+      if (mallStore) {
         // Store rooms exit back to the Mall floor, not the street.
         scene = { type: "interior", lot, interior: new InteriorScene(lot, computeStationsFor("Mall")) };
       } else if (playerState.activeMeetup && interior.hasStation("meetup-npc")) {
@@ -4012,7 +4095,15 @@ function loop(now: number) {
       else if (nearStation.id === "photostudio") onTrigger = openPhotoShootMenu;
       else if (nearStation.id === "faceoff") onTrigger = openFaceOffMenu;
       else if (nearStation.id === "fanevent") onTrigger = openFanEventMenu;
-      else if (nearStation.id === "managerdesk") onTrigger = () => openManagerDeskMenu(officeFloor ?? 1);
+      else if (nearStation.id === "managerdesk") {
+        // Floor 1's manager desk is Vinnie himself — a real dialogue-
+        // capable NPC, with the Manager Desk business menu folded in as an
+        // extra option, same pattern as Reception's "Hire Manager". Floors
+        // 2/3 aren't a named character yet, so they keep the old direct-menu
+        // behavior.
+        onTrigger =
+          officeFloor === 1 ? () => openNpcDialogue(VINNIE, vinnieDeskOptions()) : () => openManagerDeskMenu(officeFloor ?? 1);
+      }
       else if (nearStation.id === "reception-priya") {
         onTrigger = isNpcAwayFromOffice("priya")
           ? () => buildingUI.showToast("Priya isn't at her desk right now.", pos, "bottom")
@@ -4037,7 +4128,21 @@ function loop(now: number) {
         const found = findChildById(nearStation.id)!;
         onTrigger = () => openChildDialogue(found.child);
       }
-      else if (nearStation.id === "elevator") onTrigger = () => openElevatorMenu(lot);
+      else if (nearStation.id === "elevator") {
+        // On a floor room this IS the door — no ground-level exit, riding
+        // the elevator back down returns straight to the Lobby (no
+        // floor-picker menu; you're already leaving, not choosing where to
+        // go). At the Lobby itself it opens the floor picker as before.
+        onTrigger = officeFloor
+          ? () => {
+              scene = {
+                type: "interior",
+                lot,
+                interior: new InteriorScene(lot, computeStationsFor("Office"), undefined, OFFICE_DECORATIONS),
+              };
+            }
+          : () => openElevatorMenu(lot);
+      }
       else if (nearStation.id === "sunbathe") onTrigger = openSunbatheMenu;
       else if (nearStation.id === "swim") onTrigger = openSwimMenu;
       else onTrigger = () => startStation(lot, interior, nearStation.id, pos);

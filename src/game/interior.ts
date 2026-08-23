@@ -84,19 +84,28 @@ export class InteriorScene {
   private stations: Station[];
   private blockedZone?: BlockedZone;
   private decorations: Decoration[];
+  private hasDoor: boolean;
   private px = 0.5; // normalized position within the room, 0..1
-  private py = 0.88; // spawn right above the door — just far enough that walking in doesn't instantly trigger an exit
+  private py: number;
 
   constructor(
     lot: LotInstance,
     stations: Station[] = [],
     blockedZone?: BlockedZone,
     decorations: Decoration[] = [],
+    // False for a room entered/exited only via a station (e.g. Office
+    // floors, elevator-only — no ground-level door to walk out through).
+    // No door notch is drawn and walking to the bottom wall does nothing.
+    hasDoor: boolean = true,
   ) {
     this.lot = lot;
     this.stations = stations;
     this.blockedZone = blockedZone;
     this.decorations = decorations;
+    this.hasDoor = hasDoor;
+    // Door rooms spawn just above the door; door-less rooms spawn centered
+    // instead, since there's no door to spawn "above".
+    this.py = hasDoor ? 0.88 : 0.5;
   }
 
   /** Whether this room's station list (fixed at construction) includes the given id. */
@@ -168,7 +177,7 @@ export class InteriorScene {
 
     const doorCenterX = bounds.left + roomW / 2;
     const atDoor =
-      y >= bounds.bottom - PLAYER_RADIUS - 6 && Math.abs(x - doorCenterX) <= DOOR_HALF_WIDTH;
+      this.hasDoor && y >= bounds.bottom - PLAYER_RADIUS - 6 && Math.abs(x - doorCenterX) <= DOOR_HALF_WIDTH;
 
     let nearStation: Station | null = null;
     for (const s of this.stations) {
@@ -255,14 +264,17 @@ export class InteriorScene {
       ctx.strokeRect(dx - d.width / 2, dy - d.height / 2, d.width, d.height);
     }
 
-    // Door notch at the bottom center — walk here to leave
-    const doorW = DOOR_HALF_WIDTH * 2 - 10;
-    ctx.strokeStyle = "#171a21";
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.moveTo(width / 2 - doorW / 2, bounds.bottom);
-    ctx.lineTo(width / 2 + doorW / 2, bounds.bottom);
-    ctx.stroke();
+    // Door notch at the bottom center — walk here to leave. Skipped
+    // entirely for door-less rooms (Office floors — Elevator only).
+    if (this.hasDoor) {
+      const doorW = DOOR_HALF_WIDTH * 2 - 10;
+      ctx.strokeStyle = "#171a21";
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(width / 2 - doorW / 2, bounds.bottom);
+      ctx.lineTo(width / 2 + doorW / 2, bounds.bottom);
+      ctx.stroke();
+    }
 
     // Station markers
     for (const s of this.stations) {

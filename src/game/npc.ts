@@ -119,6 +119,9 @@ export interface NpcDef {
   // NPC (e.g. Derek) require real relationship progress first before he
   // cares enough to show up. Omitted means no minimum.
   inviteToFightMinTier?: RelationshipTier;
+  // Some NPCs (e.g. a Manager) are always at the player's fights regardless
+  // — Invite to Next Fight doesn't apply to them at all, not even gated.
+  hideInviteToFight?: boolean;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.
