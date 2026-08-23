@@ -3418,17 +3418,79 @@ const MALL_STAFF_POSITIONS: [number, number][] = [
   [0.5, 0.65],
   [0.75, 0.65],
 ];
-function buildMallStoreRoom(storeId: string): Station[] {
+
+// Mall Item Catalogues spec: shopping happens at whichever staff member is
+// the store's actual shopkeeper — a small desk in the middle of the room,
+// same visual as Office Reception (see MALL_SHOP_DESK) — not a separate
+// walk-up counter. Pet Store specifically: Mei is the shopkeeper normally;
+// Tyler just roams caring for the animals with no shop role at all, until
+// Mei's gone for good (married/divorced), at which point he takes over the
+// desk permanently. A temporary absence (a meetup, not marriage) doesn't
+// hand it to him — the shop just has nobody at the desk that visit, same
+// as Gift Shop's alternation gaps.
+function isMallShopkeeper(storeId: string, npcId: string): boolean {
+  if (storeId === "giftshop") return isGiftShopStaffOnDuty(npcId);
+  if (storeId === "petstore") {
+    if (npcId === "mei") return true;
+    if (npcId === "tyler") return playerState.married["mei"] || playerState.divorced["mei"];
+    return false;
+  }
+  return (MALL_STORE_STAFF[storeId] ?? []).some((n) => n.id === npcId);
+}
+
+// Extra dialogue option folded into the shopkeeper's own menu, same pattern
+// as Reception's "Hire Manager"/the Manager Desk option.
+function mallShopOptions(storeId: string): DialogueOption[] {
+  const opener = storeId === "giftshop" ? openGiftShopMenu : storeId === "petstore" ? openPetStoreMenu : null;
+  if (!opener) return [];
+  return [
+    {
+      id: "shop",
+      label: "🛍 Shop",
+      onSelect: () => {
+        dialogueBox.close();
+        opener();
+      },
+    },
+  ];
+}
+
+// Desk decoration for stores with an NPC-driven shop (Gift Shop, Pet
+// Store) — centered in the room, same idea as Office Reception's desk
+// (see OFFICE_DECORATIONS) just without the two-flanking-seats layout,
+// since only one NPC is ever behind it at a time.
+const MALL_SHOP_DESK_ID = "mall-shop-desk";
+function mallShopDeskDecorations(storeId: string): Decoration[] {
+  if (storeId !== "giftshop" && storeId !== "petstore") return [];
+  return [{ id: MALL_SHOP_DESK_ID, nx: 0.5, ny: 0.4, width: 180, height: 36, blocking: true }];
+}
+function buildMallStoreRoom(storeId: string): { stations: Station[]; decorations: Decoration[] } {
   const npcsHere = [...(MALL_STORE_STAFF[storeId] ?? []), ...(MALL_STORE_SHOPPERS[storeId] ?? [])];
   const stations: Station[] = [...(MALL_STORE_STATIONS[storeId] ?? [])];
-  npcsHere.forEach((npc, i) => {
+  let regularSlot = 0;
+  npcsHere.forEach((npc) => {
     const onDuty = storeId === "giftshop" ? isGiftShopStaffOnDuty(npc.id) : true;
-    if (onDuty && !isNpcAway(npc.id)) {
-      const [nx, ny] = MALL_STAFF_POSITIONS[i] ?? MALL_STAFF_POSITIONS[MALL_STAFF_POSITIONS.length - 1];
+    if (!onDuty || isNpcAway(npc.id)) return;
+    if (isMallShopkeeper(storeId, npc.id)) {
+      // Standing right behind the desk, approached from the south like
+      // Reception — only one shopkeeper is ever present at a time so this
+      // doesn't need Reception's left/right split.
+      stations.push({
+        id: `mall-staff-${npc.id}`,
+        label: npc.name,
+        nx: 0.5,
+        ny: 0.28,
+        kind: "npc",
+        radius: 24,
+        approachDecorationId: MALL_SHOP_DESK_ID,
+      });
+    } else {
+      const [nx, ny] = MALL_STAFF_POSITIONS[regularSlot] ?? MALL_STAFF_POSITIONS[MALL_STAFF_POSITIONS.length - 1];
+      regularSlot += 1;
       stations.push(buildMallStaffStation(npc, nx, ny));
     }
   });
-  return stations;
+  return { stations, decorations: mallShopDeskDecorations(storeId) };
 }
 
 // Rebuilds whichever interior room is currently on screen — the generic
@@ -3449,10 +3511,11 @@ function rebuildCurrentInteriorScene() {
       officeFloor: scene.officeFloor,
     };
   } else if (scene.mallStore !== undefined) {
+    const room = buildMallStoreRoom(scene.mallStore);
     scene = {
       type: "interior",
       lot: scene.lot,
-      interior: new InteriorScene(scene.lot, buildMallStoreRoom(scene.mallStore)),
+      interior: new InteriorScene(scene.lot, room.stations, undefined, room.decorations),
       mallStore: scene.mallStore,
     };
   } else {
@@ -4111,7 +4174,7 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
 function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
   const canProposeHere = npc.romanceEligible && !isRomanceLockedOut(npc) && !playerState.married[npc.id];
-  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && (!g.isRing || canProposeHere));
+  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && isGiftGivableToNpc(npc, g, canProposeHere));
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -4483,7 +4546,7 @@ function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
 function buildMeetupDialogueGiftOptions(npc: NpcDef, type: MeetupType): DialogueData {
   const canProposeHere =
     npc.romanceEligible && !!playerState.dating[npc.id] && !playerState.married[npc.id] && !isRomanceLockedOut(npc);
-  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && (!g.isRing || canProposeHere));
+  const owned = GIFT_CATALOG.filter((g) => getGiftCount(g.id) > 0 && isGiftGivableToNpc(npc, g, canProposeHere));
   return {
     portrait: npc.portrait,
     name: npc.name,
@@ -4900,41 +4963,114 @@ function openClothesMenu() {
   }));
 }
 
-// Marriage System: the ring is just another gift item in the catalog —
+// Mall Item Catalogues spec: 4 categories, 4 items each. Romantic/Special
+// Jewelry are romance-eligible-only (see isGiftGivableToNpc) — Fun/
+// Practical are fine for any NPC. The ring is just another Jewelry entry —
 // what makes it special is handled where gifts are GIVEN (isRing routes to
 // a Propose confirmation instead of an immediate hand-over), not here.
+// The doc flags per-NPC favorite/disliked-item preferences within Romantic,
+// and a favorite general category (Fun vs. Practical), as a still-pending
+// follow-up pass — giftReaction stays tier-only (not item-aware) until
+// that data exists; every item currently lands the same reaction.
+type GiftCategory = "romantic" | "fun" | "practical" | "jewelry";
 interface GiftCatalogItem extends ShopItem {
+  category: GiftCategory;
   isRing?: boolean;
 }
 const GIFT_CATALOG: GiftCatalogItem[] = [
-  { id: "flowers", name: "Flowers", price: 50 },
-  { id: "jewelry", name: "Jewelry", price: 500 },
-  { id: "ring", name: "Engagement Ring", price: 3000, isRing: true },
+  { id: "bouquet", name: "Bouquet of Flowers", price: 20, category: "romantic" },
+  { id: "chocolates", name: "Box of Chocolates", price: 15, category: "romantic" },
+  { id: "perfume", name: "Perfume", price: 50, category: "romantic" },
+  { id: "necklace", name: "Silver Necklace", price: 100, category: "romantic" },
+  { id: "board-game", name: "Board Game", price: 30, category: "fun" },
+  { id: "novelty-mug", name: "Novelty Mug", price: 12, category: "fun" },
+  { id: "video-game", name: "Video Game", price: 60, category: "fun" },
+  { id: "concert-tickets", name: "Concert Tickets", price: 80, category: "fun" },
+  { id: "umbrella", name: "Umbrella", price: 15, category: "practical" },
+  { id: "wallet", name: "Wallet", price: 35, category: "practical" },
+  { id: "tool-kit", name: "Tool Kit", price: 45, category: "practical" },
+  { id: "watch", name: "Watch", price: 70, category: "practical" },
+  { id: "ring", name: "Engagement Ring", price: 2000, category: "jewelry", isRing: true },
+  { id: "luxury-watch", name: "Luxury Watch", price: 800, category: "jewelry" },
+  { id: "custom-jewelry", name: "Custom Jewelry Piece", price: 500, category: "jewelry" },
+  { id: "diamond-earrings", name: "Diamond Earrings", price: 600, category: "jewelry" },
 ];
+const GIFT_CATEGORY_LABELS: Record<GiftCategory, string> = {
+  romantic: "💐 Romantic",
+  fun: "🎉 Fun",
+  practical: "🔧 Practical",
+  jewelry: "💎 Special Jewelry",
+};
 function getGiftCount(id: string): number {
   return playerState.giftInventory[id] ?? 0;
 }
 function totalGiftsOwned(): number {
   return Object.values(playerState.giftInventory).reduce((sum, n) => sum + n, 0);
 }
+// Romantic/Jewelry items don't make sense to give a friend-only NPC — Fun/
+// Practical are universal. canProposeHere (isRing-only) is passed in since
+// its exact definition differs slightly between the Actions-menu and
+// Meetup gift pickers that both call this.
+function isGiftGivableToNpc(npc: NpcDef, item: GiftCatalogItem, canProposeHere: boolean): boolean {
+  if (item.isRing) return canProposeHere;
+  if (item.category === "romantic" || item.category === "jewelry") return npc.romanceEligible;
+  return true;
+}
 
+// Gift Shop spec: bought at whichever staff member is currently the
+// shopkeeper (see GIFT_SHOP_KEEPER/PET_STORE_KEEPER) — no separate counter
+// station. A category picker first, then that category's 4 items, since a
+// flat 16-item list doesn't fit this menu's plain list UI well.
+let giftShopCategory: GiftCategory | null = null;
 function openGiftShopMenu() {
-  locationMenu.open(() => ({
-    title: "🎁 Gift Shop",
-    energyText: `Money: $${playerState.money}  ·  Gifts owned: ${totalGiftsOwned()}`,
-    actions: GIFT_CATALOG.map((g) => ({
-      id: g.id,
-      label: g.name,
-      cost: 0,
-      costLabel: `$${g.price}`,
-      run: () => {
-        if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
-        playerState.money -= g.price;
-        playerState.giftInventory[g.id] = getGiftCount(g.id) + 1;
-        return `Bought ${g.name}!`;
-      },
-    })),
-  }));
+  giftShopCategory = null;
+  locationMenu.open(() => {
+    const category = giftShopCategory;
+    if (!category) {
+      return {
+        title: "🎁 Gift Shop",
+        energyText: `Money: $${playerState.money}  ·  Gifts owned: ${totalGiftsOwned()}`,
+        actions: (Object.keys(GIFT_CATEGORY_LABELS) as GiftCategory[]).map((cat) => ({
+          id: cat,
+          label: GIFT_CATEGORY_LABELS[cat],
+          cost: 0,
+          costLabel: "›",
+          run: () => {
+            giftShopCategory = cat;
+            return "";
+          },
+        })),
+      };
+    }
+    return {
+      title: GIFT_CATEGORY_LABELS[category],
+      energyText: `Money: $${playerState.money}  ·  Gifts owned: ${totalGiftsOwned()}`,
+      actions: [
+        ...GIFT_CATALOG.filter((g) => g.category === category).map((g) => ({
+          id: g.id,
+          label: g.name,
+          cost: 0,
+          costLabel: `$${g.price}`,
+          run: () => {
+            if (playerState.money < g.price) return `Not enough money — need $${g.price}, have $${playerState.money}.`;
+            playerState.money -= g.price;
+            playerState.giftInventory[g.id] = getGiftCount(g.id) + 1;
+            return `Bought ${g.name}!`;
+          },
+        })),
+        {
+          id: "back",
+          label: "‹ Back to Categories",
+          cost: 0,
+          costLabel: "",
+          run: () => {
+            giftShopCategory = null;
+            return "";
+          },
+        },
+      ],
+    };
+  });
 }
 
 const PET_OPTIONS: ShopItem[] = [
@@ -5280,11 +5416,15 @@ const MALL_STORE_LABELS: Record<string, string> = {
   furniture: "Furniture Store",
 };
 
+// Gift Shop and Pet Store no longer have a separate walk-up counter —
+// shopping happens at whichever staff member is the shopkeeper instead
+// (see isMallShopkeeper/buildMallStoreRoom), same as buying isn't a
+// separate station from Priya/Carol at Office Reception.
 const MALL_STORE_STATIONS: Record<string, Station[]> = {
   vehicles: [{ id: "vehicles-counter", label: "Vehicle Dealer", nx: 0.5, ny: 0.4 }],
   clothes: [{ id: "clothes-counter", label: "Clothing Store", nx: 0.5, ny: 0.4 }],
-  giftshop: [{ id: "giftshop-counter", label: "Gift Shop", nx: 0.5, ny: 0.4 }],
-  petstore: [{ id: "petstore-counter", label: "Pet Store", nx: 0.5, ny: 0.4 }],
+  giftshop: [],
+  petstore: [],
   furniture: [{ id: "furniture-counter", label: "Furniture Store", nx: 0.5, ny: 0.4 }],
 };
 
@@ -5482,17 +5622,16 @@ function loop(now: number) {
       else if (nearStation.id in MALL_STORE_STATIONS) {
         const storeId = nearStation.id;
         onTrigger = () => {
+          const room = buildMallStoreRoom(storeId);
           scene = {
             type: "interior",
             lot,
-            interior: new InteriorScene(lot, buildMallStoreRoom(storeId)),
+            interior: new InteriorScene(lot, room.stations, undefined, room.decorations),
             mallStore: storeId,
           };
         };
       } else if (nearStation.id === "vehicles-counter") onTrigger = openVehicleMenu;
       else if (nearStation.id === "clothes-counter") onTrigger = openClothesMenu;
-      else if (nearStation.id === "giftshop-counter") onTrigger = openGiftShopMenu;
-      else if (nearStation.id === "petstore-counter") onTrigger = openPetStoreMenu;
       else if (nearStation.id === "furniture-counter") onTrigger = openFurnitureMenu;
       else if (nearStation.id === "pressreception") onTrigger = openPressReceptionMenu;
       else if (nearStation.id === "pressconf") onTrigger = openPressConfMenu;
@@ -5523,7 +5662,10 @@ function loop(now: number) {
       else if (nearStation.id === "jasmine-lobby") onTrigger = () => openNpcDialogue(JASMINE);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
-        onTrigger = staffNpc ? () => openNpcDialogue(staffNpc) : () => {};
+        const store = mallStore;
+        onTrigger = staffNpc
+          ? () => openNpcDialogue(staffNpc, isMallShopkeeper(store, staffNpc.id) ? mallShopOptions(store) : [])
+          : () => {};
       }
       else if (nearStation.id === "meetup-npc" && playerState.activeMeetup) {
         const { npcId, location, type } = playerState.activeMeetup;
