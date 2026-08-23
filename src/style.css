@@ -420,10 +420,11 @@ canvas {
    grid of squares rather than a handful of rows. */
 .dialogue-box__options--grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   max-height: 50vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .dialogue-box__option--grid {
@@ -432,13 +433,21 @@ canvas {
   gap: 2px;
   padding: 10px 4px;
   text-align: center;
+  /* Grid items default to a content-based min-width, which lets a long
+     label force its column wider than its 1fr share — breaking the
+     4-equal-columns layout and pushing the rest off-screen. Overriding it
+     to 0 lets the column actually shrink to its fraction, so the label
+     below wraps within that width instead. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 .dialogue-box__option--grid span {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dialogue-box__option-icon {
