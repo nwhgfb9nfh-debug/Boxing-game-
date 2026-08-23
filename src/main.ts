@@ -277,7 +277,13 @@ const phoneApi: PhoneApi = {
         score,
         maxScore: 100,
         romanceEligible: npc.romanceEligible,
-        romanceScore: npc.romanceEligible && !isRomanceLockedOut(npc) ? getRomanceScore(npc.id) : undefined,
+        // Hidden until she's actually being dated — a friend you haven't
+        // asked out yet shouldn't show a Romance meter at all — and hidden
+        // again while locked out (married elsewhere), same as before.
+        romanceScore:
+          npc.romanceEligible && !!playerState.dating[npc.id] && !isRomanceLockedOut(npc)
+            ? getRomanceScore(npc.id)
+            : undefined,
         romanceMax: 100,
         dating: !!playerState.dating[npc.id],
         locked: isNpcInCurrentBuilding(npc.id),
@@ -3332,7 +3338,9 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
                   return;
                 const result = rules.askHerOut(getRomanceScore(npc.id));
                 if (result.success) playerState.dating[npc.id] = true;
-                lastActionResult = result.message;
+                lastActionResult = result.success
+                  ? `${result.message} 💕 You're dating now — her Romance meter is visible in Contacts.`
+                  : result.message;
                 dialogueView = "actions-response";
               },
             },
