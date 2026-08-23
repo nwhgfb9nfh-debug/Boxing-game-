@@ -322,7 +322,7 @@ const phoneApi: PhoneApi = {
         label: "Regular Meetup",
         available: managerEligible,
         reason: isActiveManager
-          ? "He's still your manager."
+          ? "Just meet me at the Office."
           : npc.managerTier !== undefined && !managerEligible
             ? "You're not close enough yet."
             : undefined,
@@ -1311,8 +1311,18 @@ const GYM_CATEGORIES: GymCategory[] = [
 const OFFICE_FLOOR_STATIONS: Record<number, Station[]> = {
   1: [
     // Behind the L-shaped desk (see OFFICE_FLOOR1_DECORATIONS) — approached
-    // from its horizontal segment's south edge, same mechanic as Reception.
-    { id: "managerdesk", label: "Vinnie", nx: 0.4, ny: 0.5, kind: "npc", radius: 24, approachDecorationId: "vinnie-desk-h" },
+    // from the vertical segment's east (right) edge, not the horizontal
+    // segment's south edge.
+    {
+      id: "managerdesk",
+      label: "Vinnie",
+      nx: 0.4,
+      ny: 0.5,
+      kind: "npc",
+      radius: 24,
+      approachDecorationId: "vinnie-desk-v",
+      approachSide: "east",
+    },
     { id: "elevator", label: "Elevator", nx: 0.88, ny: 0.12 },
   ],
   2: [

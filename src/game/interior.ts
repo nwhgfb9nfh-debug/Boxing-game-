@@ -32,6 +32,11 @@ export interface Station {
   // exact regardless of room/viewport size. The marker itself still
   // renders at nx/ny.
   approachDecorationId?: string;
+  // Which edge of the approachDecorationId Decoration the player has to be
+  // pressed against — "south" (default) matches Reception's desk; "east"
+  // is for a desk segment approached from its right side instead (e.g.
+  // Vinnie's L-shaped desk). Ignored without approachDecorationId.
+  approachSide?: "south" | "east" | "west" | "north";
 }
 
 // A rectangle drawn in the room (e.g. Office's reception desk). Purely
@@ -199,12 +204,27 @@ export class InteriorScene {
         ? this.decorations.find((d) => d.id === s.approachDecorationId)
         : undefined;
       if (approachDecoration) {
-        // Pinned to the decoration's near (south) edge, in the station's
-        // own column — the exact spot the player's collision stops them
-        // at when walking up to touch it, so the trigger radius can stay
-        // tight without ever being unreachable.
-        sx = bounds.left + s.nx * roomW;
-        sy = bounds.top + approachDecoration.ny * roomH + approachDecoration.height / 2 + PLAYER_RADIUS;
+        // Pinned to the decoration's near edge (south by default, or
+        // whichever side approachSide names), in the station's own
+        // perpendicular column/row — the exact spot the player's collision
+        // stops them at when walking up to touch it, so the trigger radius
+        // can stay tight without ever being unreachable.
+        const dCenterX = bounds.left + approachDecoration.nx * roomW;
+        const dCenterY = bounds.top + approachDecoration.ny * roomH;
+        const side = s.approachSide ?? "south";
+        if (side === "east") {
+          sx = dCenterX + approachDecoration.width / 2 + PLAYER_RADIUS;
+          sy = bounds.top + s.ny * roomH;
+        } else if (side === "west") {
+          sx = dCenterX - approachDecoration.width / 2 - PLAYER_RADIUS;
+          sy = bounds.top + s.ny * roomH;
+        } else if (side === "north") {
+          sx = bounds.left + s.nx * roomW;
+          sy = dCenterY - approachDecoration.height / 2 - PLAYER_RADIUS;
+        } else {
+          sx = bounds.left + s.nx * roomW;
+          sy = dCenterY + approachDecoration.height / 2 + PLAYER_RADIUS;
+        }
       } else {
         sx = bounds.left + s.nx * roomW;
         sy = bounds.top + s.ny * roomH;
