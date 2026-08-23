@@ -24,6 +24,14 @@ const DECEL = 1400; // px/sec^2 while released
 const STOPPED_EPS = 4;
 const START_MARGIN = 80;
 
+// Autopilot skillset (Section 5): rather than teleporting straight there,
+// the car starts this far back from the destination (in the direction
+// it'll be facing on arrival) and drives itself the rest of the way over
+// AUTOPILOT_DURATION seconds, easing to a stop right at the door — a
+// short, visible arrival beat instead of an instant cut.
+const AUTOPILOT_ARRIVAL_DISTANCE = 400; // world px
+const AUTOPILOT_DURATION = 1; // seconds
+
 const ROAD_HALF_HEIGHT = 90;
 const LANE_OFFSET = 45; // right-hand-drive: car sits in its half of the road, not straddling the centerline
 const UTURN_DURATION = 0.8; // seconds for a real turn-around, not an instant flip
@@ -46,12 +54,17 @@ export class StreetScene {
   private uturnFromFacing: 1 | -1 = 1;
   private uturnToFacing: 1 | -1 = -1;
 
+  private isAutopiloting = false;
+  private autopilotT = 0;
+  private autopilotFromX = 0;
+  private autopilotToX = 0;
+
   // Vehicle Dealer skillsets (Section 5): Speed Boost raises top speed;
   // Reverse Driving unlocks the hold-to-back-up control (see the REVERSE
   // button in DriveControls) — its own top speed is reverseRatio * this
   // vehicle's forward top speed, so a higher-tier car backs up faster too
   // (0 means no Reverse Driving skillset, hiding the button entirely);
-  // Fast Travel unlocks the destination-jump button. Set via
+  // Autopilot unlocks the destination-drive button. Set via
   // setPerformance() whenever the active vehicle changes; all default to
   // no bonus (a Tier 1 car, or no car at all).
   private speedMultiplier = 1;
@@ -73,27 +86,53 @@ export class StreetScene {
   }
 
   /** Vehicle Dealer (Section 5): applies the active vehicle's skillsets. Called on purchase/switch. */
-  setPerformance(speedMultiplier: number, reverseRatio: number, fastTravelCapable: boolean) {
+  setPerformance(speedMultiplier: number, reverseRatio: number, autopilotCapable: boolean) {
     this.speedMultiplier = speedMultiplier;
     this.reverseRatio = reverseRatio;
     this.controls.setReverseVisible(reverseRatio > 0);
-    this.controls.setFastTravelVisible(fastTravelCapable);
+    this.controls.setAutopilotVisible(autopilotCapable);
   }
 
   /**
-   * Vehicle Dealer Fast Travel skillset: jump straight to a destination,
-   * skipping the drive. Lands exactly at the lot and facing the direction
-   * that makes its row the enterable (right-hand) side immediately, so the
-   * building is enterable on arrival rather than needing a follow-up U-turn.
+   * Vehicle Dealer Autopilot skillset: drives itself to a destination
+   * instead of the player driving there. Starts AUTOPILOT_ARRIVAL_DISTANCE
+   * back from the lot, already facing the direction that makes its row the
+   * enterable (right-hand) side, and eases to a stop right at the door
+   * over AUTOPILOT_DURATION seconds — a short arrival beat rather than an
+   * instant cut, so the building is enterable the moment it finishes
+   * without needing a follow-up U-turn.
    */
-  teleportTo(lot: LotInstance) {
+  autopilotTo(lot: LotInstance) {
+    const facing: 1 | -1 = lot.row === "bottom" ? 1 : -1;
+    const toX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, lot.worldX));
+    const fromX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, toX - AUTOPILOT_ARRIVAL_DISTANCE * facing));
     this.isUTurning = false;
     this.speed = 0;
-    this.worldX = Math.max(START_MARGIN, Math.min(ARENA_PLAZA_STOP, lot.worldX));
-    this.facing = lot.row === "bottom" ? 1 : -1;
+    this.facing = facing;
+    this.worldX = fromX;
+    this.isAutopiloting = true;
+    this.autopilotT = 0;
+    this.autopilotFromX = fromX;
+    this.autopilotToX = toX;
   }
 
   update(dt: number) {
+    if (this.isAutopiloting) {
+      this.autopilotT = Math.min(1, this.autopilotT + dt / AUTOPILOT_DURATION);
+      const eased = smoothstep(this.autopilotT);
+      this.worldX = this.autopilotFromX + (this.autopilotToX - this.autopilotFromX) * eased;
+      if (this.autopilotT >= 1) {
+        this.isAutopiloting = false;
+        this.worldX = this.autopilotToX;
+        this.speed = 0;
+      }
+      this.controls.setUTurnEnabled(false);
+      this.controls.setGasEnabled(false);
+      this.controls.setReverseEnabled(false);
+      this.controls.setAutopilotEnabled(false);
+      return;
+    }
+
     if (this.isUTurning) {
       // Faster cars spin around faster too — U-turn duration scales
       // inversely with Speed Boost (a Tier 1 car with no boost still takes
@@ -108,7 +147,7 @@ export class StreetScene {
       this.controls.setUTurnEnabled(false);
       this.controls.setGasEnabled(false);
       this.controls.setReverseEnabled(false);
-      this.controls.setFastTravelEnabled(false);
+      this.controls.setAutopilotEnabled(false);
       return;
     }
 
@@ -146,7 +185,7 @@ export class StreetScene {
     this.controls.setUTurnEnabled(stopped);
     this.controls.setGasEnabled(true);
     this.controls.setReverseEnabled(true);
-    this.controls.setFastTravelEnabled(stopped);
+    this.controls.setAutopilotEnabled(stopped);
   }
 
   private laneOffsetForFacing(facing: 1 | -1): number {
@@ -182,7 +221,7 @@ export class StreetScene {
   }
 
   isStopped(): boolean {
-    return !this.isUTurning && Math.abs(this.speed) < STOPPED_EPS;
+    return !this.isUTurning && !this.isAutopiloting && Math.abs(this.speed) < STOPPED_EPS;
   }
 
   // Screen-space point at a lot's entrance (where it meets the road), so

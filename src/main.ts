@@ -96,11 +96,11 @@ const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
 const tapZone = createTapZone(app);
 const street = new StreetScene(controls);
-// Fast Travel's REVERSE/⚡ TRAVEL buttons live inside DriveControls itself
+// Autopilot's REVERSE/🧭 AUTO buttons live inside DriveControls itself
 // (visibility gated per-vehicle by applyVehiclePerformance further below);
 // the click just needs to open the destination picker, which is main.ts's
 // job, not StreetScene's.
-controls.onFastTravel(() => openFastTravelMenu());
+controls.onAutopilot(() => openAutopilotMenu());
 
 const playerState = createPlayerState();
 // Vinnie's your manager from the very start — his number's already saved,
@@ -5291,7 +5291,7 @@ interface ShopItem {
 // it to vehiclesOwned and makes it active; an already-owned vehicle can be
 // re-selected as active any time, no repurchase needed. Higher tiers stack
 // skillsets rather than replacing the lower one.
-type VehicleSkillset = "speed" | "reverse" | "fasttravel";
+type VehicleSkillset = "speed" | "reverse" | "autopilot";
 interface VehicleDef {
   id: string;
   name: string;
@@ -5381,7 +5381,7 @@ const VEHICLE_CATALOG: VehicleDef[] = [
     name: "Supercar",
     price: 50000,
     tier: 4,
-    skillsets: ["speed", "reverse", "fasttravel"],
+    skillsets: ["speed", "reverse", "autopilot"],
     image: "🏎️💨",
     blurb: "The absolute pinnacle — blistering speed, instant reverse, and it can be anywhere in town in an instant.",
   },
@@ -5390,7 +5390,7 @@ const VEHICLE_CATALOG: VehicleDef[] = [
 function skillsetLabel(s: VehicleSkillset): string {
   if (s === "speed") return "Speed Boost";
   if (s === "reverse") return "Reverse Driving";
-  return "Fast Travel";
+  return "Autopilot";
 }
 
 // Exact per-skillset numbers are flagged "TBD" in the catalogue doc —
@@ -5408,13 +5408,13 @@ function activeVehicleDef(): VehicleDef | null {
   return VEHICLE_CATALOG.find((v) => v.id === playerState.activeVehicle) ?? null;
 }
 
-/** Re-applies the active vehicle's skillsets to the street scene (top speed, REVERSE/⚡ TRAVEL button visibility). Call whenever activeVehicle changes. */
+/** Re-applies the active vehicle's skillsets to the street scene (top speed, REVERSE/🧭 AUTO button visibility). Call whenever activeVehicle changes. */
 function applyVehiclePerformance() {
   const v = activeVehicleDef();
   street.setPerformance(
     v?.skillsets.includes("speed") ? TIER_SPEED_MULTIPLIER[v.tier] : 1,
     v?.skillsets.includes("reverse") ? TIER_REVERSE_RATIO[v.tier] : 0,
-    v?.skillsets.includes("fasttravel") ?? false,
+    v?.skillsets.includes("autopilot") ?? false,
   );
 }
 
@@ -5427,7 +5427,9 @@ function vehicleInfoText(v: VehicleDef): string {
     if (v.skillsets.includes("reverse")) {
       lines.push(`Reverse Driving: backs up at ${Math.round(TIER_REVERSE_RATIO[v.tier] * 100)}% of forward speed.`);
     }
-    if (v.skillsets.includes("fasttravel")) lines.push("Fast Travel: jump straight to any unlocked building.");
+    if (v.skillsets.includes("autopilot")) {
+      lines.push("Autopilot: drives itself straight to any unlocked building, arriving right at the door.");
+    }
   }
   return lines.join("\n");
 }
@@ -5553,11 +5555,11 @@ function buildVehicleSheet(): VehicleSheetData {
   };
 }
 
-/** Vehicle Dealer Fast Travel skillset: jump straight to any unlocked building, skipping the drive. */
-function openFastTravelMenu() {
+/** Vehicle Dealer Autopilot skillset: drives itself to any unlocked building, arriving right at the door. */
+function openAutopilotMenu() {
   const destinations = ENTERABLE_LOTS.filter((lot) => !lot.building.locked);
   locationMenu.open(() => ({
-    title: "⚡ Fast Travel",
+    title: "🧭 Autopilot",
     energyText: `Driving: ${activeVehicleDef()?.name ?? "None"}`,
     actions: destinations.map((lot) => ({
       id: `${lot.building.name}-${lot.row}`,
@@ -5565,9 +5567,9 @@ function openFastTravelMenu() {
       cost: 0,
       costLabel: "GO",
       run: () => {
-        street.teleportTo(lot);
+        street.autopilotTo(lot);
         locationMenu.close();
-        return `Fast traveled to ${lot.building.name}.`;
+        return `Autopilot engaged — arriving at ${lot.building.name}.`;
       },
     })),
   }));

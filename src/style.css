@@ -104,7 +104,7 @@ canvas {
 /* Vehicle Dealer skillset buttons — sit between U-TURN and GAS in the
    controls bar, hidden (via inline style) until the active vehicle owns
    that skillset. */
-.btn--fasttravel {
+.btn--autopilot {
   width: 64px;
   height: 64px;
   font-size: 11px;
