@@ -3075,7 +3075,7 @@ const JASMINE_ACTIONS: NpcActionRules = {
 // Mall Lobby wanderer, not tied to any one store — see getJasmineStation.
 const JASMINE: NpcDef = {
   id: "jasmine",
-  name: "Jasmine Carter",
+  name: "Jasmine Mensah",
   portrait: JASMINE_PORTRAIT,
   romanceEligible: true,
   greetings: {
