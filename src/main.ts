@@ -6770,6 +6770,13 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
   }
 
   const canPlay = info.kind === "dog" || info.kind === "cat";
+  // Once per phase, per pet — same hasUsedThisPhase/markUsedThisPhase
+  // mechanism every other once-per-phase Private Life activity uses
+  // (cleared on every sleep/phase advance, see clearUsedThisPhase). Not
+  // stage-gated like those, though — pets are a Home fixture available
+  // every phase, just rate-limited within it.
+  const feedId = `pet-feed-${stationId}`;
+  const playId = `pet-play-${stationId}`;
 
   // A mismatched toy doesn't just fall straight back to the Feed/Play
   // menu — it gets its own single-message beat with an OK to acknowledge,
@@ -6810,6 +6817,7 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
             disabled: count === 0,
             onSelect: () => {
               playerState.petToyInventory[t.id] -= 1;
+              markUsedThisPhase(playId);
               if (t.for === info.kind) {
                 petSupplyMood = "happy";
                 petSupplyMessage = "";
@@ -6835,23 +6843,28 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
   }
 
   const foodOwned = playerState.petFoodInventory[info.foodCategory] ?? 0;
+  const fedThisPhase = hasUsedThisPhase(feedId);
   const options: DialogueOption[] = [
     {
       id: "food",
       label: "🍖 Feed",
-      costLabel: foodOwned > 0 ? undefined : "NO FOOD",
-      disabled: foodOwned === 0,
+      costLabel: fedThisPhase ? "FED" : foodOwned > 0 ? undefined : "NO FOOD",
+      disabled: fedThisPhase || foodOwned === 0,
       onSelect: () => {
         playerState.petFoodInventory[info.foodCategory] -= 1;
+        markUsedThisPhase(feedId);
         petSupplyMood = "happy";
         petSupplyMessage = "";
       },
     },
   ];
   if (canPlay) {
+    const playedThisPhase = hasUsedThisPhase(playId);
     options.push({
       id: "toy",
       label: "🧸 Play with Toy",
+      costLabel: playedThisPhase ? "PLAYED" : undefined,
+      disabled: playedThisPhase,
       onSelect: () => {
         petSupplyView = "toy-pick";
       },
