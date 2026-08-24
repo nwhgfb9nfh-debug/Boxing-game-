@@ -6249,7 +6249,10 @@ function buildPetsListMenu(): MenuData {
         costLabel: capacity === 0 ? "LOCKED" : `${dogCatCount}/${capacity}`,
         disabled: capacity === 0,
         run: () => {
-          locationMenu.close();
+          // Deliberately doesn't close locationMenu — it stays open behind
+          // the vehicle sheet (same overlay z-index, later in DOM order so
+          // it paints on top) so Close on the sheet reveals the Pets list
+          // again instead of exiting the whole shop (see buildPetBreedSheet).
           openPetBreedSheet("dog");
           return "";
         },
@@ -6261,7 +6264,6 @@ function buildPetsListMenu(): MenuData {
         costLabel: capacity === 0 ? "LOCKED" : `${dogCatCount}/${capacity}`,
         disabled: capacity === 0,
         run: () => {
-          locationMenu.close();
           openPetBreedSheet("cat");
           return "";
         },
@@ -6389,7 +6391,14 @@ function buildPetBreedSheet(): VehicleSheetData {
       petBreedIndex = (petBreedIndex + 1) % breeds.length;
       petBreedMessage = "";
     },
-    onClose: () => vehicleSheet.close(),
+    // Closing returns to the Pets list (still open behind this sheet, see
+    // the "dog"/"cat" rows above) instead of exiting the whole Pet Store —
+    // re-opening forces a fresh render so a just-bought pet's updated
+    // count actually shows instead of the stale pre-purchase numbers.
+    onClose: () => {
+      vehicleSheet.close();
+      locationMenu.open(buildPetStoreMenu);
+    },
   };
 }
 
@@ -6713,7 +6722,7 @@ function describePetStation(stationId: string): PetStationInfo | null {
 // Yellow); there's no maintenance and no penalty for never visiting.
 let petSupplyMood: "neutral" | "happy" = "neutral";
 let petSupplyMessage = "";
-let petSupplyView: "main" | "toy-pick" = "main";
+let petSupplyView: "main" | "toy-pick" | "message" = "main";
 let petNameDraft = "";
 
 function openPetSupplyDialogue(stationId: string) {
@@ -6762,6 +6771,29 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
 
   const canPlay = info.kind === "dog" || info.kind === "cat";
 
+  // A mismatched toy doesn't just fall straight back to the Feed/Play
+  // menu — it gets its own single-message beat with an OK to acknowledge,
+  // same as the naming/food flows never silently skip a step. A matching
+  // toy skips this and goes straight to the happy reaction on the main
+  // screen below, same as Feed already does.
+  if (petSupplyView === "message") {
+    return {
+      portrait: info.portrait,
+      name: info.displayName,
+      text: petSupplyMessage,
+      options: [
+        {
+          id: "ok",
+          label: "OK",
+          onSelect: () => {
+            petSupplyView = "main";
+            petSupplyMessage = "";
+          },
+        },
+      ],
+    };
+  }
+
   if (petSupplyView === "toy-pick" && canPlay) {
     return {
       portrait: info.portrait,
@@ -6781,11 +6813,12 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
               if (t.for === info.kind) {
                 petSupplyMood = "happy";
                 petSupplyMessage = "";
+                petSupplyView = "main";
               } else {
                 petSupplyMood = "neutral";
                 petSupplyMessage = `${info.displayName} doesn't know what to do with that.`;
+                petSupplyView = "message";
               }
-              petSupplyView = "main";
             },
           };
         }),
