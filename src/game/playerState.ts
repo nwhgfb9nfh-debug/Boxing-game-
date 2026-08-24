@@ -140,13 +140,16 @@ export interface PlayerState {
   // Pet Store (Section 5, updated): pets are Home fixtures, same treatment
   // as children — decorative, no active-companion behavior, no decay/
   // penalty for not interacting (see main.ts's Pet Supply interaction).
-  // Dog/Cat are individually owned, one entry per pet (breed id, e.g.
-  // "labrador") — capacity gated by the player's best-owned house (see
-  // dogCatCapacity in main.ts). Fish/Snake/Bird/Rabbit are a single tank/
-  // cage per type, not bought individually — its Stage (also housing-
-  // gated) determines which species are present (see PET_TANK_META).
-  dogsOwned: string[];
-  catsOwned: string[];
+  // Dog/Cat are individually owned, one entry per pet — capacity gated by
+  // the player's best-owned house (see dogCatCapacity in main.ts). name is
+  // null until the player names it at Home (Dog/Cat only — a fresh pet
+  // shows as "Unnamed Dog"/"Unnamed Cat" and only offers naming until it
+  // has one; Fish/Snake/Bird/Rabbit are never named). Fish/Snake/Bird/
+  // Rabbit are a single tank/cage per type, not bought individually — its
+  // Stage (also housing-gated) determines which species are present (see
+  // PET_TANK_META).
+  dogsOwned: { breedId: string; name: string | null }[];
+  catsOwned: { breedId: string; name: string | null }[];
   fishTankOwned: boolean;
   fishTankStage: number;
   snakeTankOwned: boolean;
@@ -155,6 +158,15 @@ export interface PlayerState {
   birdCageStage: number;
   rabbitCageOwned: boolean;
   rabbitCageStage: number;
+  // Pet Supply (Section 5, updated): food/toys bought at the Mall, keyed
+  // by category ("dog"/"cat"/"fish"/"snake"/"bird"/"rabbit") for food and
+  // by item id ("tennis-ball"/"rubber-bone"/"toy-mouse"/"yarn-ball") for
+  // toys — each a plain owned count, decremented on use, same pattern as
+  // giftInventory below. Feeding/playing is purely cosmetic (the happy
+  // reaction) — using a toy on the wrong species just consumes it with no
+  // reaction, never anything worse.
+  petFoodInventory: Record<string, number>;
+  petToyInventory: Record<string, number>;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
   // are owned; giving the Engagement Ring asks to Propose instead of
@@ -301,6 +313,8 @@ export function createPlayerState(): PlayerState {
     birdCageStage: 0,
     rabbitCageOwned: false,
     rabbitCageStage: 0,
+    petFoodInventory: {},
+    petToyInventory: {},
     giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],

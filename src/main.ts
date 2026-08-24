@@ -6021,9 +6021,46 @@ const PET_TANK_META: Record<PetTankType, PetTankMeta> = {
   },
 };
 
+// Pet Supply (Section 5, updated): food (one per animal category) and
+// toys (species-restricted) bought here, used at Home. Buying is
+// unlimited stockpiling, same as the Gift Shop — no per-visit cap.
+type PetCategory = PetTankType | "dog" | "cat";
+interface PetFoodItem {
+  id: PetCategory;
+  name: string;
+  price: number;
+  icon: string;
+}
+const PET_FOOD_CATALOG: PetFoodItem[] = [
+  { id: "dog", name: "Dog Food", price: 20, icon: "🐶" },
+  { id: "cat", name: "Cat Food", price: 20, icon: "🐱" },
+  { id: "fish", name: "Fish Food", price: 10, icon: "🐟" },
+  { id: "snake", name: "Snake Food", price: 15, icon: "🐍" },
+  { id: "bird", name: "Bird Food", price: 12, icon: "🦜" },
+  { id: "rabbit", name: "Rabbit Food", price: 12, icon: "🐇" },
+];
+interface PetToyItem {
+  id: string;
+  name: string;
+  price: number;
+  icon: string;
+  for: "dog" | "cat";
+}
+// Tennis Ball/Rubber Bone are for dogs, Toy Mouse/Ball of Yarn for cats —
+// using one on the wrong species just wastes it (see buildPetSupplyDialogue).
+const PET_TOY_CATALOG: PetToyItem[] = [
+  { id: "tennis-ball", name: "Tennis Ball", price: 15, icon: "🎾", for: "dog" },
+  { id: "rubber-bone", name: "Rubber Bone", price: 15, icon: "🦴", for: "dog" },
+  { id: "toy-mouse", name: "Toy Mouse", price: 12, icon: "🐭", for: "cat" },
+  { id: "yarn-ball", name: "Ball of Yarn", price: 12, icon: "🧶", for: "cat" },
+];
+
+type PetStoreScreen = "main" | "pets" | "supply" | "supply-food" | "supply-toys";
+let petStoreScreen: PetStoreScreen = "main";
 let petStoreTankView: PetTankType | null = null;
 
 function openPetStoreMenu() {
+  petStoreScreen = "main";
   petStoreTankView = null;
   locationMenu.open(buildPetStoreMenu);
 }
@@ -6035,9 +6072,17 @@ function petTankRowLabel(type: PetTankType): string {
 }
 
 function buildPetStoreMenu(): MenuData {
-  if (petStoreTankView) return buildPetTankStageMenu(petStoreTankView);
-  const capacity = dogCatCapacity();
-  const dogCatCount = playerState.dogsOwned.length + playerState.catsOwned.length;
+  if (petStoreScreen === "supply-food") return buildPetFoodMenu();
+  if (petStoreScreen === "supply-toys") return buildPetToyMenu();
+  if (petStoreScreen === "supply") return buildPetSupplyCategoryMenu();
+  if (petStoreScreen === "pets") {
+    if (petStoreTankView) return buildPetTankStageMenu(petStoreTankView);
+    return buildPetsListMenu();
+  }
+  return buildPetStoreMainMenu();
+}
+
+function buildPetStoreMainMenu(): MenuData {
   const decayPerk = bestPetDecayReduction();
   return {
     title: "🐾 Pet Store",
@@ -6045,6 +6090,158 @@ function buildPetStoreMenu(): MenuData {
       `Money: $${playerState.money}` +
       (decayPerk > 0 ? `  ·  Neglect-decay perk (once that system exists): -${Math.round(decayPerk * 100)}%` : ""),
     actions: [
+      {
+        id: "pets",
+        label: "🐾 Pets",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          petStoreScreen = "pets";
+          return "";
+        },
+      },
+      {
+        id: "supply",
+        label: "🎾 Pet Supply",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          petStoreScreen = "supply";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildPetSupplyCategoryMenu(): MenuData {
+  return {
+    title: "🎾 Pet Supply",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          petStoreScreen = "main";
+          return "";
+        },
+      },
+      {
+        id: "food",
+        label: "🍖 Food",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          petStoreScreen = "supply-food";
+          return "";
+        },
+      },
+      {
+        id: "toys",
+        label: "🧸 Toys",
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          petStoreScreen = "supply-toys";
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+function buildPetFoodMenu(): MenuData {
+  return {
+    title: "🍖 Pet Food",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          petStoreScreen = "supply";
+          return "";
+        },
+      },
+      ...PET_FOOD_CATALOG.map((f) => {
+        const owned = playerState.petFoodInventory[f.id] ?? 0;
+        return {
+          id: f.id,
+          label: `${f.icon} ${f.name}${owned > 0 ? ` (${owned})` : ""}`,
+          cost: 0,
+          costLabel: `$${f.price}`,
+          run: () => {
+            if (playerState.money < f.price) {
+              return `Not enough money — need $${f.price}, have $${playerState.money}.`;
+            }
+            playerState.money -= f.price;
+            playerState.petFoodInventory[f.id] = (playerState.petFoodInventory[f.id] ?? 0) + 1;
+            return `Bought ${f.name}.`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+function buildPetToyMenu(): MenuData {
+  return {
+    title: "🧸 Pet Toys",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          petStoreScreen = "supply";
+          return "";
+        },
+      },
+      ...PET_TOY_CATALOG.map((t) => {
+        const owned = playerState.petToyInventory[t.id] ?? 0;
+        return {
+          id: t.id,
+          label: `${t.icon} ${t.name}${owned > 0 ? ` (${owned})` : ""}`,
+          cost: 0,
+          costLabel: `$${t.price}`,
+          run: () => {
+            if (playerState.money < t.price) {
+              return `Not enough money — need $${t.price}, have $${playerState.money}.`;
+            }
+            playerState.money -= t.price;
+            playerState.petToyInventory[t.id] = (playerState.petToyInventory[t.id] ?? 0) + 1;
+            return `Bought a ${t.name}.`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+function buildPetsListMenu(): MenuData {
+  const capacity = dogCatCapacity();
+  const dogCatCount = playerState.dogsOwned.length + playerState.catsOwned.length;
+  return {
+    title: "🐾 Pets",
+    energyText: `Money: $${playerState.money}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          petStoreScreen = "main";
+          return "";
+        },
+      },
       {
         id: "dog",
         label: "🐶 Dogs",
@@ -6160,7 +6357,7 @@ function buildPetBreedSheet(): VehicleSheetData {
   const capacity = dogCatCapacity();
   const totalOwned = playerState.dogsOwned.length + playerState.catsOwned.length;
   const full = totalOwned >= capacity;
-  const countOfThisBreed = owned.filter((id) => id === breed.id).length;
+  const countOfThisBreed = owned.filter((p) => p.breedId === breed.id).length;
 
   return {
     title: breed.name,
@@ -6179,8 +6376,8 @@ function buildPetBreedSheet(): VehicleSheetData {
             return;
           }
           playerState.money -= price;
-          owned.push(breed.id);
-          petBreedMessage = `Adopted a ${breed.name}!`;
+          owned.push({ breedId: breed.id, name: null });
+          petBreedMessage = `Adopted a ${breed.name}! Name it at Home to unlock feeding and playtime.`;
         },
       },
     ],
@@ -6422,80 +6619,108 @@ function petStationPosition(index: number): { nx: number; ny: number } {
 }
 function getPetStations(buildingName: string): Station[] {
   if (!HOUSE_NAMES.has(buildingName)) return [];
-  const stations: Station[] = [];
-  playerState.dogsOwned.forEach((breedId, i) => {
-    const breed = DOG_BREEDS.find((b) => b.id === breedId);
-    stations.push({
-      id: `pet-dog-${i}`,
-      label: breed?.name ?? "Dog",
-      kind: "npc",
-      ...petStationPosition(stations.length),
-    });
+  const ids: string[] = [];
+  playerState.dogsOwned.forEach((_, i) => ids.push(`pet-dog-${i}`));
+  playerState.catsOwned.forEach((_, i) => ids.push(`pet-cat-${i}`));
+  if (playerState.fishTankOwned) ids.push("pet-fish");
+  if (playerState.snakeTankOwned) ids.push("pet-snake");
+  if (playerState.birdCageOwned) ids.push("pet-bird");
+  if (playerState.rabbitCageOwned) ids.push("pet-rabbit");
+  return ids.map((id, index) => {
+    const info = describePetStation(id)!;
+    return { id, label: info.displayName, kind: "npc", ...petStationPosition(index) };
   });
-  playerState.catsOwned.forEach((breedId, i) => {
-    const breed = CAT_BREEDS.find((b) => b.id === breedId);
-    stations.push({
-      id: `pet-cat-${i}`,
-      label: breed?.name ?? "Cat",
-      kind: "npc",
-      ...petStationPosition(stations.length),
-    });
-  });
-  if (playerState.fishTankOwned) {
-    stations.push({ id: "pet-fish", label: "Fish Tank", kind: "npc", ...petStationPosition(stations.length) });
-  }
-  if (playerState.snakeTankOwned) {
-    stations.push({ id: "pet-snake", label: "Snake Tank", kind: "npc", ...petStationPosition(stations.length) });
-  }
-  if (playerState.birdCageOwned) {
-    stations.push({ id: "pet-bird", label: "Bird Cage", kind: "npc", ...petStationPosition(stations.length) });
-  }
-  if (playerState.rabbitCageOwned) {
-    stations.push({ id: "pet-rabbit", label: "Rabbit Cage", kind: "npc", ...petStationPosition(stations.length) });
-  }
-  return stations;
 }
 
-/** Pet Supply interaction (Section 5, updated): resolves a "pet-*" station id to what's shown in the dialogue — name + portrait (species emoji, joined for a multi-species tank/cage). */
-function describePetStation(stationId: string): { name: string; portrait: string } | null {
+interface PetStationInfo {
+  kind: "dog" | "cat" | "tank";
+  displayName: string;
+  portrait: string;
+  foodCategory: PetCategory;
+  petIndex?: number; // dog/cat only — index into dogsOwned/catsOwned
+  named?: boolean; // dog/cat only
+}
+
+/** Pet Supply interaction (Section 5, updated): resolves a "pet-*" station id to what's shown in the dialogue. Dog/Cat show "Unnamed Dog/Cat" until named at Home (see buildPetSupplyDialogue); Fish/Snake/Bird/Rabbit are never named. */
+function describePetStation(stationId: string): PetStationInfo | null {
   const dogMatch = stationId.match(/^pet-dog-(\d+)$/);
   if (dogMatch) {
-    const breed = DOG_BREEDS.find((b) => b.id === playerState.dogsOwned[Number(dogMatch[1])]);
-    return breed ? { name: breed.name, portrait: breed.image } : null;
+    const i = Number(dogMatch[1]);
+    const pet = playerState.dogsOwned[i];
+    if (!pet) return null;
+    const breed = DOG_BREEDS.find((b) => b.id === pet.breedId);
+    return {
+      kind: "dog",
+      displayName: pet.name ?? "Unnamed Dog",
+      portrait: breed?.image ?? "🐶",
+      foodCategory: "dog",
+      petIndex: i,
+      named: !!pet.name,
+    };
   }
   const catMatch = stationId.match(/^pet-cat-(\d+)$/);
   if (catMatch) {
-    const breed = CAT_BREEDS.find((b) => b.id === playerState.catsOwned[Number(catMatch[1])]);
-    return breed ? { name: breed.name, portrait: breed.image } : null;
+    const i = Number(catMatch[1]);
+    const pet = playerState.catsOwned[i];
+    if (!pet) return null;
+    const breed = CAT_BREEDS.find((b) => b.id === pet.breedId);
+    return {
+      kind: "cat",
+      displayName: pet.name ?? "Unnamed Cat",
+      portrait: breed?.image ?? "🐱",
+      foodCategory: "cat",
+      petIndex: i,
+      named: !!pet.name,
+    };
   }
   if (stationId === "pet-fish") {
-    return { name: "Fish Tank", portrait: fishSpeciesAtStage(playerState.fishTankStage).map((s) => s.image).join("") };
+    return {
+      kind: "tank",
+      displayName: "Fish Tank",
+      portrait: fishSpeciesAtStage(playerState.fishTankStage).map((s) => s.image).join(""),
+      foodCategory: "fish",
+    };
   }
   if (stationId === "pet-snake") {
     return {
-      name: "Snake Tank",
+      kind: "tank",
+      displayName: "Snake Tank",
       portrait: snakeSpeciesAtStage(playerState.snakeTankStage).map((s) => s.image).join(""),
+      foodCategory: "snake",
     };
   }
   if (stationId === "pet-bird") {
-    return { name: "Bird Cage", portrait: birdSpeciesAtStage(playerState.birdCageStage).map((s) => s.image).join("") };
+    return {
+      kind: "tank",
+      displayName: "Bird Cage",
+      portrait: birdSpeciesAtStage(playerState.birdCageStage).map((s) => s.image).join(""),
+      foodCategory: "bird",
+    };
   }
   if (stationId === "pet-rabbit") {
     return {
-      name: "Rabbit Cage",
+      kind: "tank",
+      displayName: "Rabbit Cage",
       portrait: rabbitSpeciesAtStage(playerState.rabbitCageStage).map((s) => s.image).join(""),
+      foodCategory: "rabbit",
     };
   }
   return null;
 }
 
-// Purely cosmetic — not a Tamagotchi decay system. Give Food/Give Toy just
+// Purely cosmetic — not a Tamagotchi decay system. Feeding/playing just
 // pulses the portrait happy (reference: Pikachu's reactions in Pokémon
 // Yellow); there's no maintenance and no penalty for never visiting.
 let petSupplyMood: "neutral" | "happy" = "neutral";
+let petSupplyMessage = "";
+let petSupplyView: "main" | "toy-pick" = "main";
+let petNameDraft = "";
 
 function openPetSupplyDialogue(stationId: string) {
   petSupplyMood = "neutral";
+  petSupplyMessage = "";
+  petSupplyView = "main";
+  petNameDraft = "";
   dialogueBox.open(() => buildPetSupplyDialogue(stationId));
 }
 
@@ -6509,16 +6734,106 @@ function buildPetSupplyDialogue(stationId: string): DialogueData {
       options: [{ id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() }],
     };
   }
+
+  // Dog/Cat, not yet named: naming is the only thing on offer — Feed/Play
+  // unlock once it has a name (Fish/Snake/Bird/Rabbit are never named).
+  if ((info.kind === "dog" || info.kind === "cat") && !info.named) {
+    return {
+      portrait: info.portrait,
+      name: info.displayName,
+      text: `Give your new ${info.kind} a name.`,
+      textInput: {
+        value: petNameDraft,
+        placeholder: "Name",
+        submitLabel: "Name",
+        onChange: (v) => {
+          petNameDraft = v;
+        },
+        onSubmit: () => {
+          const trimmed = petNameDraft.trim();
+          if (!trimmed) return;
+          const list = info.kind === "dog" ? playerState.dogsOwned : playerState.catsOwned;
+          list[info.petIndex!].name = trimmed;
+        },
+      },
+      options: [{ id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() }],
+    };
+  }
+
+  const canPlay = info.kind === "dog" || info.kind === "cat";
+
+  if (petSupplyView === "toy-pick" && canPlay) {
+    return {
+      portrait: info.portrait,
+      name: info.displayName,
+      text: "Pick a toy to play with.",
+      optionsLayout: "grid",
+      options: [
+        ...PET_TOY_CATALOG.map((t) => {
+          const count = playerState.petToyInventory[t.id] ?? 0;
+          return {
+            id: t.id,
+            icon: t.icon,
+            label: `${t.name} (${count})`,
+            disabled: count === 0,
+            onSelect: () => {
+              playerState.petToyInventory[t.id] -= 1;
+              if (t.for === info.kind) {
+                petSupplyMood = "happy";
+                petSupplyMessage = "";
+              } else {
+                petSupplyMood = "neutral";
+                petSupplyMessage = `${info.displayName} doesn't know what to do with that.`;
+              }
+              petSupplyView = "main";
+            },
+          };
+        }),
+        {
+          id: "back",
+          icon: "↩️",
+          label: "Back",
+          onSelect: () => {
+            petSupplyView = "main";
+          },
+        },
+      ],
+    };
+  }
+
+  const foodOwned = playerState.petFoodInventory[info.foodCategory] ?? 0;
+  const options: DialogueOption[] = [
+    {
+      id: "food",
+      label: "🍖 Feed",
+      costLabel: foodOwned > 0 ? undefined : "NO FOOD",
+      disabled: foodOwned === 0,
+      onSelect: () => {
+        playerState.petFoodInventory[info.foodCategory] -= 1;
+        petSupplyMood = "happy";
+        petSupplyMessage = "";
+      },
+    },
+  ];
+  if (canPlay) {
+    options.push({
+      id: "toy",
+      label: "🧸 Play with Toy",
+      onSelect: () => {
+        petSupplyView = "toy-pick";
+      },
+    });
+  }
+  options.push({ id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() });
+
   return {
     portrait: info.portrait,
-    name: info.name,
-    text: petSupplyMood === "happy" ? `${info.name} is thrilled! 🎉` : `${info.name} looks up at you.`,
+    name: info.displayName,
+    text:
+      petSupplyMessage ||
+      (petSupplyMood === "happy" ? `${info.displayName} is thrilled! 🎉` : `${info.displayName} looks up at you.`),
     portraitMood: petSupplyMood === "happy" ? "happy" : undefined,
-    options: [
-      { id: "food", label: "🍖 Give Food", onSelect: () => { petSupplyMood = "happy"; } },
-      { id: "toy", label: "🧸 Give Toy", onSelect: () => { petSupplyMood = "happy"; } },
-      { id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() },
-    ],
+    options,
   };
 }
 
