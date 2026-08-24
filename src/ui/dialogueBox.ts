@@ -39,6 +39,11 @@ export interface DialogueData {
   // set too long to read comfortably as a vertical list, e.g. the full
   // 16-item Gift catalog.
   optionsLayout?: "list" | "grid";
+  // Pet Supply interaction: pulses the portrait with a brief happy bounce
+  // (reference: Pikachu's reactions in Pokémon Yellow). Replays fresh
+  // every render since the portrait element is rebuilt from scratch each
+  // time — no timer/reset needed to make it fire again.
+  portraitMood?: "happy";
 }
 
 export interface DialogueBox {
@@ -74,17 +79,18 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
 
   function render() {
     if (!builder) return;
-    const { portrait: portraitSrc, name, text, options, textInput, optionsLayout } = builder();
+    const { portrait: portraitSrc, name, text, options, textInput, optionsLayout, portraitMood } = builder();
+    const moodClass = portraitMood === "happy" ? " dialogue-portrait--happy" : "";
 
     portrait.innerHTML = "";
     if (portraitSrc.startsWith("data:") || portraitSrc.startsWith("http")) {
       const img = document.createElement("img");
-      img.className = "dialogue-portrait__img";
+      img.className = "dialogue-portrait__img" + moodClass;
       img.src = portraitSrc;
       portrait.appendChild(img);
     } else {
       const emoji = document.createElement("span");
-      emoji.className = "dialogue-portrait__emoji";
+      emoji.className = "dialogue-portrait__emoji" + moodClass;
       emoji.textContent = portraitSrc;
       portrait.appendChild(emoji);
     }

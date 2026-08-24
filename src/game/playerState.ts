@@ -125,19 +125,36 @@ export interface PlayerState {
   // booked for). Each sleepAtBed() call that lands on a Private Life stage
   // consumes one use and refills Energy Star to 110 instead of 100.
   vacationEnergyBonusUses: number;
-  // Mall (Section 5): mostly cosmetic, money-only purchases. Pet is a
-  // one-time owned collectible; gifts are bought here but given away once
-  // the NPC/romance system exists to receive them.
+  // Mall (Section 5): mostly cosmetic, money-only purchases. Gifts are
+  // bought here but given away once the NPC/romance system exists to
+  // receive them.
   // Vehicle Dealer (Section 5, updated): vehicles have real gameplay
-  // mechanics, so unlike Pet the player can own several at once and
-  // switches which one is "active" (driven) rather than replacing it.
+  // mechanics, so the player can own several at once and switches which
+  // one is "active" (driven) rather than replacing it.
   // standardVehicle is the Garage's default — walking out onto the street
   // from any house resets activeVehicle to it, unless the Garage's Drive
   // option was just used for that same visit (see main.ts's exitBuilding).
   vehiclesOwned: string[];
   activeVehicle: string | null;
   standardVehicle: string | null;
-  petOwned: string | null;
+  // Pet Store (Section 5, updated): pets are Home fixtures, same treatment
+  // as children — decorative, no active-companion behavior, no decay/
+  // penalty for not interacting (see main.ts's Pet Supply interaction).
+  // Dog/Cat are individually owned, one entry per pet (breed id, e.g.
+  // "labrador") — capacity gated by the player's best-owned house (see
+  // dogCatCapacity in main.ts). Fish/Snake/Bird/Rabbit are a single tank/
+  // cage per type, not bought individually — its Stage (also housing-
+  // gated) determines which species are present (see PET_TANK_META).
+  dogsOwned: string[];
+  catsOwned: string[];
+  fishTankOwned: boolean;
+  fishTankStage: number;
+  snakeTankOwned: boolean;
+  snakeTankStage: number;
+  birdCageOwned: boolean;
+  birdCageStage: number;
+  rabbitCageOwned: boolean;
+  rabbitCageStage: number;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
   // are owned; giving the Engagement Ring asks to Propose instead of
@@ -274,7 +291,16 @@ export function createPlayerState(): PlayerState {
     vehiclesOwned: [],
     activeVehicle: null,
     standardVehicle: null,
-    petOwned: null,
+    dogsOwned: [],
+    catsOwned: [],
+    fishTankOwned: false,
+    fishTankStage: 0,
+    snakeTankOwned: false,
+    snakeTankStage: 0,
+    birdCageOwned: false,
+    birdCageStage: 0,
+    rabbitCageOwned: false,
+    rabbitCageStage: 0,
     giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],

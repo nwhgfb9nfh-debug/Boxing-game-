@@ -5813,34 +5813,387 @@ function openGiftShopMenu() {
   });
 }
 
-const PET_OPTIONS: ShopItem[] = [
-  { id: "dog", name: "Dog", price: 500 },
-  { id: "cat", name: "Cat", price: 400 },
-  { id: "exotic-bird", name: "Exotic Bird", price: 1500 },
+// Pet Store (Section 5, updated): pets are Home fixtures, same treatment
+// as children — decorative, no active-companion behavior, no maintenance/
+// decay (see getPetStations/openPetSupplyDialogue further below for the
+// in-house side). Two different purchase mechanics:
+//  - Dog/Cat: individually selected (one specific breed per purchase),
+//    own several up to a housing-gated capacity — same paged info-card
+//    carousel as the Vehicle Dealer (reusing the same `vehicleSheet`
+//    overlay; it was already fully generic, not vehicle-specific).
+//  - Fish/Snake/Bird/Rabbit: a single tank/cage per type, never bought
+//    individually — the player upgrades its Stage (1-4, also housing-
+//    gated), and which species are present is derived from that Stage.
+interface PetBreed {
+  id: string;
+  name: string;
+  image: string; // emoji placeholder — no real pet art yet
+}
+interface PetSpecies {
+  id: string;
+  name: string;
+  image: string;
+}
+
+const DOG_BREEDS: PetBreed[] = [
+  { id: "bulldog", name: "Bulldog", image: "🐶" },
+  { id: "labrador", name: "Labrador", image: "🐕" },
+  { id: "rottweiler", name: "Rottweiler", image: "🐕‍🦺" },
+  { id: "pitbull", name: "Pitbull", image: "🦮" },
 ];
+const CAT_BREEDS: PetBreed[] = [
+  { id: "tuxedo", name: "Tuxedo Cat", image: "🐱" },
+  { id: "black", name: "Black Cat", image: "🐈‍⬛" },
+  { id: "white", name: "White Cat", image: "🐈" },
+  { id: "orange", name: "Orange Cat", image: "🐈" },
+];
+const DOG_PRICE = 450;
+const CAT_PRICE = 350;
+
+// Fish accumulates one species per stage; Snake/Bird/Rabbit only add their
+// second species at Stage 3, staying flat across 1-2 and 3-4 — matches the
+// catalogue doc's tables exactly.
+const FISH_SPECIES: PetSpecies[] = [
+  { id: "goldfish", name: "Goldfish", image: "🐟" },
+  { id: "betta", name: "Betta", image: "🐠" },
+  { id: "clownfish", name: "Clownfish", image: "🐡" },
+  { id: "koi", name: "Koi", image: "🎏" },
+];
+const SNAKE_SPECIES: PetSpecies[] = [
+  { id: "corn-snake", name: "Corn Snake", image: "🐍" },
+  { id: "ball-python", name: "Ball Python", image: "🐍" },
+];
+const BIRD_SPECIES: PetSpecies[] = [
+  { id: "parakeet", name: "Parakeet", image: "🦜" },
+  { id: "cockatiel", name: "Cockatiel", image: "🐦" },
+];
+const RABBIT_SPECIES: PetSpecies[] = [
+  { id: "white-rabbit", name: "White Rabbit", image: "🐇" },
+  { id: "brown-rabbit", name: "Brown Rabbit", image: "🐰" },
+];
+function fishSpeciesAtStage(stage: number): PetSpecies[] {
+  return FISH_SPECIES.slice(0, Math.max(0, Math.min(4, stage)));
+}
+function snakeSpeciesAtStage(stage: number): PetSpecies[] {
+  return stage >= 3 ? SNAKE_SPECIES : SNAKE_SPECIES.slice(0, 1);
+}
+function birdSpeciesAtStage(stage: number): PetSpecies[] {
+  return stage >= 3 ? BIRD_SPECIES : BIRD_SPECIES.slice(0, 1);
+}
+function rabbitSpeciesAtStage(stage: number): PetSpecies[] {
+  return stage >= 3 ? RABBIT_SPECIES : RABBIT_SPECIES.slice(0, 1);
+}
+
+// Housing gates pet capacity — ranked by the player's single BEST owned
+// house (not summed across every house owned), same "highest tier reached"
+// model the rest of Section 5 uses. Tank/cage Stage caps at 4 from
+// Townhouse on; Dog/Cat capacity keeps climbing through Suburban/Mansion.
+const HOUSE_TIER_RANK: Record<string, number> = {
+  Trailer: 0,
+  Apartment: 1,
+  "Penthouse Apartment": 2,
+  Townhouse: 3,
+  "Suburban House": 4,
+  Mansion: 5,
+};
+const HOUSE_PET_TANK_STAGE: Record<string, number> = {
+  Trailer: 1,
+  Apartment: 2,
+  "Penthouse Apartment": 3,
+  Townhouse: 4,
+  "Suburban House": 4,
+  Mansion: 4,
+};
+const HOUSE_DOGCAT_CAPACITY: Record<string, number> = {
+  Trailer: 0,
+  Apartment: 0,
+  "Penthouse Apartment": 1,
+  Townhouse: 2,
+  "Suburban House": 4,
+  Mansion: 8,
+};
+function bestOwnedHouseName(): string {
+  let best = "Trailer";
+  let bestRank = -1;
+  for (const h of getHousingBuildings()) {
+    if (h.locked) continue;
+    const rank = HOUSE_TIER_RANK[h.name] ?? -1;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = h.name;
+    }
+  }
+  return best;
+}
+function petTankCeiling(): number {
+  return HOUSE_PET_TANK_STAGE[bestOwnedHouseName()] ?? 1;
+}
+function dogCatCapacity(): number {
+  return HOUSE_DOGCAT_CAPACITY[bestOwnedHouseName()] ?? 0;
+}
+
+// Decay perk (Section 5, updated): once the planned Wife-neglect Romance
+// decay system exists, only the player's single BEST-owned pet reduces
+// it (no stacking across multiple pets). Exposed now as pure lookup
+// infrastructure — there's no decay system yet to actually call it.
+const PET_DECAY_REDUCTION: Record<"dog" | "cat" | "bird" | "rabbit" | "fish" | "snake", number> = {
+  dog: 0.5,
+  cat: 0.5,
+  bird: 0.25,
+  rabbit: 0.25,
+  fish: 0.1,
+  snake: 0.1,
+};
+function bestPetDecayReduction(): number {
+  let best = 0;
+  if (playerState.dogsOwned.length > 0) best = Math.max(best, PET_DECAY_REDUCTION.dog);
+  if (playerState.catsOwned.length > 0) best = Math.max(best, PET_DECAY_REDUCTION.cat);
+  if (playerState.birdCageOwned) best = Math.max(best, PET_DECAY_REDUCTION.bird);
+  if (playerState.rabbitCageOwned) best = Math.max(best, PET_DECAY_REDUCTION.rabbit);
+  if (playerState.fishTankOwned) best = Math.max(best, PET_DECAY_REDUCTION.fish);
+  if (playerState.snakeTankOwned) best = Math.max(best, PET_DECAY_REDUCTION.snake);
+  return best;
+}
+
+type PetTankType = "fish" | "snake" | "bird" | "rabbit";
+interface PetTankMeta {
+  label: string;
+  icon: string;
+  minStage: number; // Bird/Rabbit aren't purchasable at all below Stage 2 — no Stage 1 for them
+  prices: Record<number, number>;
+  speciesAtStage: (stage: number) => PetSpecies[];
+  isOwned: () => boolean;
+  currentStage: () => number;
+  purchase: (stage: number) => void;
+}
+const PET_TANK_META: Record<PetTankType, PetTankMeta> = {
+  fish: {
+    label: "Fish Tank",
+    icon: "🐟",
+    minStage: 1,
+    prices: { 1: 100, 2: 200, 3: 350, 4: 550 },
+    speciesAtStage: fishSpeciesAtStage,
+    isOwned: () => playerState.fishTankOwned,
+    currentStage: () => playerState.fishTankStage,
+    purchase: (stage) => {
+      playerState.fishTankOwned = true;
+      playerState.fishTankStage = stage;
+    },
+  },
+  snake: {
+    label: "Snake Tank",
+    icon: "🐍",
+    minStage: 1,
+    prices: { 1: 150, 2: 280, 3: 450, 4: 700 },
+    speciesAtStage: snakeSpeciesAtStage,
+    isOwned: () => playerState.snakeTankOwned,
+    currentStage: () => playerState.snakeTankStage,
+    purchase: (stage) => {
+      playerState.snakeTankOwned = true;
+      playerState.snakeTankStage = stage;
+    },
+  },
+  bird: {
+    label: "Bird Cage",
+    icon: "🦜",
+    minStage: 2,
+    prices: { 2: 200, 3: 350, 4: 550 },
+    speciesAtStage: birdSpeciesAtStage,
+    isOwned: () => playerState.birdCageOwned,
+    currentStage: () => playerState.birdCageStage,
+    purchase: (stage) => {
+      playerState.birdCageOwned = true;
+      playerState.birdCageStage = stage;
+    },
+  },
+  rabbit: {
+    label: "Rabbit Cage",
+    icon: "🐇",
+    minStage: 2,
+    prices: { 2: 180, 3: 320, 4: 500 },
+    speciesAtStage: rabbitSpeciesAtStage,
+    isOwned: () => playerState.rabbitCageOwned,
+    currentStage: () => playerState.rabbitCageStage,
+    purchase: (stage) => {
+      playerState.rabbitCageOwned = true;
+      playerState.rabbitCageStage = stage;
+    },
+  },
+};
+
+let petStoreTankView: PetTankType | null = null;
 
 function openPetStoreMenu() {
-  locationMenu.open(() => ({
+  petStoreTankView = null;
+  locationMenu.open(buildPetStoreMenu);
+}
+
+function petTankRowLabel(type: PetTankType): string {
+  const meta = PET_TANK_META[type];
+  if (!meta.isOwned()) return meta.minStage > petTankCeiling() ? "LOCKED" : "›";
+  return `Stage ${meta.currentStage()}/4`;
+}
+
+function buildPetStoreMenu(): MenuData {
+  if (petStoreTankView) return buildPetTankStageMenu(petStoreTankView);
+  const capacity = dogCatCapacity();
+  const dogCatCount = playerState.dogsOwned.length + playerState.catsOwned.length;
+  const decayPerk = bestPetDecayReduction();
+  return {
     title: "🐾 Pet Store",
-    energyText: `Money: $${playerState.money}  ·  Owned: ${playerState.petOwned ?? "None"}`,
-    actions: PET_OPTIONS.map((p) => {
-      const owned = playerState.petOwned === p.id;
-      return {
-        id: p.id,
-        label: p.name,
+    energyText:
+      `Money: $${playerState.money}` +
+      (decayPerk > 0 ? `  ·  Neglect-decay perk (once that system exists): -${Math.round(decayPerk * 100)}%` : ""),
+    actions: [
+      {
+        id: "dog",
+        label: "🐶 Dogs",
         cost: 0,
-        costLabel: owned ? "OWNED" : `$${p.price}`,
-        disabled: owned,
+        costLabel: capacity === 0 ? "LOCKED" : `${dogCatCount}/${capacity}`,
+        disabled: capacity === 0,
         run: () => {
-          if (owned) return `You already own a ${p.name}.`;
-          if (playerState.money < p.price) return `Not enough money — need $${p.price}, have $${playerState.money}.`;
-          playerState.money -= p.price;
-          playerState.petOwned = p.id;
-          return `Adopted a ${p.name}! (Cosmetic for now.)`;
+          locationMenu.close();
+          openPetBreedSheet("dog");
+          return "";
         },
-      };
-    }),
-  }));
+      },
+      {
+        id: "cat",
+        label: "🐱 Cats",
+        cost: 0,
+        costLabel: capacity === 0 ? "LOCKED" : `${dogCatCount}/${capacity}`,
+        disabled: capacity === 0,
+        run: () => {
+          locationMenu.close();
+          openPetBreedSheet("cat");
+          return "";
+        },
+      },
+      ...(["fish", "snake", "bird", "rabbit"] as PetTankType[]).map((type) => ({
+        id: type,
+        label: `${PET_TANK_META[type].icon} ${PET_TANK_META[type].label}`,
+        cost: 0,
+        costLabel: petTankRowLabel(type),
+        disabled: !PET_TANK_META[type].isOwned() && PET_TANK_META[type].minStage > petTankCeiling(),
+        run: () => {
+          petStoreTankView = type;
+          return "";
+        },
+      })),
+    ],
+  };
+}
+
+function buildPetTankStageMenu(type: PetTankType): MenuData {
+  const meta = PET_TANK_META[type];
+  const ceiling = petTankCeiling();
+  const owned = meta.isOwned();
+  const currentStage = meta.currentStage();
+  const stages: number[] = [];
+  for (let s = meta.minStage; s <= 4; s++) stages.push(s);
+
+  return {
+    title: `${meta.icon} ${meta.label}`,
+    energyText: `Money: $${playerState.money}  ·  Housing ceiling: Stage ${ceiling}/4`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          petStoreTankView = null;
+          return "";
+        },
+      },
+      ...stages.map((stage) => {
+        const locked = stage > ceiling;
+        const reached = owned && currentStage >= stage;
+        const price = meta.prices[stage];
+        const speciesNames = meta.speciesAtStage(stage)
+          .map((s) => s.name)
+          .join(" + ");
+        return {
+          id: `stage-${stage}`,
+          label: `Stage ${stage} — ${speciesNames}`,
+          cost: 0,
+          costLabel: reached ? "OWNED" : locked ? "LOCKED" : `$${price}`,
+          disabled: reached || locked,
+          run: () => {
+            if (reached) return "Already at this stage or better.";
+            if (locked) return `Needs better housing — ceiling is Stage ${ceiling}.`;
+            // Trailer only has room for one tank, Fish or Snake — the
+            // restriction lifts on its own once the ceiling rises past
+            // Stage 1 (Apartment+), so it only matters on a first purchase.
+            if (!owned && (type === "fish" || type === "snake") && ceiling === 1) {
+              const other = type === "fish" ? playerState.snakeTankOwned : playerState.fishTankOwned;
+              if (other) return "Trailer only has room for one tank — Fish or Snake, not both.";
+            }
+            if (playerState.money < price) return `Not enough money — need $${price}, have $${playerState.money}.`;
+            playerState.money -= price;
+            meta.purchase(stage);
+            return `${meta.label} upgraded — now home to ${speciesNames}!`;
+          },
+        };
+      }),
+    ],
+  };
+}
+
+type PetBreedCategory = "dog" | "cat";
+let petBreedCategory: PetBreedCategory = "dog";
+let petBreedIndex = 0;
+let petBreedMessage = "";
+
+function openPetBreedSheet(category: PetBreedCategory) {
+  petBreedCategory = category;
+  petBreedIndex = 0;
+  petBreedMessage = "";
+  vehicleSheet.open(buildPetBreedSheet);
+}
+
+function buildPetBreedSheet(): VehicleSheetData {
+  const breeds = petBreedCategory === "dog" ? DOG_BREEDS : CAT_BREEDS;
+  const price = petBreedCategory === "dog" ? DOG_PRICE : CAT_PRICE;
+  const owned = petBreedCategory === "dog" ? playerState.dogsOwned : playerState.catsOwned;
+  const breed = breeds[petBreedIndex];
+  const capacity = dogCatCapacity();
+  const totalOwned = playerState.dogsOwned.length + playerState.catsOwned.length;
+  const full = totalOwned >= capacity;
+  const countOfThisBreed = owned.filter((id) => id === breed.id).length;
+
+  return {
+    title: breed.name,
+    image: breed.image,
+    infoText: `Wallet: $${playerState.money}\nHousehold pets: ${totalOwned}/${capacity}${countOfThisBreed > 0 ? `\nYou already have ${countOfThisBreed}.` : ""}`,
+    priceText: `$${price}`,
+    message: petBreedMessage || undefined,
+    actions: [
+      {
+        id: "buy",
+        label: full ? "🏠 Household Full" : `💰 Buy — $${price}`,
+        disabled: full,
+        run: () => {
+          if (playerState.money < price) {
+            petBreedMessage = `Not enough money — need $${price}, have $${playerState.money}.`;
+            return;
+          }
+          playerState.money -= price;
+          owned.push(breed.id);
+          petBreedMessage = `Adopted a ${breed.name}!`;
+        },
+      },
+    ],
+    onPrev: () => {
+      petBreedIndex = (petBreedIndex - 1 + breeds.length) % breeds.length;
+      petBreedMessage = "";
+    },
+    onNext: () => {
+      petBreedIndex = (petBreedIndex + 1) % breeds.length;
+      petBreedMessage = "";
+    },
+    onClose: () => vehicleSheet.close(),
+  };
 }
 
 const FURNITURE_ITEMS: ShopItem[] = [
@@ -6054,6 +6407,121 @@ function getChildStations(buildingName: string): Station[] {
   }));
 }
 
+// Pet Store (Section 5, updated): pets are Home fixtures like children,
+// but not tied to a spouse — they show up in every house the player owns
+// regardless of romance state, so (unlike getChildStations) this is
+// unconditional. A simple 4-per-row grid, generated rather than hand-
+// authored since the count varies a lot (0 to 8 Dog/Cat slots + up to 4
+// tank/cage stations) — sits between the bed/spouse row and the kids row
+// so it doesn't collide with either.
+function petStationPosition(index: number): { nx: number; ny: number } {
+  const perRow = 4;
+  const row = Math.floor(index / perRow);
+  const col = index % perRow;
+  return { nx: 0.15 + col * 0.22, ny: 0.45 + row * 0.13 };
+}
+function getPetStations(buildingName: string): Station[] {
+  if (!HOUSE_NAMES.has(buildingName)) return [];
+  const stations: Station[] = [];
+  playerState.dogsOwned.forEach((breedId, i) => {
+    const breed = DOG_BREEDS.find((b) => b.id === breedId);
+    stations.push({
+      id: `pet-dog-${i}`,
+      label: breed?.name ?? "Dog",
+      kind: "npc",
+      ...petStationPosition(stations.length),
+    });
+  });
+  playerState.catsOwned.forEach((breedId, i) => {
+    const breed = CAT_BREEDS.find((b) => b.id === breedId);
+    stations.push({
+      id: `pet-cat-${i}`,
+      label: breed?.name ?? "Cat",
+      kind: "npc",
+      ...petStationPosition(stations.length),
+    });
+  });
+  if (playerState.fishTankOwned) {
+    stations.push({ id: "pet-fish", label: "Fish Tank", kind: "npc", ...petStationPosition(stations.length) });
+  }
+  if (playerState.snakeTankOwned) {
+    stations.push({ id: "pet-snake", label: "Snake Tank", kind: "npc", ...petStationPosition(stations.length) });
+  }
+  if (playerState.birdCageOwned) {
+    stations.push({ id: "pet-bird", label: "Bird Cage", kind: "npc", ...petStationPosition(stations.length) });
+  }
+  if (playerState.rabbitCageOwned) {
+    stations.push({ id: "pet-rabbit", label: "Rabbit Cage", kind: "npc", ...petStationPosition(stations.length) });
+  }
+  return stations;
+}
+
+/** Pet Supply interaction (Section 5, updated): resolves a "pet-*" station id to what's shown in the dialogue — name + portrait (species emoji, joined for a multi-species tank/cage). */
+function describePetStation(stationId: string): { name: string; portrait: string } | null {
+  const dogMatch = stationId.match(/^pet-dog-(\d+)$/);
+  if (dogMatch) {
+    const breed = DOG_BREEDS.find((b) => b.id === playerState.dogsOwned[Number(dogMatch[1])]);
+    return breed ? { name: breed.name, portrait: breed.image } : null;
+  }
+  const catMatch = stationId.match(/^pet-cat-(\d+)$/);
+  if (catMatch) {
+    const breed = CAT_BREEDS.find((b) => b.id === playerState.catsOwned[Number(catMatch[1])]);
+    return breed ? { name: breed.name, portrait: breed.image } : null;
+  }
+  if (stationId === "pet-fish") {
+    return { name: "Fish Tank", portrait: fishSpeciesAtStage(playerState.fishTankStage).map((s) => s.image).join("") };
+  }
+  if (stationId === "pet-snake") {
+    return {
+      name: "Snake Tank",
+      portrait: snakeSpeciesAtStage(playerState.snakeTankStage).map((s) => s.image).join(""),
+    };
+  }
+  if (stationId === "pet-bird") {
+    return { name: "Bird Cage", portrait: birdSpeciesAtStage(playerState.birdCageStage).map((s) => s.image).join("") };
+  }
+  if (stationId === "pet-rabbit") {
+    return {
+      name: "Rabbit Cage",
+      portrait: rabbitSpeciesAtStage(playerState.rabbitCageStage).map((s) => s.image).join(""),
+    };
+  }
+  return null;
+}
+
+// Purely cosmetic — not a Tamagotchi decay system. Give Food/Give Toy just
+// pulses the portrait happy (reference: Pikachu's reactions in Pokémon
+// Yellow); there's no maintenance and no penalty for never visiting.
+let petSupplyMood: "neutral" | "happy" = "neutral";
+
+function openPetSupplyDialogue(stationId: string) {
+  petSupplyMood = "neutral";
+  dialogueBox.open(() => buildPetSupplyDialogue(stationId));
+}
+
+function buildPetSupplyDialogue(stationId: string): DialogueData {
+  const info = describePetStation(stationId);
+  if (!info) {
+    return {
+      portrait: "🐾",
+      name: "",
+      text: "",
+      options: [{ id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() }],
+    };
+  }
+  return {
+    portrait: info.portrait,
+    name: info.name,
+    text: petSupplyMood === "happy" ? `${info.name} is thrilled! 🎉` : `${info.name} looks up at you.`,
+    portraitMood: petSupplyMood === "happy" ? "happy" : undefined,
+    options: [
+      { id: "food", label: "🍖 Give Food", onSelect: () => { petSupplyMood = "happy"; } },
+      { id: "toy", label: "🧸 Give Toy", onSelect: () => { petSupplyMood = "happy"; } },
+      { id: "leave", label: "‹ Leave", onSelect: () => dialogueBox.close() },
+    ],
+  };
+}
+
 // True while an NPC is away from her normal station — either because
 // a meetup's been arranged elsewhere and not yet fulfilled, or she's
 // mid-commute after an Overnight Stay (still asleep at home, or on her
@@ -6128,6 +6596,7 @@ function computeStationsFor(buildingName: string): Station[] {
   if (derekStation) base = [...base, derekStation];
   const jasmineStation = getJasmineStation(buildingName);
   if (jasmineStation) base = [...base, jasmineStation];
+  base = [...base, ...getPetStations(buildingName)];
   const spouseStation = getSpouseStation(buildingName);
   if (spouseStation) return [...base, applyBedPositionIfJustSlept(spouseStation), ...getChildStations(buildingName)];
   const meetupStation = getActiveMeetupStation(buildingName);
@@ -6453,6 +6922,10 @@ function loop(now: number) {
       else if (findChildById(nearStation.id)) {
         const found = findChildById(nearStation.id)!;
         onTrigger = () => openChildDialogue(found.child);
+      }
+      else if (nearStation.id.startsWith("pet-")) {
+        const petStationId = nearStation.id;
+        onTrigger = () => openPetSupplyDialogue(petStationId);
       }
       else if (nearStation.id === "elevator") {
         // On a floor room this IS the door — no ground-level exit, riding

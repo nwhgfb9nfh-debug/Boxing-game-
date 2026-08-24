@@ -371,6 +371,31 @@ canvas {
   font-size: 48px;
 }
 
+/* Pet Supply interaction — a brief happy bounce on Give Food/Give Toy
+   (reference: Pikachu's reactions in Pokémon Yellow). Replayed fresh every
+   render since the portrait element is rebuilt from scratch each time. */
+@keyframes dialogue-portrait-happy {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.25) rotate(-8deg);
+  }
+  50% {
+    transform: scale(1.1) rotate(6deg);
+  }
+  75% {
+    transform: scale(1.25) rotate(-4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.dialogue-portrait--happy {
+  animation: dialogue-portrait-happy 0.6s ease;
+}
+
 .dialogue-box {
   width: 100%;
   box-sizing: border-box;
