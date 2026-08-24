@@ -478,50 +478,6 @@ canvas {
   font-size: 10px;
 }
 
-/* Date meetup theme — pink heart-corner pixel art panel (see
-   assets/panels.ts and dialogueBox.ts's "date" DialogueData.theme) instead
-   of the default dark card. border-image-source is set inline in
-   dialogueBox.ts (it needs the data URI); the slicing/width/repeat that
-   goes with it lives here since it's fixed for this one asset.
-   24px on every side: the plain border line is only ~12-16px thick, but
-   the heart corner decorations bulge out to ~20-23px, so the slice has to
-   be sized to the hearts (not the plain line) or it clips them. Width
-   matches slice 1:1 (no scaling) — border-image silently squashes the
-   pink-line/cream-interior split baked into each slice if rendered at a
-   different size than it was sliced at, which reads as a muddy blend
-   instead of a crisp line. */
-.dialogue-box--date {
-  background: transparent;
-  border-top: none;
-  border-radius: 0;
-  box-shadow: none;
-  border-style: solid;
-  border-width: 24px;
-  border-image-slice: 24 fill;
-  border-image-width: 24px;
-  border-image-repeat: stretch;
-  image-rendering: pixelated;
-  padding: 8px 10px;
-}
-
-.dialogue-box--date .dialogue-box__name {
-  color: #c23b6b;
-}
-
-.dialogue-box--date .dialogue-box__text {
-  color: #6b3b4a;
-}
-
-.dialogue-box--date .dialogue-box__option {
-  background: #ffe4ef;
-  border: 1px solid #f2a8c4;
-  color: #7a3350;
-}
-
-.dialogue-box--date .dialogue-box__cost {
-  color: #d6558a;
-}
-
 /* Family System: naming a new child — free-text row above the options. */
 .dialogue-box__input-row {
   display: flex;

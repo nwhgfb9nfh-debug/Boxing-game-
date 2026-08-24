@@ -4918,7 +4918,6 @@ function buildMeetupDialogueMain(npc: NpcDef, type: MeetupType): DialogueData {
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     options,
-    theme: type === "date" ? "date" : undefined,
   };
 }
 
@@ -4931,7 +4930,6 @@ function buildMeetupDialogueGiftOptions(npc: NpcDef, type: MeetupType): Dialogue
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
     optionsLayout: "grid",
-    theme: type === "date" ? "date" : undefined,
     options: [
       ...owned.map((g) => ({
         id: g.id,
@@ -4972,7 +4970,6 @@ function buildMeetupDialogueProposeConfirm(npc: NpcDef): DialogueData {
         },
       },
     ],
-    theme: playerState.activeMeetup?.type === "date" ? "date" : undefined,
   };
 }
 
@@ -4983,7 +4980,6 @@ function buildMeetupDialogueConnectOptions(npc: NpcDef, location: MeetupLocation
     portrait: npc.portrait,
     name: npc.name,
     text: `${npc.name} is happy to see you.`,
-    theme: type === "date" ? "date" : undefined,
     options: [
       ...connectOptions.map((o) => ({
         id: o.id,
@@ -5006,7 +5002,6 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
     portrait: npc.portrait,
     name: npc.name,
     text: lastMeetupResult,
-    theme: playerState.activeMeetup?.type === "date" ? "date" : undefined,
     options: [
       {
         id: "continue",
@@ -5067,7 +5062,6 @@ function openEndMeetupConfirm() {
       { id: "yes", label: "Yes", onSelect: () => endMeetupVisit() },
       { id: "no", label: "No", onSelect: () => dialogueBox.close() },
     ],
-    theme: meetup.type === "date" ? "date" : undefined,
   }));
 }
 

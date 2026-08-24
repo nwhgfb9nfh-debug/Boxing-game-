@@ -5,8 +5,6 @@
 // fresh on every open and after every option pick, same rebuild pattern
 // as ActionMenu.
 
-import { DATE_DIALOGUE_PANEL } from "../assets/panels";
-
 export interface DialogueOption {
   id: string;
   label: string;
@@ -41,10 +39,6 @@ export interface DialogueData {
   // set too long to read comfortably as a vertical list, e.g. the full
   // 16-item Gift catalog.
   optionsLayout?: "list" | "grid";
-  // "date" swaps the box's background for the pink pixel-art panel (see
-  // assets/panels.ts) instead of the default dark card — used for Date
-  // meetup dialogue. Omit (or "default") for the normal look.
-  theme?: "default" | "date";
 }
 
 export interface DialogueBox {
@@ -80,15 +74,7 @@ export function createDialogueBox(container: HTMLElement): DialogueBox {
 
   function render() {
     if (!builder) return;
-    const { portrait: portraitSrc, name, text, options, textInput, optionsLayout, theme } = builder();
-
-    const isDate = theme === "date";
-    box.classList.toggle("dialogue-box--date", isDate);
-    if (isDate) {
-      box.style.borderImageSource = `url(${DATE_DIALOGUE_PANEL})`;
-    } else {
-      box.style.borderImageSource = "";
-    }
+    const { portrait: portraitSrc, name, text, options, textInput, optionsLayout } = builder();
 
     portrait.innerHTML = "";
     if (portraitSrc.startsWith("data:") || portraitSrc.startsWith("http")) {
