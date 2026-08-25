@@ -5670,32 +5670,321 @@ function buildGarageMenu(): MenuData {
   };
 }
 
-interface OutfitOption extends ShopItem {
+// Clothing Store (Section 5, updated): Fight Night (Shorts, Gloves),
+// Casual (Upper Body, Lower Body, Shoes), Formal (Suits, Shoes) — tap a
+// top category, then a sub-category, which opens a 4-per-row icon grid
+// (same layout as the Gift catalog) of that sub-category's whole catalog.
+// Tapping a tile opens it in the same single-item info sheet as the
+// Vehicle Dealer/Pet breeds (picture, info, price, Buy), with ‹ › paging
+// through the rest of that sub-category. Each item is bought once and
+// owned forever (not consumed) and grants its Image gain permanently,
+// same effect the old flat 3-outfit version had, just distributed per
+// item now. All names/prices/Image gains below are placeholders.
+type ClothingTopCategory = "fightnight" | "casual" | "formal";
+type ClothingSubCategory = "shorts" | "gloves" | "upper" | "lower" | "shoes-casual" | "suits" | "shoes-formal";
+
+interface ClothingItem {
+  id: string;
+  name: string;
+  price: number;
+  image: string; // emoji placeholder — no real clothing art yet
   imageGain: number;
 }
-const OUTFIT_OPTIONS: OutfitOption[] = [
-  { id: "casual", name: "Casual Outfit", price: 200, imageGain: 2 },
-  { id: "designer", name: "Designer Outfit", price: 800, imageGain: 5 },
-  { id: "luxury", name: "Luxury Outfit", price: 2000, imageGain: 10 },
+
+/** Generates `count` items by cycling baseTypes × colors (e.g. 8 types × 2 colors = 16) — enough variation to avoid a flat "Item 1, Item 2" list without hand-authoring dozens of unique concepts. */
+function generateClothingItems(
+  idPrefix: string,
+  baseTypes: string[],
+  colors: string[],
+  count: number,
+  priceForType: (typeIndex: number) => number,
+  imageGainForType: (typeIndex: number) => number,
+  iconForType: (type: string) => string,
+): ClothingItem[] {
+  const items: ClothingItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const typeIndex = i % baseTypes.length;
+    const type = baseTypes[typeIndex];
+    const color = colors[Math.floor(i / baseTypes.length) % colors.length];
+    items.push({
+      id: `${idPrefix}-${i}`,
+      name: `${color} ${type}`,
+      price: priceForType(typeIndex),
+      image: iconForType(type),
+      imageGain: imageGainForType(typeIndex),
+    });
+  }
+  return items;
+}
+
+const UPPER_BODY_TYPES = ["T-Shirt", "Hoodie", "Tank Top", "Jacket", "Sweater", "Polo Shirt", "Henley", "Flannel Shirt"];
+const UPPER_BODY_ICONS: Record<string, string> = { Hoodie: "🧥", Jacket: "🧥", Sweater: "🧶", "Tank Top": "🎽" };
+const LOWER_BODY_TYPES = ["Jeans", "Cargo Pants", "Sweatpants", "Shorts", "Chinos", "Joggers", "Corduroys", "Track Pants"];
+const LOWER_BODY_ICONS: Record<string, string> = { Shorts: "🩳" };
+const CASUAL_SHOE_TYPES = ["Sneakers", "Running Shoes", "Skate Shoes", "Canvas Shoes", "High-Tops", "Slip-Ons", "Sandals", "Boots"];
+const CASUAL_SHOE_ICONS: Record<string, string> = { Sandals: "🩴", Boots: "🥾" };
+const SUIT_TYPES = ["Two-Piece Suit", "Three-Piece Suit", "Tuxedo", "Blazer & Trousers Set"];
+const FORMAL_SHOE_TYPES = ["Oxford Shoes", "Loafers"];
+const SHORTS_TYPES = [
+  "Classic Trunks",
+  "Satin Trunks",
+  "Split-Leg Trunks",
+  "Kickboxing Shorts",
+  "MMA Shorts",
+  "Muay Thai Shorts",
+  "Retro Trunks",
+  "Championship Trunks",
+];
+const GLOVES_TYPES = [
+  "Training Gloves",
+  "Sparring Gloves",
+  "Bag Gloves",
+  "Competition Gloves",
+  "Lace-Up Gloves",
+  "Velcro Gloves",
+  "MMA Gloves",
+  "Pro Gloves",
 ];
 
+const CLOTHING_CATALOG: Record<ClothingSubCategory, ClothingItem[]> = {
+  upper: generateClothingItems(
+    "upper",
+    UPPER_BODY_TYPES,
+    ["Black", "White"],
+    16,
+    (i) => 25 + i * 5,
+    (i) => 1 + (i % 3),
+    (t) => UPPER_BODY_ICONS[t] ?? "👕",
+  ),
+  lower: generateClothingItems(
+    "lower",
+    LOWER_BODY_TYPES,
+    ["Black", "Blue"],
+    16,
+    (i) => 25 + i * 5,
+    (i) => 1 + (i % 3),
+    (t) => LOWER_BODY_ICONS[t] ?? "👖",
+  ),
+  "shoes-casual": generateClothingItems(
+    "shoes-casual",
+    CASUAL_SHOE_TYPES,
+    ["White", "Black"],
+    16,
+    (i) => 30 + i * 6,
+    (i) => 1 + (i % 3),
+    (t) => CASUAL_SHOE_ICONS[t] ?? "👟",
+  ),
+  suits: generateClothingItems(
+    "suits",
+    SUIT_TYPES,
+    ["Black", "Navy"],
+    8,
+    (i) => 300 + i * 150,
+    (i) => 5 + i * 2,
+    () => "🤵",
+  ),
+  "shoes-formal": generateClothingItems(
+    "shoes-formal",
+    FORMAL_SHOE_TYPES,
+    ["Black", "Brown"],
+    4,
+    (i) => 150 + i * 80,
+    (i) => 3 + i * 2,
+    () => "👞",
+  ),
+  shorts: generateClothingItems(
+    "shorts",
+    SHORTS_TYPES,
+    ["Red", "Black"],
+    16,
+    (i) => 50 + i * 10,
+    (i) => 1 + (i % 3),
+    () => "🩳",
+  ),
+  gloves: generateClothingItems(
+    "gloves",
+    GLOVES_TYPES,
+    ["Red", "Black"],
+    16,
+    (i) => 60 + i * 10,
+    (i) => 1 + (i % 3),
+    () => "🥊",
+  ),
+};
+
+const CLOTHING_SUB_LABELS: Record<ClothingSubCategory, string> = {
+  shorts: "🩳 Shorts",
+  gloves: "🥊 Gloves",
+  upper: "👕 Upper Body",
+  lower: "👖 Lower Body",
+  "shoes-casual": "👟 Shoes",
+  suits: "🤵 Suits",
+  "shoes-formal": "👞 Shoes",
+};
+const CLOTHING_TOP_LABELS: Record<ClothingTopCategory, string> = {
+  fightnight: "🥊 Fight Night",
+  casual: "😎 Casual",
+  formal: "🎩 Formal",
+};
+const CLOTHING_SUBCATEGORIES: Record<ClothingTopCategory, ClothingSubCategory[]> = {
+  fightnight: ["shorts", "gloves"],
+  casual: ["upper", "lower", "shoes-casual"],
+  formal: ["suits", "shoes-formal"],
+};
+
+let clothingTopCategory: ClothingTopCategory | null = null;
+let clothingSubCategory: ClothingSubCategory | null = null;
+
 function openClothesMenu() {
-  locationMenu.open(() => ({
+  clothingTopCategory = null;
+  clothingSubCategory = null;
+  locationMenu.open(buildClothesMenu);
+}
+
+function buildClothesMenu(): MenuData {
+  if (clothingSubCategory) return buildClothingGridMenu(clothingSubCategory);
+  if (clothingTopCategory) return buildClothingSubCategoryMenu(clothingTopCategory);
+  return buildClothingTopMenu();
+}
+
+function buildClothingTopMenu(): MenuData {
+  return {
     title: "👗 Clothing Store",
     energyText: `Money: $${playerState.money}  ·  Image: ${playerState.image}`,
-    actions: OUTFIT_OPTIONS.map((o) => ({
-      id: o.id,
-      label: `${o.name} (Image +${o.imageGain})`,
+    actions: (Object.keys(CLOTHING_TOP_LABELS) as ClothingTopCategory[]).map((cat) => ({
+      id: cat,
+      label: CLOTHING_TOP_LABELS[cat],
       cost: 0,
-      costLabel: `$${o.price}`,
+      costLabel: "›",
       run: () => {
-        if (playerState.money < o.price) return `Not enough money — need $${o.price}, have $${playerState.money}.`;
-        playerState.money -= o.price;
-        playerState.image += o.imageGain;
-        return `Bought the ${o.name}! Image +${o.imageGain} (now ${playerState.image}).`;
+        clothingTopCategory = cat;
+        return "";
       },
     })),
-  }));
+  };
+}
+
+function buildClothingSubCategoryMenu(top: ClothingTopCategory): MenuData {
+  return {
+    title: CLOTHING_TOP_LABELS[top],
+    energyText: `Money: $${playerState.money}  ·  Image: ${playerState.image}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          clothingTopCategory = null;
+          return "";
+        },
+      },
+      ...CLOTHING_SUBCATEGORIES[top].map((sub) => ({
+        id: sub,
+        label: CLOTHING_SUB_LABELS[sub],
+        cost: 0,
+        costLabel: "›",
+        run: () => {
+          clothingSubCategory = sub;
+          return "";
+        },
+      })),
+    ],
+  };
+}
+
+function buildClothingGridMenu(sub: ClothingSubCategory): MenuData {
+  const items = CLOTHING_CATALOG[sub];
+  return {
+    title: CLOTHING_SUB_LABELS[sub],
+    energyText: `Money: $${playerState.money}  ·  Image: ${playerState.image}`,
+    layout: "grid",
+    actions: [
+      ...items.map((item, i) => {
+        const owned = playerState.clothingOwned.includes(item.id);
+        return {
+          id: item.id,
+          icon: item.image,
+          label: item.name,
+          cost: 0,
+          costLabel: owned ? "OWNED" : `$${item.price}`,
+          run: () => {
+            openClothingItemSheet(sub, i);
+            return "";
+          },
+        };
+      }),
+      {
+        id: "back",
+        icon: "↩️",
+        label: "Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          clothingSubCategory = null;
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+let clothingSheetSub: ClothingSubCategory = "shorts";
+let clothingSheetIndex = 0;
+let clothingSheetMessage = "";
+
+function openClothingItemSheet(sub: ClothingSubCategory, index: number) {
+  clothingSheetSub = sub;
+  clothingSheetIndex = index;
+  clothingSheetMessage = "";
+  vehicleSheet.open(buildClothingItemSheet);
+}
+
+function buildClothingItemSheet(): VehicleSheetData {
+  const items = CLOTHING_CATALOG[clothingSheetSub];
+  const item = items[clothingSheetIndex];
+  const owned = playerState.clothingOwned.includes(item.id);
+
+  return {
+    title: item.name,
+    image: item.image,
+    infoText: `Wallet: $${playerState.money}\n${CLOTHING_SUB_LABELS[clothingSheetSub]}\nImage +${item.imageGain} when purchased.`,
+    priceText: owned ? "OWNED" : `$${item.price}`,
+    message: clothingSheetMessage || undefined,
+    actions: [
+      {
+        id: "buy",
+        label: owned ? "✅ Owned" : `💰 Buy — $${item.price}`,
+        disabled: owned,
+        run: () => {
+          if (playerState.money < item.price) {
+            clothingSheetMessage = `Not enough money — need $${item.price}, have $${playerState.money}.`;
+            return;
+          }
+          playerState.money -= item.price;
+          playerState.clothingOwned.push(item.id);
+          playerState.image += item.imageGain;
+          clothingSheetMessage = `Bought the ${item.name}! Image +${item.imageGain}.`;
+        },
+      },
+    ],
+    onPrev: () => {
+      clothingSheetIndex = (clothingSheetIndex - 1 + items.length) % items.length;
+      clothingSheetMessage = "";
+    },
+    onNext: () => {
+      clothingSheetIndex = (clothingSheetIndex + 1) % items.length;
+      clothingSheetMessage = "";
+    },
+    // Closing returns to the grid (still open behind this sheet) instead
+    // of exiting the whole Clothing Store — re-opening forces a fresh
+    // render so a just-bought item's OWNED badge actually shows, same fix
+    // as the Pet Store's Dog/Cat carousel.
+    onClose: () => {
+      vehicleSheet.close();
+      locationMenu.open(buildClothesMenu);
+    },
+  };
 }
 
 // Mall Item Catalogues spec: 4 categories, 4 items each. Romantic/Special

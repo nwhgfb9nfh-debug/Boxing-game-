@@ -648,6 +648,47 @@ canvas {
   font-weight: 700;
 }
 
+/* 4-per-row icon grid (e.g. a Clothing Store sub-category) instead of a
+   tall one-per-row list — mirrors .dialogue-box__options--grid. */
+.action-menu__list--grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.action-menu__item--grid {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 4px;
+  text-align: center;
+  /* Grid items default to a content-based min-width, which lets a long
+     label force its column wider than its 1fr share — see the same note
+     on .dialogue-box__option--grid. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.action-menu__item--grid span {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.action-menu__item-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.action-menu__item--grid .action-menu__cost {
+  font-size: 10px;
+}
+
 .action-menu__close {
   padding: 10px;
   border-radius: 10px;

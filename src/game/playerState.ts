@@ -167,6 +167,12 @@ export interface PlayerState {
   // reaction, never anything worse.
   petFoodInventory: Record<string, number>;
   petToyInventory: Record<string, number>;
+  // Clothing Store (Section 5, updated): each specific item (e.g.
+  // "upper-3") is bought once and owned forever, like Vehicles/Pet
+  // breeds — not consumed/stockpiled like gifts or pet supplies. Buying
+  // one grants its imageGain permanently, same effect the old flat
+  // 3-outfit version had, just distributed per item now.
+  clothingOwned: string[];
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
   // are owned; giving the Engagement Ring asks to Propose instead of
@@ -315,6 +321,7 @@ export function createPlayerState(): PlayerState {
     rabbitCageStage: 0,
     petFoodInventory: {},
     petToyInventory: {},
+    clothingOwned: [],
     giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],

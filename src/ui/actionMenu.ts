@@ -13,6 +13,9 @@ export interface MenuAction {
   disabled?: boolean;
   /** Perform the action (or reject it, e.g. insufficient energy) and return a short result message. */
   run: () => string;
+  // Grid layout only (see MenuData.layout) — an emoji shown large above
+  // the label, e.g. for a clothing item's icon.
+  icon?: string;
 }
 
 export interface MenuData {
@@ -21,6 +24,11 @@ export interface MenuData {
   actions: MenuAction[];
   /** Hides the Close button — used for a committed step (energy already spent) that must be resolved by picking an option. */
   hideClose?: boolean;
+  // "grid" is a 4-per-row icon grid (each action shows its icon above a
+  // short label) instead of the normal one-per-row list — for an action
+  // set too long to read comfortably as a vertical list, e.g. a 16-item
+  // Clothing Store sub-category. Mirrors DialogueData.optionsLayout.
+  layout?: "list" | "grid";
 }
 
 export interface ActionMenu {
@@ -46,7 +54,7 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
 
   function render() {
     if (!builder) return;
-    const { title, energyText, actions, hideClose } = builder();
+    const { title, energyText, actions, hideClose, layout } = builder();
     panel.innerHTML = "";
 
     const titleEl = document.createElement("div");
@@ -66,14 +74,31 @@ export function createActionMenu(container: HTMLElement): ActionMenu {
       panel.appendChild(msgEl);
     }
 
+    const isGrid = layout === "grid";
     const list = document.createElement("div");
-    list.className = "action-menu__list";
+    list.className = isGrid ? "action-menu__list action-menu__list--grid" : "action-menu__list";
     for (const action of actions) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "action-menu__item";
+      btn.className = isGrid ? "action-menu__item action-menu__item--grid" : "action-menu__item";
       const costText = action.costLabel ?? `${action.cost} EN`;
-      btn.innerHTML = `<span>${action.label}</span><span class="action-menu__cost">${costText}</span>`;
+      if (isGrid) {
+        if (action.icon) {
+          const iconEl = document.createElement("span");
+          iconEl.className = "action-menu__item-icon";
+          iconEl.textContent = action.icon;
+          btn.appendChild(iconEl);
+        }
+        const labelEl = document.createElement("span");
+        labelEl.textContent = action.label;
+        btn.appendChild(labelEl);
+        const costEl = document.createElement("span");
+        costEl.className = "action-menu__cost";
+        costEl.textContent = costText;
+        btn.appendChild(costEl);
+      } else {
+        btn.innerHTML = `<span>${action.label}</span><span class="action-menu__cost">${costText}</span>`;
+      }
       if (action.disabled) btn.disabled = true;
       btn.addEventListener("pointerdown", (e) => {
         e.preventDefault();
