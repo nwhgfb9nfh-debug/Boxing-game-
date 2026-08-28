@@ -5937,6 +5937,14 @@ let clothingSheetMessage = "";
 // Standard?") before returning to browsing.
 let clothingSheetConfirmingActivate = false;
 
+// Fight Night's equip slot means "wear this in your next fight", not
+// "put it on now" the way Casual/Formal's does — same underlying
+// mechanic (one active item per sub-category), different wording so it
+// doesn't imply the player is walking around in fight gear.
+function isFightNightSub(sub: ClothingSubCategory): boolean {
+  return CLOTHING_SUBCATEGORIES.fightnight.includes(sub);
+}
+
 function openClothingItemSheet(sub: ClothingSubCategory, index: number) {
   clothingSheetSub = sub;
   clothingSheetIndex = index;
@@ -5954,7 +5962,9 @@ function buildClothingItemSheet(): VehicleSheetData {
     return {
       title: item.name,
       image: item.image,
-      infoText: `🎉 Bought the ${item.name}! Would you like to wear it now?`,
+      infoText: isFightNightSub(clothingSheetSub)
+        ? `🎉 Bought the ${item.name}! Set it as your gear for your next fight?`
+        : `🎉 Bought the ${item.name}! Would you like to wear it now?`,
       priceText: "",
       actions: [
         {
@@ -6101,9 +6111,13 @@ function buildWardrobeSubCategoryMenu(top: ClothingTopCategory): MenuData {
 function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
   const owned = CLOTHING_CATALOG[sub].filter((item) => playerState.clothingOwned.includes(item.id));
   const activeId = playerState.activeClothing[sub] ?? null;
+  const fightNight = isFightNightSub(sub);
+  const activeLabel = equippedItemName(sub)
+    ? (fightNight ? `Set for next fight: ${equippedItemName(sub)}` : `Wearing: ${equippedItemName(sub)}`)
+    : (fightNight ? "Nothing set for next fight" : "Nothing equipped");
   return {
     title: CLOTHING_SUB_LABELS[sub],
-    energyText: equippedItemName(sub) ? `Wearing: ${equippedItemName(sub)}` : "Nothing equipped",
+    energyText: activeLabel,
     layout: "grid",
     actions: [
       {
@@ -6115,7 +6129,7 @@ function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
         disabled: activeId === null,
         run: () => {
           playerState.activeClothing[sub] = null;
-          return "Unequipped.";
+          return fightNight ? "Cleared for next fight." : "Unequipped.";
         },
       },
       ...owned.map((item) => ({
@@ -6123,11 +6137,13 @@ function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
         icon: item.image,
         label: item.name,
         cost: 0,
-        costLabel: activeId === item.id ? "ACTIVE" : "Wear",
+        costLabel: activeId === item.id ? "ACTIVE" : (fightNight ? "Set" : "Wear"),
         disabled: activeId === item.id,
         run: () => {
           playerState.activeClothing[sub] = item.id;
-          return `Now wearing the ${item.name}.`;
+          return fightNight
+            ? `Set the ${item.name} for your next fight.`
+            : `Now wearing the ${item.name}.`;
         },
       })),
       {
