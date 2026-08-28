@@ -173,6 +173,15 @@ export interface PlayerState {
   // one grants its imageGain permanently, same effect the old flat
   // 3-outfit version had, just distributed per item now.
   clothingOwned: string[];
+  // Wardrobe (Section 5, updated): which owned item is currently equipped
+  // per Clothing Store sub-category ("shorts"/"gloves"/"upper"/"lower"/
+  // "shoes-casual"/"suits"/"shoes-formal") — null/absent means nothing
+  // equipped in that slot. Fight Night's equipped Shorts+Gloves are what
+  // the player wears on Fight Night; Formal's equipped Suit+Shoes for
+  // formal occasions; Casual is just whatever's chosen to wear day to
+  // day — same equip-a-slot mechanic either way, just not tied to a
+  // specific triggered event.
+  activeClothing: Record<string, string | null>;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
   // are owned; giving the Engagement Ring asks to Propose instead of
@@ -322,6 +331,7 @@ export function createPlayerState(): PlayerState {
     petFoodInventory: {},
     petToyInventory: {},
     clothingOwned: [],
+    activeClothing: {},
     giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],

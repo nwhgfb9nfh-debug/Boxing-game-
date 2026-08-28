@@ -5932,11 +5932,16 @@ function buildClothingGridMenu(sub: ClothingSubCategory): MenuData {
 let clothingSheetSub: ClothingSubCategory = "shorts";
 let clothingSheetIndex = 0;
 let clothingSheetMessage = "";
+// Set right after a successful Buy — the sheet shows a Yes/No "wear it
+// now?" prompt (same beat as the Vehicle Dealer's post-purchase "set as
+// Standard?") before returning to browsing.
+let clothingSheetConfirmingActivate = false;
 
 function openClothingItemSheet(sub: ClothingSubCategory, index: number) {
   clothingSheetSub = sub;
   clothingSheetIndex = index;
   clothingSheetMessage = "";
+  clothingSheetConfirmingActivate = false;
   vehicleSheet.open(buildClothingItemSheet);
 }
 
@@ -5944,6 +5949,38 @@ function buildClothingItemSheet(): VehicleSheetData {
   const items = CLOTHING_CATALOG[clothingSheetSub];
   const item = items[clothingSheetIndex];
   const owned = playerState.clothingOwned.includes(item.id);
+
+  if (clothingSheetConfirmingActivate) {
+    return {
+      title: item.name,
+      image: item.image,
+      infoText: `🎉 Bought the ${item.name}! Would you like to wear it now?`,
+      priceText: "",
+      actions: [
+        {
+          id: "yes",
+          label: "Yes",
+          run: () => {
+            playerState.activeClothing[clothingSheetSub] = item.id;
+            clothingSheetConfirmingActivate = false;
+          },
+        },
+        {
+          id: "no",
+          label: "No",
+          run: () => {
+            clothingSheetConfirmingActivate = false;
+          },
+        },
+      ],
+      onPrev: null,
+      onNext: null,
+      onClose: () => {
+        vehicleSheet.close();
+        locationMenu.open(buildClothesMenu);
+      },
+    };
+  }
 
   return {
     title: item.name,
@@ -5964,7 +6001,8 @@ function buildClothingItemSheet(): VehicleSheetData {
           playerState.money -= item.price;
           playerState.clothingOwned.push(item.id);
           playerState.image += item.imageGain;
-          clothingSheetMessage = `Bought the ${item.name}! Image +${item.imageGain}.`;
+          clothingSheetMessage = "";
+          clothingSheetConfirmingActivate = true;
         },
       },
     ],
@@ -5984,6 +6022,126 @@ function buildClothingItemSheet(): VehicleSheetData {
       vehicleSheet.close();
       locationMenu.open(buildClothesMenu);
     },
+  };
+}
+
+// Wardrobe (Section 5, updated): a Home station, not a Mall one — picks
+// which OWNED item is equipped per Clothing Store sub-category. Same
+// category/sub-category drill-down as the shop, but the leaf screen lists
+// only owned items (plus a "None" tile to unequip) instead of the whole
+// catalog, and taps set playerState.activeClothing instead of opening a
+// purchase sheet.
+let wardrobeTopCategory: ClothingTopCategory | null = null;
+let wardrobeSubCategory: ClothingSubCategory | null = null;
+
+function openWardrobeMenu() {
+  wardrobeTopCategory = null;
+  wardrobeSubCategory = null;
+  locationMenu.open(buildWardrobeMenu);
+}
+
+function buildWardrobeMenu(): MenuData {
+  if (wardrobeSubCategory) return buildWardrobeItemMenu(wardrobeSubCategory);
+  if (wardrobeTopCategory) return buildWardrobeSubCategoryMenu(wardrobeTopCategory);
+  return buildWardrobeTopMenu();
+}
+
+function buildWardrobeTopMenu(): MenuData {
+  return {
+    title: "🧺 Wardrobe",
+    energyText: `Image: ${playerState.image}`,
+    actions: (Object.keys(CLOTHING_TOP_LABELS) as ClothingTopCategory[]).map((cat) => ({
+      id: cat,
+      label: CLOTHING_TOP_LABELS[cat],
+      cost: 0,
+      costLabel: "›",
+      run: () => {
+        wardrobeTopCategory = cat;
+        return "";
+      },
+    })),
+  };
+}
+
+function equippedItemName(sub: ClothingSubCategory): string | null {
+  const activeId = playerState.activeClothing[sub];
+  if (!activeId) return null;
+  return CLOTHING_CATALOG[sub].find((item) => item.id === activeId)?.name ?? null;
+}
+
+function buildWardrobeSubCategoryMenu(top: ClothingTopCategory): MenuData {
+  return {
+    title: CLOTHING_TOP_LABELS[top],
+    energyText: `Image: ${playerState.image}`,
+    actions: [
+      {
+        id: "back",
+        label: "‹ Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          wardrobeTopCategory = null;
+          return "";
+        },
+      },
+      ...CLOTHING_SUBCATEGORIES[top].map((sub) => ({
+        id: sub,
+        label: CLOTHING_SUB_LABELS[sub],
+        cost: 0,
+        costLabel: equippedItemName(sub) ?? "None equipped",
+        run: () => {
+          wardrobeSubCategory = sub;
+          return "";
+        },
+      })),
+    ],
+  };
+}
+
+function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
+  const owned = CLOTHING_CATALOG[sub].filter((item) => playerState.clothingOwned.includes(item.id));
+  const activeId = playerState.activeClothing[sub] ?? null;
+  return {
+    title: CLOTHING_SUB_LABELS[sub],
+    energyText: equippedItemName(sub) ? `Wearing: ${equippedItemName(sub)}` : "Nothing equipped",
+    layout: "grid",
+    actions: [
+      {
+        id: "none",
+        icon: "🚫",
+        label: "None",
+        cost: 0,
+        costLabel: activeId === null ? "ACTIVE" : "",
+        disabled: activeId === null,
+        run: () => {
+          playerState.activeClothing[sub] = null;
+          return "Unequipped.";
+        },
+      },
+      ...owned.map((item) => ({
+        id: item.id,
+        icon: item.image,
+        label: item.name,
+        cost: 0,
+        costLabel: activeId === item.id ? "ACTIVE" : "Wear",
+        disabled: activeId === item.id,
+        run: () => {
+          playerState.activeClothing[sub] = item.id;
+          return `Now wearing the ${item.name}.`;
+        },
+      })),
+      {
+        id: "back",
+        icon: "↩️",
+        label: "Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          wardrobeSubCategory = null;
+          return "";
+        },
+      },
+    ],
   };
 }
 
@@ -6741,6 +6899,8 @@ const HOUSE_STATIONS: Station[] = [
   { id: "bed", label: "Sleep", nx: 0.5, ny: 0.3 },
   // Bottom-right corner of the room — walk up to enter the Garage menu.
   { id: "garage", label: "Garage", nx: 0.88, ny: 0.82 },
+  // Top-left corner — mirrors the Garage's opposite-corner placement.
+  { id: "wardrobe", label: "Wardrobe", nx: 0.12, ny: 0.18 },
 ];
 const BED_STATION_ID = HOUSE_STATIONS[0].id;
 // True for exactly one room-view: right after sleepAtBed/an Overnight Stay
@@ -7504,6 +7664,7 @@ function loop(now: number) {
         onTrigger = bedLock ? () => buildingUI.showToast(bedLock, pos, "bottom") : () => sleepAtBed(pos);
       }
       else if (nearStation.id === "garage") onTrigger = openGarageMenu;
+      else if (nearStation.id === "wardrobe") onTrigger = openWardrobeMenu;
       else if (nearStation.id === "workoutclip") onTrigger = openWeightAreaMenu;
       else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
