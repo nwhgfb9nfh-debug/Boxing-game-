@@ -175,12 +175,13 @@ export interface PlayerState {
   clothingOwned: string[];
   // Wardrobe (Section 5, updated): which owned item is currently equipped
   // per Clothing Store sub-category ("shorts"/"gloves"/"upper"/"lower"/
-  // "shoes-casual"/"suits"/"shoes-formal") — null/absent means nothing
+  // "shoes-casual"/"robe"/"ringwalk-shoes") — null/absent means nothing
   // equipped in that slot. Fight Night's equipped Shorts+Gloves are what
-  // the player wears on Fight Night; Formal's equipped Suit+Shoes for
-  // formal occasions; Casual is just whatever's chosen to wear day to
-  // day — same equip-a-slot mechanic either way, just not tied to a
-  // specific triggered event.
+  // the player wears in the ring, and Ring Walk's equipped Robe+Shoes are
+  // what they wear walking out to it — both set for the next fight, not
+  // put on immediately. Casual is just whatever's chosen to wear day to
+  // day, equipped (and worn) right away — same equip-a-slot mechanic
+  // either way, just not tied to a specific triggered event.
   activeClothing: Record<string, string | null>;
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these

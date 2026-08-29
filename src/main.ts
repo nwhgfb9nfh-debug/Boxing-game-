@@ -5671,7 +5671,7 @@ function buildGarageMenu(): MenuData {
 }
 
 // Clothing Store (Section 5, updated): Fight Night (Shorts, Gloves),
-// Casual (Upper Body, Lower Body, Shoes), Formal (Suits, Shoes) — tap a
+// Casual (Upper Body, Lower Body, Shoes), Ring Walk (Robe, Shoes) — tap a
 // top category, then a sub-category, which opens a 4-per-row icon grid
 // (same layout as the Gift catalog) of that sub-category's whole catalog.
 // Tapping a tile opens it in the same single-item info sheet as the
@@ -5680,8 +5680,8 @@ function buildGarageMenu(): MenuData {
 // owned forever (not consumed) and grants its Image gain permanently,
 // same effect the old flat 3-outfit version had, just distributed per
 // item now. All names/prices/Image gains below are placeholders.
-type ClothingTopCategory = "fightnight" | "casual" | "formal";
-type ClothingSubCategory = "shorts" | "gloves" | "upper" | "lower" | "shoes-casual" | "suits" | "shoes-formal";
+type ClothingTopCategory = "fightnight" | "casual" | "ringwalk";
+type ClothingSubCategory = "shorts" | "gloves" | "upper" | "lower" | "shoes-casual" | "robe" | "ringwalk-shoes";
 
 interface ClothingItem {
   id: string;
@@ -5723,8 +5723,8 @@ const LOWER_BODY_TYPES = ["Jeans", "Cargo Pants", "Sweatpants", "Shorts", "Chino
 const LOWER_BODY_ICONS: Record<string, string> = { Shorts: "🩳" };
 const CASUAL_SHOE_TYPES = ["Sneakers", "Running Shoes", "Skate Shoes", "Canvas Shoes", "High-Tops", "Slip-Ons", "Sandals", "Boots"];
 const CASUAL_SHOE_ICONS: Record<string, string> = { Sandals: "🩴", Boots: "🥾" };
-const SUIT_TYPES = ["Two-Piece Suit", "Three-Piece Suit", "Tuxedo", "Blazer & Trousers Set"];
-const FORMAL_SHOE_TYPES = ["Oxford Shoes", "Loafers"];
+const ROBE_TYPES = ["Satin Robe", "Hooded Robe", "Silk Robe", "Velvet Robe"];
+const RINGWALK_SHOE_TYPES = ["Ring Walk Boots", "Walkout Slides"];
 const SHORTS_TYPES = [
   "Classic Trunks",
   "Satin Trunks",
@@ -5774,23 +5774,23 @@ const CLOTHING_CATALOG: Record<ClothingSubCategory, ClothingItem[]> = {
     (i) => 1 + (i % 3),
     (t) => CASUAL_SHOE_ICONS[t] ?? "👟",
   ),
-  suits: generateClothingItems(
-    "suits",
-    SUIT_TYPES,
-    ["Black", "Navy"],
+  robe: generateClothingItems(
+    "robe",
+    ROBE_TYPES,
+    ["Black", "Gold"],
     8,
     (i) => 300 + i * 150,
     (i) => 5 + i * 2,
-    () => "🤵",
+    () => "🥋",
   ),
-  "shoes-formal": generateClothingItems(
-    "shoes-formal",
-    FORMAL_SHOE_TYPES,
-    ["Black", "Brown"],
+  "ringwalk-shoes": generateClothingItems(
+    "ringwalk-shoes",
+    RINGWALK_SHOE_TYPES,
+    ["Black", "White"],
     4,
     (i) => 150 + i * 80,
     (i) => 3 + i * 2,
-    () => "👞",
+    () => "👢",
   ),
   shorts: generateClothingItems(
     "shorts",
@@ -5818,18 +5818,18 @@ const CLOTHING_SUB_LABELS: Record<ClothingSubCategory, string> = {
   upper: "👕 Upper Body",
   lower: "👖 Lower Body",
   "shoes-casual": "👟 Shoes",
-  suits: "🤵 Suits",
-  "shoes-formal": "👞 Shoes",
+  robe: "🥋 Robe",
+  "ringwalk-shoes": "👢 Shoes",
 };
 const CLOTHING_TOP_LABELS: Record<ClothingTopCategory, string> = {
   fightnight: "🥊 Fight Night",
   casual: "😎 Casual",
-  formal: "🎩 Formal",
+  ringwalk: "🚶 Ring Walk",
 };
 const CLOTHING_SUBCATEGORIES: Record<ClothingTopCategory, ClothingSubCategory[]> = {
   fightnight: ["shorts", "gloves"],
   casual: ["upper", "lower", "shoes-casual"],
-  formal: ["suits", "shoes-formal"],
+  ringwalk: ["robe", "ringwalk-shoes"],
 };
 
 let clothingTopCategory: ClothingTopCategory | null = null;
@@ -5937,12 +5937,13 @@ let clothingSheetMessage = "";
 // Standard?") before returning to browsing.
 let clothingSheetConfirmingActivate = false;
 
-// Fight Night's equip slot means "wear this in your next fight", not
-// "put it on now" the way Casual/Formal's does — same underlying
-// mechanic (one active item per sub-category), different wording so it
-// doesn't imply the player is walking around in fight gear.
-function isFightNightSub(sub: ClothingSubCategory): boolean {
-  return CLOTHING_SUBCATEGORIES.fightnight.includes(sub);
+// Fight Night's and Ring Walk's equip slots both mean "wear this for
+// your next fight" (in the ring, and walking out to it), not "put it on
+// now" the way Casual's does — same underlying mechanic (one active item
+// per sub-category), different wording so it doesn't imply the player is
+// walking around town in fight gear or a robe.
+function usesNextFightWording(sub: ClothingSubCategory): boolean {
+  return CLOTHING_SUBCATEGORIES.fightnight.includes(sub) || CLOTHING_SUBCATEGORIES.ringwalk.includes(sub);
 }
 
 function openClothingItemSheet(sub: ClothingSubCategory, index: number) {
@@ -5962,7 +5963,7 @@ function buildClothingItemSheet(): VehicleSheetData {
     return {
       title: item.name,
       image: item.image,
-      infoText: isFightNightSub(clothingSheetSub)
+      infoText: usesNextFightWording(clothingSheetSub)
         ? `🎉 Bought the ${item.name}! Set it as your gear for your next fight?`
         : `🎉 Bought the ${item.name}! Would you like to wear it now?`,
       priceText: "",
@@ -6111,10 +6112,10 @@ function buildWardrobeSubCategoryMenu(top: ClothingTopCategory): MenuData {
 function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
   const owned = CLOTHING_CATALOG[sub].filter((item) => playerState.clothingOwned.includes(item.id));
   const activeId = playerState.activeClothing[sub] ?? null;
-  const fightNight = isFightNightSub(sub);
+  const nextFight = usesNextFightWording(sub);
   const activeLabel = equippedItemName(sub)
-    ? (fightNight ? `Set for next fight: ${equippedItemName(sub)}` : `Wearing: ${equippedItemName(sub)}`)
-    : (fightNight ? "Nothing set for next fight" : "Nothing equipped");
+    ? (nextFight ? `Set for next fight: ${equippedItemName(sub)}` : `Wearing: ${equippedItemName(sub)}`)
+    : (nextFight ? "Nothing set for next fight" : "Nothing equipped");
   return {
     title: CLOTHING_SUB_LABELS[sub],
     energyText: activeLabel,
@@ -6129,7 +6130,7 @@ function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
         disabled: activeId === null,
         run: () => {
           playerState.activeClothing[sub] = null;
-          return fightNight ? "Cleared for next fight." : "Unequipped.";
+          return nextFight ? "Cleared for next fight." : "Unequipped.";
         },
       },
       ...owned.map((item) => ({
@@ -6137,11 +6138,11 @@ function buildWardrobeItemMenu(sub: ClothingSubCategory): MenuData {
         icon: item.image,
         label: item.name,
         cost: 0,
-        costLabel: activeId === item.id ? "ACTIVE" : (fightNight ? "Set" : "Wear"),
+        costLabel: activeId === item.id ? "ACTIVE" : (nextFight ? "Set" : "Wear"),
         disabled: activeId === item.id,
         run: () => {
           playerState.activeClothing[sub] = item.id;
-          return fightNight
+          return nextFight
             ? `Set the ${item.name} for your next fight.`
             : `Now wearing the ${item.name}.`;
         },
