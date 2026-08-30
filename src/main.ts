@@ -7138,12 +7138,16 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Mansion: HOUSE_STATIONS,
   "Suburban House": HOUSE_STATIONS,
   Townhouse: HOUSE_STATIONS,
+  // Smaller-than-default trigger radius (55 -> 35) — the room packs 5
+  // stations into a tight column/row, and the default radius let
+  // adjacent ones (Reflex Dots/Sparring Ring/Weight Area, all nx=0.5)
+  // overlap enough that walking toward one could trigger its neighbor.
   Gym: [
-    { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
-    { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
-    { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
-    { id: "sparring", label: "Sparring Ring", nx: 0.5, ny: 0.45 },
-    { id: "workoutclip", label: "Weight Area", nx: 0.5, ny: 0.6 },
+    { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3, radius: 35 },
+    { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3, radius: 35 },
+    { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3, radius: 35 },
+    { id: "sparring", label: "Sparring Ring", nx: 0.5, ny: 0.45, radius: 35 },
+    { id: "workoutclip", label: "Weight Area", nx: 0.5, ny: 0.6, radius: 35 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
