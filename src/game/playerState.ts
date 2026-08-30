@@ -17,7 +17,7 @@ export interface TrainingStats {
   power: StatProgress; // Heavy Bag
   speed: StatProgress; // Reflex Dots
   endurance: StatProgress; // Jump Rope
-  chin: StatProgress; // Sparring — stays untrained until the Fight system exists
+  chin: StatProgress; // Sparring (Training4, game/sparring.ts)
 }
 
 // Gym upgrade tiers, bought at Reception (Section 5) — each section starts

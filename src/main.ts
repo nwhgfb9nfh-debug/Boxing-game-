@@ -14,6 +14,7 @@ import { InteriorScene, type Station, type BlockedZone, type Decoration } from "
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
+import { SparringScene } from "./game/sparring";
 import { FightScene } from "./game/fight";
 import { getOpponentForCamp } from "./game/opponents";
 import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels, type Child } from "./game/playerState";
@@ -130,10 +131,11 @@ app.appendChild(campHud);
 // stage. Training stations additionally need the stage's specific stat.
 // Money-only actions (Reception, Mall, Sponsorships, Cash Advance,
 // Invest in Portfolio, Vacation) are never phase-gated.
-const TRAINING_STAT_BY_STATION: Record<string, "power" | "speed" | "endurance"> = {
+const TRAINING_STAT_BY_STATION: Record<string, "power" | "speed" | "endurance" | "chin"> = {
   heavybag: "power",
   reflexdots: "speed",
   jumprope: "endurance",
+  sparring: "chin",
 };
 const PRIVATE_LIFE_STATIONS = new Set([
   "workoutclip",
@@ -7088,6 +7090,7 @@ tapZone.onTap((x, y) => {
 
 swipeZone.onSwipe((direction) => {
   if (scene.type === "fight") scene.game.handleSwipe(direction);
+  else if (scene.type === "sparring") scene.game.handleSwipe(direction);
 });
 
 // Stations placed inside specific buildings' interiors — walk up to one
@@ -7139,6 +7142,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3 },
     { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3 },
     { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3 },
+    { id: "sparring", label: "Sparring Ring", nx: 0.5, ny: 0.45 },
     { id: "workoutclip", label: "Weight Area", nx: 0.5, ny: 0.6 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
@@ -7660,6 +7664,7 @@ type Scene =
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
   | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene }
+  | { type: "sparring"; lot: LotInstance; interior: InteriorScene; game: SparringScene }
   | { type: "fight"; lot: LotInstance; interior: InteriorScene; game: FightScene };
 let scene: Scene = { type: "street" };
 // Latches the end-meetup door confirmation to one prompt per approach to
@@ -7723,7 +7728,7 @@ function exitBuilding() {
   returnToStreet();
 }
 
-const TRAINING_STATION_IDS = new Set(["heavybag", "reflexdots", "jumprope"]);
+const TRAINING_STATION_IDS = new Set(["heavybag", "reflexdots", "jumprope", "sparring"]);
 
 function startStation(lot: LotInstance, interior: InteriorScene, stationId: string, anchor: { x: number; y: number }) {
   // Each Training minigame costs the full 100 Energy Star (Section 4) —
@@ -7745,6 +7750,9 @@ function startStation(lot: LotInstance, interior: InteriorScene, stationId: stri
   } else if (stationId === "jumprope") {
     scene = { type: "jumprope", lot, interior, game: new JumpRopeScene() };
     tapZone.setActive(true);
+  } else if (stationId === "sparring") {
+    scene = { type: "sparring", lot, interior, game: new SparringScene() };
+    swipeZone.setActive(true);
   }
 }
 
@@ -7762,8 +7770,8 @@ function finishMinigame(lot: LotInstance, interior: InteriorScene) {
 // variables the spec calls the "actual payoff" for the whole training
 // system: HP carries over from sleep (already clamped to <=100 for Fight
 // Night by sleepAtBed/resolveOvernightStay), Power/Speed/Endurance/Chin
-// come straight from playerState.training's banked bonuses (Chin stays 0
-// until Sparring exists — see FightScene's camp-variable effects).
+// come straight from playerState.training's banked bonuses (Chin from
+// Sparring, game/sparring.ts — see FightScene's camp-variable effects).
 function startFight(lot: LotInstance, interior: InteriorScene) {
   const opponent = getOpponentForCamp(campCycle.campNumber);
   joystick.setActive(false);
@@ -8095,6 +8103,23 @@ function loop(now: number) {
         { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
         () => {
           applyTraining("endurance", game.getResults());
+          finishMinigame(lot, interior);
+        },
+        "DONE",
+      );
+    }
+  } else if (scene.type === "sparring") {
+    const { lot, interior, game } = scene;
+    game.update(dt);
+    game.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = "Sparring";
+
+    if (game.isDone()) {
+      swipeZone.setActive(false);
+      buildingUI.setEnterPrompt(
+        { x: window.innerWidth / 2, y: window.innerHeight * 0.82 },
+        () => {
+          applyTraining("chin", game.getResults());
           finishMinigame(lot, interior);
         },
         "DONE",
