@@ -183,6 +183,11 @@ export interface PlayerState {
   // day, equipped (and worn) right away — same equip-a-slot mechanic
   // either way, just not tied to a specific triggered event.
   activeClothing: Record<string, string | null>;
+  // Furniture Store (Section 5, v1): each specific item (e.g.
+  // "comfort-0") is bought once and owned forever, like Clothing/
+  // Vehicles/Pet breeds — no placement mechanic yet (Interior Design is
+  // deliberately deferred), so owning it is purely a collection for now.
+  furnitureOwned: string[];
   // Mall Gift Shop inventory (Section 5 + Marriage System), keyed by gift
   // id ("flowers"/"jewelry"/"ring") — Give a Gift lists whichever of these
   // are owned; giving the Engagement Ring asks to Propose instead of
@@ -333,6 +338,7 @@ export function createPlayerState(): PlayerState {
     petToyInventory: {},
     clothingOwned: [],
     activeClothing: {},
+    furnitureOwned: [],
     giftInventory: {},
     buzzerHistory: [],
     availablePhotos: [],

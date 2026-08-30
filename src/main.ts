@@ -5275,11 +5275,10 @@ function openSimulateFightMenu() {
 }
 
 // Mall (Section 5): mostly money-only, cosmetic — the spec flags the whole
-// section "not v1" but it's being built now anyway. Vehicle/Pet are
-// one-time owned collectibles with no stat effect yet; Clothes is a
+// section "not v1" but it's being built now anyway. Vehicle/Pet/Furniture
+// are one-time owned collectibles with no stat effect yet; Clothes is a
 // repeatable Image-for-money buy; Gift Shop stocks items with nowhere to
-// go until the NPC/romance system exists; Furniture is browse-only per
-// spec, purchases deferred to the Phone.
+// go until the NPC/romance system exists.
 interface ShopItem {
   id: string;
   name: string;
@@ -6866,25 +6865,175 @@ function buildPetBreedSheet(): VehicleSheetData {
   };
 }
 
-const FURNITURE_ITEMS: ShopItem[] = [
-  { id: "sofa", name: "Sofa", price: 400 },
-  { id: "bed-frame", name: "Bed Frame", price: 600 },
-  { id: "tv-stand", name: "TV Stand", price: 300 },
-];
+// Furniture Store (Section 5, v1): the same 4 categories already locked in
+// for the future Interior Design placement system (Comfort, Entertainment,
+// Decorations, Practical), reused here rather than inventing different
+// ones now. Category -> tile grid (4 items, same layout as the Clothing
+// Store's grid) -> tap a tile -> detail sheet with Buy — one fewer nav
+// level than Clothing since these categories don't have sub-categories.
+// Each item is bought once and owned forever; no placement mechanic yet
+// (deliberately deferred), so owning it is purely a collection for now —
+// no stat effect, no post-purchase "activate" prompt.
+type FurnitureCategory = "comfort" | "entertainment" | "decorations" | "practical";
+interface FurnitureItem {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+}
+
+const FURNITURE_CATALOG: Record<FurnitureCategory, FurnitureItem[]> = {
+  comfort: [
+    { id: "comfort-0", name: "Sofa", price: 300, image: "🛋️" },
+    { id: "comfort-1", name: "Armchair", price: 150, image: "🪑" },
+    { id: "comfort-2", name: "Bed", price: 250, image: "🛏️" },
+    { id: "comfort-3", name: "Bean Bag Chair", price: 80, image: "🛋️" },
+  ],
+  entertainment: [
+    { id: "entertainment-0", name: "TV", price: 400, image: "📺" },
+    { id: "entertainment-1", name: "Gaming Console", price: 350, image: "🎮" },
+    { id: "entertainment-2", name: "Sound System", price: 300, image: "🔊" },
+    { id: "entertainment-3", name: "Pool Table", price: 600, image: "🎱" },
+  ],
+  decorations: [
+    { id: "decorations-0", name: "Wall Art", price: 50, image: "🖼️" },
+    { id: "decorations-1", name: "Area Rug", price: 70, image: "🟫" },
+    { id: "decorations-2", name: "Indoor Plant", price: 30, image: "🪴" },
+    { id: "decorations-3", name: "Table Lamp", price: 40, image: "💡" },
+  ],
+  practical: [
+    { id: "practical-0", name: "Bookshelf", price: 100, image: "📚" },
+    { id: "practical-1", name: "Storage Cabinet", price: 120, image: "🗄️" },
+    { id: "practical-2", name: "Desk", price: 150, image: "🖥️" },
+    { id: "practical-3", name: "Kitchen Table", price: 200, image: "🍽️" },
+  ],
+};
+
+const FURNITURE_CATEGORY_LABELS: Record<FurnitureCategory, string> = {
+  comfort: "🛋️ Comfort",
+  entertainment: "🎮 Entertainment",
+  decorations: "🖼️ Decorations",
+  practical: "📚 Practical",
+};
+
+let furnitureCategory: FurnitureCategory | null = null;
 
 function openFurnitureMenu() {
-  locationMenu.open(() => ({
+  furnitureCategory = null;
+  locationMenu.open(buildFurnitureMenu);
+}
+
+function buildFurnitureMenu(): MenuData {
+  if (furnitureCategory) return buildFurnitureGridMenu(furnitureCategory);
+  return buildFurnitureTopMenu();
+}
+
+function buildFurnitureTopMenu(): MenuData {
+  return {
     title: "🛋️ Furniture Store",
-    energyText: "Browsing only — purchases happen via the Phone once that's supported.",
-    actions: FURNITURE_ITEMS.map((f) => ({
-      id: f.id,
-      label: f.name,
+    energyText: `Money: $${playerState.money}`,
+    actions: (Object.keys(FURNITURE_CATEGORY_LABELS) as FurnitureCategory[]).map((cat) => ({
+      id: cat,
+      label: FURNITURE_CATEGORY_LABELS[cat],
       cost: 0,
-      costLabel: `$${f.price}`,
-      disabled: true,
-      run: () => "",
+      costLabel: "›",
+      run: () => {
+        furnitureCategory = cat;
+        return "";
+      },
     })),
-  }));
+  };
+}
+
+function buildFurnitureGridMenu(category: FurnitureCategory): MenuData {
+  const items = FURNITURE_CATALOG[category];
+  return {
+    title: FURNITURE_CATEGORY_LABELS[category],
+    energyText: `Money: $${playerState.money}`,
+    layout: "grid",
+    actions: [
+      ...items.map((item, i) => {
+        const owned = playerState.furnitureOwned.includes(item.id);
+        return {
+          id: item.id,
+          icon: item.image,
+          label: item.name,
+          cost: 0,
+          costLabel: owned ? "OWNED" : `$${item.price}`,
+          run: () => {
+            openFurnitureItemSheet(category, i);
+            return "";
+          },
+        };
+      }),
+      {
+        id: "back",
+        icon: "↩️",
+        label: "Back",
+        cost: 0,
+        costLabel: "",
+        run: () => {
+          furnitureCategory = null;
+          return "";
+        },
+      },
+    ],
+  };
+}
+
+let furnitureSheetCategory: FurnitureCategory = "comfort";
+let furnitureSheetIndex = 0;
+let furnitureSheetMessage = "";
+
+function openFurnitureItemSheet(category: FurnitureCategory, index: number) {
+  furnitureSheetCategory = category;
+  furnitureSheetIndex = index;
+  furnitureSheetMessage = "";
+  vehicleSheet.open(buildFurnitureItemSheet);
+}
+
+function buildFurnitureItemSheet(): VehicleSheetData {
+  const items = FURNITURE_CATALOG[furnitureSheetCategory];
+  const item = items[furnitureSheetIndex];
+  const owned = playerState.furnitureOwned.includes(item.id);
+  return {
+    title: item.name,
+    image: item.image,
+    infoText: `Wallet: $${playerState.money}\n${FURNITURE_CATEGORY_LABELS[furnitureSheetCategory]}\nNo placement mechanic yet — owning it is purely a collection for now.`,
+    priceText: owned ? "OWNED" : `$${item.price}`,
+    message: furnitureSheetMessage || undefined,
+    actions: [
+      {
+        id: "buy",
+        label: owned ? "✅ Owned" : `💰 Buy — $${item.price}`,
+        disabled: owned,
+        run: () => {
+          if (playerState.money < item.price) {
+            furnitureSheetMessage = `Not enough money — need $${item.price}, have $${playerState.money}.`;
+            return;
+          }
+          playerState.money -= item.price;
+          playerState.furnitureOwned.push(item.id);
+          furnitureSheetMessage = "";
+        },
+      },
+    ],
+    onPrev: () => {
+      furnitureSheetIndex = (furnitureSheetIndex - 1 + items.length) % items.length;
+      furnitureSheetMessage = "";
+    },
+    onNext: () => {
+      furnitureSheetIndex = (furnitureSheetIndex + 1) % items.length;
+      furnitureSheetMessage = "";
+    },
+    // Closing returns to the grid (still open behind this sheet) instead of
+    // exiting the whole Furniture Store — same fix as the Clothing Store's
+    // and Pet Store's item sheets.
+    onClose: () => {
+      vehicleSheet.close();
+      locationMenu.open(buildFurnitureMenu);
+    },
+  };
 }
 
 /**
