@@ -7083,6 +7083,7 @@ function applyTraining(stat: keyof TrainingStats, results: string[]) {
 tapZone.onTap((x, y) => {
   if (scene.type === "reflexdots") scene.game.handleTap(x, y);
   else if (scene.type === "jumprope") scene.game.handleTap(window.innerHeight);
+  else if (scene.type === "fight") scene.game.handleDangerTap(x, y);
 });
 
 swipeZone.onSwipe((direction) => {
@@ -8101,12 +8102,36 @@ function loop(now: number) {
     }
   } else {
     const { lot, interior, game } = scene;
-    game.update(dt);
+    game.update(dt, window.innerWidth, window.innerHeight);
     game.render(ctx, window.innerWidth, window.innerHeight);
     hudLabel.textContent = "Fight Night";
 
+    // Input surface follows whichever bonus (if any) the fight scene is
+    // currently in — Power Punch reuses Heavy Bag's PUNCH/RELEASE buttons,
+    // the danger flurry reuses Reflex Dots' full-screen tap, everything
+    // else is a normal swipe combo.
+    const fightPhase = game.getPhase();
+    if (fightPhase === "powerPunch") {
+      swipeZone.setActive(false);
+      tapZone.setActive(false);
+      const bagPhase = game.getPowerPunchPhase();
+      if (bagPhase === "ready") actionButtons.showLeft("PUNCH", () => game.handlePowerPunchStart());
+      else if (bagPhase === "charging") actionButtons.showRight("RELEASE", () => game.handlePowerPunchRelease());
+      else actionButtons.hideAll();
+    } else if (fightPhase === "dangerReflex") {
+      swipeZone.setActive(false);
+      actionButtons.hideAll();
+      tapZone.setActive(true);
+    } else {
+      actionButtons.hideAll();
+      tapZone.setActive(false);
+      swipeZone.setActive(true);
+    }
+
     if (game.isDone()) {
       swipeZone.setActive(false);
+      tapZone.setActive(false);
+      actionButtons.hideAll();
       buildingUI.setEnterPrompt(
         { x: window.innerWidth / 2, y: window.innerHeight * 0.9 },
         () => {
