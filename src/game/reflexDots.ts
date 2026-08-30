@@ -36,9 +36,13 @@ export class ReflexDotsScene {
   private dotX = 0;
   private dotY = 0;
   private activeElapsed = 0;
+  // Defaults to the full 12-dot training session; the Fight scene's
+  // Danger Reflex bonus passes a shorter count (see game/fight.ts).
+  private totalRounds: number;
 
-  constructor() {
+  constructor(rounds: number = ROUNDS) {
     this.timer = randRange(MIN_WAIT, MAX_WAIT);
+    this.totalRounds = rounds;
   }
 
   update(dt: number, width: number, height: number) {
@@ -54,7 +58,7 @@ export class ReflexDotsScene {
       this.timer -= dt;
       if (this.timer <= 0) {
         this.round++;
-        if (this.round >= ROUNDS) {
+        if (this.round >= this.totalRounds) {
           this.phase = "summary";
         } else {
           this.phase = "waiting";
@@ -117,7 +121,7 @@ export class ReflexDotsScene {
 
     ctx.font = "16px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillText(`Dot ${Math.min(this.round + 1, ROUNDS)}/${ROUNDS}`, width / 2, 92);
+    ctx.fillText(`Dot ${Math.min(this.round + 1, this.totalRounds)}/${this.totalRounds}`, width / 2, 92);
 
     if (this.phase === "active") {
       const frac = this.activeElapsed / DOT_LIFETIME;

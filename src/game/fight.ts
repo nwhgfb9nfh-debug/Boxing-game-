@@ -29,13 +29,13 @@
 //     HeavyBagScene's charge-and-release meter (only the green zone
 //     lands it; everything else whiffs).
 //   - Both Defense turns took damage -> the opponent presses the
-//     advantage with a dangerous flurry, represented by ReflexDotsScene
-//     — land the dot (Perfect or Good) to dodge it, miss it and eat a
-//     big hit.
+//     advantage with a real 5-dot ReflexDotsScene session. Damage scales
+//     with how it goes, not just pass/fail — all-Perfect takes nothing,
+//     all-Miss eats the full beatdown.
 
 import type { Opponent, Direction } from "./opponents";
 import { HeavyBagScene, type HeavyBagPhase } from "./heavyBag";
-import { ReflexDotsScene } from "./reflexDots";
+import { ReflexDotsScene, type ReflexResult } from "./reflexDots";
 
 export type FightTurnType = "offense" | "defense";
 export type FightPhase =
@@ -85,8 +85,11 @@ const POWER_PUNCH_BONUS_SCORE = 6;
 // Less damage taken from opponent hits, with Chin.
 const CHIN_REDUCTION_SCALE = 0.02;
 const CHIN_REDUCTION_CAP = 0.5;
-// The danger flurry hits harder than a normal defense turn's worst case.
-const DANGER_DAMAGE_MULTIPLIER = 1.5;
+// Danger Reflex bonus: a real 5-dot session, not just one dot — its
+// ceiling (an all-Miss run) hits several times harder than a normal
+// defense turn's worst case, scaled down toward 0 the better it goes.
+const DANGER_REFLEX_DOTS = 5;
+const DANGER_MAX_DAMAGE_MULTIPLIER = 3;
 
 const CUTMAN_RECOVERY_PER_LEVEL = 3;
 
@@ -176,14 +179,8 @@ export class FightScene {
       }
     } else if (this.phase === "dangerReflex") {
       this.dangerGame!.update(dt, width, height);
-      // ReflexDotsScene doesn't expose its phase publicly (only
-      // isDone()/getResults(), which only flips isDone() true after a
-      // full 12-dot session) — a result landing at all means this single
-      // dot just resolved, which is all this bonus needs.
-      const results = this.dangerGame!.getResults();
-      if (results.length >= 1) {
-        const last = results[0];
-        this.resolveDangerReflex(last === "perfect" || last === "good");
+      if (this.dangerGame!.isDone()) {
+        this.resolveDangerReflex(this.dangerGame!.getResults());
       }
     }
     // "over": nothing to tick — waiting on the caller's exit prompt.
@@ -346,10 +343,10 @@ export class FightScene {
     this.startTurn();
   }
 
-  // --- Danger Reflex bonus (ReflexDotsScene's single dot, reused wholesale) ---
+  // --- Danger Reflex bonus (a full 5-dot ReflexDotsScene session, reused wholesale) ---
 
   private startDangerReflex() {
-    this.dangerGame = new ReflexDotsScene();
+    this.dangerGame = new ReflexDotsScene(DANGER_REFLEX_DOTS);
     this.phase = "dangerReflex";
   }
 
@@ -357,15 +354,23 @@ export class FightScene {
     this.dangerGame?.handleTap(x, y);
   }
 
-  private resolveDangerReflex(saved: boolean) {
+  // Damage scales continuously with how the 5-dot session went — an
+  // all-Perfect run takes zero damage, an all-Miss run eats the full
+  // beatdown, and everything in between is graded the same 2/1/0
+  // perfect/good/miss scheme as a normal combo.
+  private resolveDangerReflex(results: ReflexResult[]) {
+    const maxScore = results.length * 2;
+    const score = results.reduce((sum, r) => sum + (r === "perfect" ? 2 : r === "good" ? 1 : 0), 0);
+    const missFraction = maxScore > 0 ? 1 - score / maxScore : 1;
     let damage = 0;
-    if (!saved) {
+    if (missFraction > 0) {
       const chinReduction = Math.min(CHIN_REDUCTION_CAP, this.vars.chinBonus * CHIN_REDUCTION_SCALE);
-      damage = Math.round(this.opponent.power * DANGER_DAMAGE_MULTIPLIER * (1 - chinReduction));
+      const maxDamage = this.opponent.power * DANGER_MAX_DAMAGE_MULTIPLIER;
+      damage = Math.round(maxDamage * missFraction * (1 - chinReduction));
       this.playerHp = Math.max(0, this.playerHp - damage);
       this.totalDamageTaken += damage;
     }
-    this.lastBonusLabel = saved ? "DODGED THE FLURRY!" : `CAUGHT! -${damage} HP`;
+    this.lastBonusLabel = damage === 0 ? "PERFECT DEFENSE — UNTOUCHED!" : `CAUGHT! -${damage} HP`;
     this.dangerGame = null;
     this.phase = "dangerReflexResolve";
     this.phaseTimer = RESOLVE_PAUSE_MS;
