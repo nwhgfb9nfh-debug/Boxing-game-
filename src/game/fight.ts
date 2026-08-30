@@ -79,8 +79,6 @@ const TELEGRAPH_ENDURANCE_SCALE_MS = 10;
 // More damage dealt on successful hits, with Power.
 const OFFENSE_DMG_PER_POINT_BASE = 2;
 const OFFENSE_DMG_POWER_SCALE = 0.1;
-// The Power Punch bonus lands as if it were a 3-step all-Perfect combo.
-const POWER_PUNCH_BONUS_SCORE = 6;
 
 // Less damage taken from opponent hits, with Chin.
 const CHIN_REDUCTION_SCALE = 0.02;
@@ -327,18 +325,23 @@ export class FightScene {
   private resolvePowerPunch(hit: boolean) {
     let damage = 0;
     if (hit) {
-      const dmgPerPoint = OFFENSE_DMG_PER_POINT_BASE + this.vars.powerBonus * OFFENSE_DMG_POWER_SCALE;
-      damage = Math.round(dmgPerPoint * POWER_PUNCH_BONUS_SCORE);
+      // Opponent-defined, not derived from the player's Power stat — same
+      // "roster decides it" pattern as `opponent.power` on defense.
+      damage = this.opponent.powerPunchDamage;
       this.opponentHp = Math.max(0, this.opponentHp - damage);
       this.totalDamageDealt += damage;
     }
     this.lastBonusLabel = hit ? `POWER PUNCH! -${damage} HP` : "POWER PUNCH — MISSED!";
-    this.powerPunchGame = null;
+    // powerPunchGame is deliberately NOT cleared here — its meter/marker
+    // stays frozen exactly where the player released it through the
+    // resolve pause too (see render()), same freeze-frame feedback a
+    // real Heavy Bag rep gives. Cleared once we actually move on.
     this.phase = "powerPunchResolve";
     this.phaseTimer = RESOLVE_PAUSE_MS;
   }
 
   private continueAfterPowerPunch() {
+    this.powerPunchGame = null;
     this.turnIndex++; // 2 -> 3, the round's closing Defense turn
     this.startTurn();
   }
@@ -468,7 +471,9 @@ export class FightScene {
   private opponentPose(): "guard" | "windup" | "stagger" | "ko" {
     if (this.phase === "over" && this.outcome === "ko-win") return "ko";
     if (this.phase === "resolve" && this.lastExchangeType === "offense" && this.lastExchangeDamage > 0) return "stagger";
-    if (this.phase === "powerPunchResolve" && this.lastBonusLabel.startsWith("POWER PUNCH!")) return "stagger";
+    // Note: powerPunchResolve no longer reaches renderMainScene/opponentPose
+    // at all (its own render() branch delegates to the embedded Heavy Bag
+    // scene for the freeze-frame instead) — see render().
     if (this.phase === "dangerReflexResolve") return "windup";
     if ((this.phase === "telegraph" || this.phase === "input") && this.turnType() === "defense") return "windup";
     return "guard";
@@ -487,9 +492,19 @@ export class FightScene {
       return;
     }
 
-    if (this.phase === "powerPunch" && this.powerPunchGame) {
+    if ((this.phase === "powerPunch" || this.phase === "powerPunchResolve") && this.powerPunchGame) {
+      // Keeps rendering through the resolve pause too, so the meter's
+      // marker stays frozen exactly where it was released — the same
+      // freeze-frame feedback a real Heavy Bag rep gives, showing
+      // precisely where in the zone the player stopped it.
       this.powerPunchGame.render(ctx, width, height);
-      this.renderBonusLabel(ctx, width, "🎁 BONUS — Land the Power Punch!");
+      const resolved = this.phase === "powerPunchResolve";
+      this.renderBonusLabel(
+        ctx,
+        width,
+        resolved ? this.lastBonusLabel : "🎁 BONUS — Land the Power Punch!",
+        resolved ? (this.lastBonusLabel.includes("MISS") ? "#ff5a5a" : "#3fbf6b") : "#ffd23f",
+      );
     } else if (this.phase === "dangerReflex" && this.dangerGame) {
       this.dangerGame.render(ctx, width, height);
       this.renderBonusLabel(ctx, width, "⚠️ HE'S SWINGING FOR THE FENCES!");
@@ -530,9 +545,9 @@ export class FightScene {
     this.renderBar(ctx, barX, pBarY, barW, 14, this.playerHp / 100, "#3fbf6b");
   }
 
-  private renderBonusLabel(ctx: CanvasRenderingContext2D, width: number, text: string) {
+  private renderBonusLabel(ctx: CanvasRenderingContext2D, width: number, text: string, color = "#ffd23f") {
     ctx.font = "bold 14px sans-serif";
-    ctx.fillStyle = "#ffd23f";
+    ctx.fillStyle = color;
     ctx.fillText(text, width / 2, 100);
   }
 
@@ -592,9 +607,9 @@ export class FightScene {
     if (this.phase === "resolve") {
       this.renderResolveBanner(ctx, width, height * 0.6);
     }
-    if (this.phase === "powerPunchResolve" || this.phase === "dangerReflexResolve") {
+    if (this.phase === "dangerReflexResolve") {
       ctx.font = "bold 22px sans-serif";
-      ctx.fillStyle = this.lastBonusLabel.includes("MISS") || this.lastBonusLabel.startsWith("CAUGHT!") ? "#ff5a5a" : "#3fbf6b";
+      ctx.fillStyle = this.lastBonusLabel.startsWith("CAUGHT!") ? "#ff5a5a" : "#3fbf6b";
       ctx.fillText(this.lastBonusLabel, width / 2, height * 0.6);
     }
     if (this.phase === "roundEnd") {

@@ -21,6 +21,12 @@ export interface Opponent {
   power: number; // base damage on a fully-unblocked hit against the player, before Chin reduction
   recovery: number; // HP regenerated between rounds
   purse: number; // base purse for going the distance with (or beating) this opponent
+  // Fight System — Power Punch bonus: flat damage on a green-zone hit,
+  // opponent-defined rather than derived from the player's Power stat
+  // (same "roster decides it" pattern as `power` above). Placeholder —
+  // roughly 20% of the opponent's own hp for now, real numbers come once
+  // the full roster is scripted.
+  powerPunchDamage: number;
   // 2-3 fixed combos, drawn from randomly on the player's Defense turns —
   // learnable per opponent rather than fully random, per spec.
   signatureCombos: Direction[][];
@@ -45,6 +51,7 @@ export const OPPONENT_ROSTER: Opponent[] = [
     power: 10,
     recovery: 6,
     purse: 5000,
+    powerPunchDamage: 14,
     signatureCombos: [
       ["left", "right"],
       ["up", "left", "right"],
@@ -61,6 +68,7 @@ export const OPPONENT_ROSTER: Opponent[] = [
     power: 14,
     recovery: 7,
     purse: 12000,
+    powerPunchDamage: 18,
     signatureCombos: [
       ["left", "left", "right"],
       ["up", "down", "left"],
@@ -77,6 +85,7 @@ export const OPPONENT_ROSTER: Opponent[] = [
     power: 18,
     recovery: 8,
     purse: 25000,
+    powerPunchDamage: 22,
     signatureCombos: [
       ["down", "up", "left", "right"],
       ["right", "right", "up"],
@@ -93,6 +102,7 @@ export const OPPONENT_ROSTER: Opponent[] = [
     power: 22,
     recovery: 9,
     purse: 50000,
+    powerPunchDamage: 26,
     signatureCombos: [
       ["up", "left", "down", "right"],
       ["right", "left", "right", "up"],
@@ -109,6 +119,7 @@ export const OPPONENT_ROSTER: Opponent[] = [
     power: 28,
     recovery: 10,
     purse: 100000,
+    powerPunchDamage: 30,
     signatureCombos: [
       ["left", "up", "right", "down"],
       ["right", "right", "left", "up"],
