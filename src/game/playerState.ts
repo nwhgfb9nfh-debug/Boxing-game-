@@ -234,6 +234,11 @@ export interface PlayerState {
   // Marriage System: the CampCycle.campNumber value at the moment she
   // married the player — the baseline "3 full cycles" counts from.
   marriageCampNumber: Record<string, number>;
+  // Wife-neglect decay (Romance System, updated): consecutive camp phases
+  // with zero Talk/Actions/Meetup interaction with the married spouse —
+  // see tickWifeNeglectDecay in main.ts. Reset to 0 by any interaction and
+  // by a fresh Propose success; meaningless while unmarried.
+  wifeNeglectPhases: number;
   // Marriage System: cumulative % of every future fight's Purse owed in
   // child support from past divorces — 10% per child from that marriage,
   // permanent and stacking across every divorce over a career (2 kids =
@@ -351,6 +356,7 @@ export function createPlayerState(): PlayerState {
     divorced: {},
     children: {},
     marriageCampNumber: {},
+    wifeNeglectPhases: 0,
     divorceChildSupportPercent: 0,
     exchangedNumbers: {},
     dateCounts: {},

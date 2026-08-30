@@ -161,6 +161,11 @@ function clearUsedThisPhase() {
   playerState.usedThisPhase = [];
 }
 const MULTI_ACTIVITY_STATIONS = new Set(["bar", "pressreception", "workoutclip"]);
+// Wife-neglect decay (Romance System, updated): marked via the same
+// per-phase flag mechanism as everything above whenever the player Talks
+// to, takes an Action with, or has a Meetup with the married spouse — see
+// tickWifeNeglectDecay for where this gets read.
+const WIFE_NEGLECT_INTERACTION_ID = "wife-neglect-interaction";
 
 function requirePrivateLifePhase(): string | null {
   const stage = campCycle.current;
@@ -764,8 +769,14 @@ function openDebugMenu() {
         costLabel: "GO",
         run: () => {
           let stage = campCycle.current;
+          let neglectMessage: string | null = null;
           do {
             stage = campCycle.advance();
+            // Every lap of this loop is a full uninterrupted phase — no
+            // chance for a real interaction to happen mid-jump — so it
+            // ticks the same as a real skipped phase; only the last one's
+            // message (if any) is worth surfacing.
+            neglectMessage = tickWifeNeglectDecay() ?? neglectMessage;
           } while (stage.type !== "nofight");
           playerState.fightScheduled = false;
           playerState.cashAdvanceTaken = false;
@@ -775,7 +786,7 @@ function openDebugMenu() {
           playerState.overnightCommuteStep = {};
           energy.sleep(MAX_ENERGY);
           const kidMessages = checkForNewKids();
-          return `Jumped to Camp ${campCycle.campNumber} — ${stage.label}.${
+          return `Jumped to Camp ${campCycle.campNumber} — ${stage.label}.${neglectMessage ? " " + neglectMessage : ""}${
             kidMessages.length ? " " + kidMessages.join(" ") : ""
           }`;
         },
@@ -3914,6 +3925,39 @@ function bumpRomance(npcId: string, delta: number) {
 function isPlayerMarried(): boolean {
   return Object.values(playerState.married).some(Boolean);
 }
+// Monogamy (see above) means at most one entry is ever true — the
+// currently married spouse, or null if unmarried.
+function getSpouseId(): string | null {
+  return Object.keys(playerState.married).find((id) => playerState.married[id]) ?? null;
+}
+
+// Wife-neglect decay (Romance System, updated): called at every real camp
+// phase advance (sleepAtBed/resolveOvernightStay/Simulate Fight/the debug
+// "Jump to Next Camp" loop), right before clearUsedThisPhase() wipes the
+// flag this reads. Talking to, taking an Action with, or having a Meetup
+// with her (see WIFE_NEGLECT_INTERACTION_ID) during the phase that's
+// ending resets the streak to 0 immediately, which is why this checks
+// (and clears) the flag rather than counting interactions itself. 2 clean
+// neglected phases don't do anything yet; the 3rd (and every one after,
+// for as long as the streak holds) decays both meters -5, cut by the
+// existing best-owned-pet perk and rounded down — see
+// bestPetDecayReduction, built earlier for exactly this.
+function tickWifeNeglectDecay(): string | null {
+  const spouseId = getSpouseId();
+  if (!spouseId) return null;
+  if (hasUsedThisPhase(WIFE_NEGLECT_INTERACTION_ID)) {
+    playerState.wifeNeglectPhases = 0;
+    return null;
+  }
+  playerState.wifeNeglectPhases += 1;
+  if (playerState.wifeNeglectPhases < 3) return null;
+  const amount = Math.floor(5 * (1 - bestPetDecayReduction()));
+  bumpRelationship(spouseId, -amount);
+  bumpRomance(spouseId, -amount);
+  const spouseName = getNpcById(spouseId)?.name ?? "Your wife";
+  return `💔 ${spouseName} feels neglected — Relationship and Romance both -${amount}.`;
+}
+
 function isRomanceLockedOut(npc: NpcDef): boolean {
   if (!npc.romanceEligible) return false;
   // Break Up/Divorce: permanent, regardless of anyone's marriage status —
@@ -4023,6 +4067,7 @@ function resolveProposeAttempt(npc: NpcDef): string {
     const existingKids = npc.familyInfo?.kidsHas ?? 0;
     for (let i = 0; i < existingKids; i++) spawnChild(npc.id);
     playerState.marriageCampNumber[npc.id] = campCycle.campNumber;
+    playerState.wifeNeglectPhases = 0;
     capOtherRomanceScoresOnMarriage(npc.id);
   }
   return result.message;
@@ -4132,6 +4177,7 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
         id: "talk",
         label: "Talk",
         onSelect: () => {
+          if (playerState.married[npc.id]) markUsedThisPhase(WIFE_NEGLECT_INTERACTION_ID);
           if (npc.dialogueWritten === false) {
             dialogueView = "not-written";
           } else {
@@ -4147,6 +4193,7 @@ function buildDialogueMain(npc: NpcDef, extraOptions: DialogueOption[]): Dialogu
               id: "actions",
               label: "Actions",
               onSelect: () => {
+                if (playerState.married[npc.id]) markUsedThisPhase(WIFE_NEGLECT_INTERACTION_ID);
                 dialogueView = npc.dialogueWritten === false ? "not-written" : "actions";
               },
             },
@@ -5038,6 +5085,7 @@ function buildMeetupDialogueResponse(npc: NpcDef): DialogueData {
 }
 
 function openMeetupDialogue(npc: NpcDef, location: MeetupLocationId, type: MeetupType) {
+  if (playerState.married[npc.id]) markUsedThisPhase(WIFE_NEGLECT_INTERACTION_ID);
   meetupDialogueView = "main";
   dialogueBox.open(() => {
     if (meetupDialogueView === "connect-options") return buildMeetupDialogueConnectOptions(npc, location, type);
@@ -5120,6 +5168,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
+  const neglectMessage = tickWifeNeglectDecay();
   clearUsedThisPhase();
   socialBattery.reset();
   // Sleeping a second time (right on top of an Overnight Stay) uses up
@@ -5152,7 +5201,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
   buildingUI.showToast(
     `😴 Slept. +${hpGain} HP (now ${playerState.hp}). Energy refilled to ${cap}/${MAX_ENERGY}${useBonus ? " (vacation bonus!)" : ""}. Next: ${nextStage.label}.${
       kidMessages.length ? " " + kidMessages.join(" ") : ""
-    }`,
+    }${neglectMessage ? " " + neglectMessage : ""}`,
     anchor,
     "bottom",
   );
@@ -5164,6 +5213,7 @@ function sleepAtBed(anchor: { x: number; y: number }) {
 // jump), then marks the NPC absent from her normal spot for the newly
 // arrived phase only.
 function resolveOvernightStay(npcId: string): string {
+  if (playerState.married[npcId]) markUsedThisPhase(WIFE_NEGLECT_INTERACTION_ID);
   const peekedNextStage = CAMP_SEQUENCE[(campCycle.currentIndex + 1) % CAMP_SEQUENCE.length];
   const useBonus = playerState.vacationEnergyBonusUses > 0 && peekedNextStage.type === "privatelife";
   const cap = useBonus ? MAX_ENERGY + 10 : MAX_ENERGY;
@@ -5174,6 +5224,7 @@ function resolveOvernightStay(npcId: string): string {
   else playerState.hp += hpGain;
 
   const nextStage = campCycle.advance();
+  const neglectMessage = tickWifeNeglectDecay();
   clearUsedThisPhase();
   socialBattery.reset();
   playerState.overnightCommuteStep = {};
@@ -5197,7 +5248,7 @@ function resolveOvernightStay(npcId: string): string {
 
   return `You wake up together the next morning. Next: ${nextStage.label}. (${formatRomanceResult(MEETUP_CONNECT_DELTA)})${
     kidMessages.length ? " " + kidMessages.join(" ") : ""
-  }`;
+  }${neglectMessage ? " " + neglectMessage : ""}`;
 }
 
 // Airport (Section 5): "Go on Vacation" — $1000, only available right
@@ -5263,10 +5314,11 @@ function openSimulateFightMenu() {
             playerState.hp = 0;
             playerState.justFinishedFight = true;
             const nextStage = campCycle.advance();
+            const neglectMessage = tickWifeNeglectDecay();
             clearUsedThisPhase();
             socialBattery.reset();
             playerState.overnightCommuteStep = {};
-            return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.`;
+            return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.${neglectMessage ? " " + neglectMessage : ""}`;
           },
         },
       ],
@@ -6395,10 +6447,9 @@ function dogCatCapacity(): number {
   return HOUSE_DOGCAT_CAPACITY[bestOwnedHouseName()] ?? 0;
 }
 
-// Decay perk (Section 5, updated): once the planned Wife-neglect Romance
-// decay system exists, only the player's single BEST-owned pet reduces
-// it (no stacking across multiple pets). Exposed now as pure lookup
-// infrastructure — there's no decay system yet to actually call it.
+// Decay perk (Section 5, updated): the Wife-neglect Romance decay system
+// (see tickWifeNeglectDecay) applies this reduction from only the
+// player's single BEST-owned pet — no stacking across multiple pets.
 const PET_DECAY_REDUCTION: Record<"dog" | "cat" | "bird" | "rabbit" | "fish" | "snake", number> = {
   dog: 0.5,
   cat: 0.5,
@@ -6551,7 +6602,7 @@ function buildPetStoreMainMenu(): MenuData {
     title: "🐾 Pet Store",
     energyText:
       `Money: $${playerState.money}` +
-      (decayPerk > 0 ? `  ·  Neglect-decay perk (once that system exists): -${Math.round(decayPerk * 100)}%` : ""),
+      (decayPerk > 0 ? `  ·  Wife-neglect decay perk: -${Math.round(decayPerk * 100)}%` : ""),
     actions: [
       {
         id: "pets",
@@ -7198,7 +7249,7 @@ function getActiveMeetupStation(buildingName: string): Station | null {
 // regular-location station for good, in every house the player owns.
 function getSpouseStation(buildingName: string): Station | null {
   if (!HOUSE_NAMES.has(buildingName)) return null;
-  const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+  const spouseId = getSpouseId();
   if (!spouseId) return null;
   const npc = getNpcById(spouseId);
   return npc ? { id: "spouse-npc", label: npc.name, kind: "npc", nx: 0.75, ny: 0.3 } : null;
@@ -7217,7 +7268,7 @@ const CHILD_STATION_POSITIONS: { nx: number; ny: number }[] = [
 ];
 function getChildStations(buildingName: string): Station[] {
   if (!HOUSE_NAMES.has(buildingName)) return [];
-  const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+  const spouseId = getSpouseId();
   if (!spouseId) return [];
   const kids = playerState.children[spouseId] ?? [];
   return kids.map((child, i) => ({
@@ -7892,7 +7943,7 @@ function loop(now: number) {
         onTrigger = () => buildingUI.showToast("She's still asleep — let her rest.", pos, "bottom");
       }
       else if (nearStation.id === "spouse-npc") {
-        const spouseId = Object.keys(playerState.married).find((id) => playerState.married[id]);
+        const spouseId = getSpouseId();
         const spouse = spouseId ? getNpcById(spouseId) : undefined;
         onTrigger = spouse ? () => openNpcDialogue(spouse) : () => {};
       }
