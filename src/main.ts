@@ -4,6 +4,7 @@ import { createBuildingUI } from "./ui/buildingUI";
 import { createJoystick } from "./ui/joystick";
 import { createActionButtons } from "./ui/actionButtons";
 import { createTapZone } from "./ui/tapZone";
+import { createSwipeZone } from "./ui/swipeZone";
 import { createPhoneUI, type PhoneApi, type HouseListing } from "./ui/phoneUI";
 import { createActionMenu, type MenuData } from "./ui/actionMenu";
 import { createDialogueBox, type DialogueOption, type DialogueData } from "./ui/dialogueBox";
@@ -13,6 +14,8 @@ import { InteriorScene, type Station, type BlockedZone, type Decoration } from "
 import { HeavyBagScene } from "./game/heavyBag";
 import { ReflexDotsScene } from "./game/reflexDots";
 import { JumpRopeScene } from "./game/jumpRope";
+import { FightScene } from "./game/fight";
+import { getOpponentForCamp } from "./game/opponents";
 import { createPlayerState, addBuzzerPost, type TrainingStats, type GymLevels, type Child } from "./game/playerState";
 import { EnergyStar, MAX_ENERGY } from "./game/energyStar";
 import { CampCycle, CAMP_SEQUENCE } from "./game/campCycle";
@@ -95,6 +98,7 @@ const buildingUI = createBuildingUI(app);
 const joystick = createJoystick(app);
 const actionButtons = createActionButtons(app);
 const tapZone = createTapZone(app);
+const swipeZone = createSwipeZone(app);
 const street = new StreetScene(controls);
 // Autopilot's REVERSE/🧭 AUTO buttons live inside DriveControls itself
 // (visibility gated per-vehicle by applyVehiclePerformance further below);
@@ -201,6 +205,9 @@ function getStationPhaseLock(stationId: string): string | null {
       return `Closed — only available during a Promotion phase (currently "${stage.label}").`;
     }
     return null;
+  }
+  if (stationId === "enter-ring" && stage.type !== "fight") {
+    return `Not fight night yet (currently "${stage.label}").`;
   }
   return null;
 }
@@ -1530,7 +1537,7 @@ const GYM_CATEGORIES: GymCategory[] = [
 // defined further down after the floor NPCs themselves (Vinnie, Angela,
 // Marcus, and their secretaries/assistants).
 
-const CASH_ADVANCE_AMOUNT = 20000; // placeholder — deducted from the purse once the Fight/Promotion economy exists
+const CASH_ADVANCE_AMOUNT = 20000; // deducted from the purse in finishFightScene once the fight it was taken against resolves
 const PORTFOLIO_INVEST_AMOUNT = 5000; // placeholder — returns arrive once a real investment system exists
 
 interface SponsorshipDeal {
@@ -5290,41 +5297,11 @@ function openVacationMenu() {
   });
 }
 
-// Arena (Section 8): no Fight system yet, so this is a placeholder that
-// resolves FIGHT NIGHT — draining Energy to 0 (simulating the exhaustion
-// of a real fight) and unlocking the Airport's Vacation for After Fight.
-function openSimulateFightMenu() {
-  locationMenu.open(() => {
-    const isFightNight = campCycle.current.type === "fight";
-    return {
-      title: "🏟️ Simulate Fight",
-      energyText: isFightNight
-        ? "No real Fight system yet — this resolves the night and moves you into recovery."
-        : `Not fight night yet (currently "${campCycle.current.label}").`,
-      actions: [
-        {
-          id: "simulate",
-          label: "Simulate Fight",
-          cost: 0,
-          costLabel: isFightNight ? "GO" : "N/A",
-          disabled: !isFightNight,
-          run: () => {
-            if (!isFightNight) return "It's not fight night yet.";
-            energy.spend(energy.remaining);
-            playerState.hp = 0;
-            playerState.justFinishedFight = true;
-            const nextStage = campCycle.advance();
-            const neglectMessage = tickWifeNeglectDecay();
-            clearUsedThisPhase();
-            socialBattery.reset();
-            playerState.overnightCommuteStep = {};
-            return `Fight simulated! You're exhausted (0 Energy, 0 HP). Next: ${nextStage.label}.${neglectMessage ? " " + neglectMessage : ""}`;
-          },
-        },
-      ],
-    };
-  });
-}
+// Arena (Section 8): the real Fight system — see startFight/finishFightScene
+// near the training minigames' startStation/finishMinigame, and
+// game/fight.ts for the memory-combo scene itself. This used to be a
+// placeholder "Simulate Fight" menu; it's now a real interactive scene
+// entered directly from the Arena's station, same as a training minigame.
 
 // Mall (Section 5): mostly money-only, cosmetic — the spec flags the whole
 // section "not v1" but it's being built now anyway. Vehicle/Pet/Furniture
@@ -7108,6 +7085,10 @@ tapZone.onTap((x, y) => {
   else if (scene.type === "jumprope") scene.game.handleTap(window.innerHeight);
 });
 
+swipeZone.onSwipe((direction) => {
+  if (scene.type === "fight") scene.game.handleSwipe(direction);
+});
+
 // Stations placed inside specific buildings' interiors — walk up to one
 // and its prompt surfaces the same way the street's ENTER prompt does.
 // Every purchasable home (Real Estate App) gets the same bed — not just
@@ -7191,7 +7172,7 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "bottle", label: "Buy a Bottle", nx: 0.85, ny: 0.15 },
   ],
   Airport: [{ id: "vacation", label: "Go on Vacation", nx: 0.5, ny: 0.4 }],
-  Arena: [{ id: "simulate-fight", label: "Simulate Fight", nx: 0.5, ny: 0.4 }],
+  Arena: [{ id: "enter-ring", label: "Enter the Ring", nx: 0.5, ny: 0.4 }],
   Mall: [
     { id: "vehicles", label: "Vehicle Dealer", nx: 0.05, ny: 0.3 },
     { id: "petstore", label: "Pet Store", nx: 0.05, ny: 0.7 },
@@ -7677,7 +7658,8 @@ type Scene =
   | { type: "interior"; lot: LotInstance; interior: InteriorScene; officeFloor?: number; mallStore?: string }
   | { type: "heavybag"; lot: LotInstance; interior: InteriorScene; game: HeavyBagScene }
   | { type: "reflexdots"; lot: LotInstance; interior: InteriorScene; game: ReflexDotsScene }
-  | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene };
+  | { type: "jumprope"; lot: LotInstance; interior: InteriorScene; game: JumpRopeScene }
+  | { type: "fight"; lot: LotInstance; interior: InteriorScene; game: FightScene };
 let scene: Scene = { type: "street" };
 // Latches the end-meetup door confirmation to one prompt per approach to
 // the door, instead of reopening it every frame the player stands there.
@@ -7769,8 +7751,76 @@ function finishMinigame(lot: LotInstance, interior: InteriorScene) {
   scene = { type: "interior", lot, interior };
   actionButtons.hideAll();
   tapZone.setActive(false);
+  swipeZone.setActive(false);
   buildingUI.setEnterPrompt(null, () => {});
   joystick.setActive(true);
+}
+
+// Fight System (Stage 1): entered directly from the Arena's station, same
+// as a training minigame — no menu in between. Fed by the 5 camp
+// variables the spec calls the "actual payoff" for the whole training
+// system: HP carries over from sleep (already clamped to <=100 for Fight
+// Night by sleepAtBed/resolveOvernightStay), Power/Speed/Endurance/Chin
+// come straight from playerState.training's banked bonuses (Chin stays 0
+// until Sparring exists — see FightScene's camp-variable effects).
+function startFight(lot: LotInstance, interior: InteriorScene) {
+  const opponent = getOpponentForCamp(campCycle.campNumber);
+  joystick.setActive(false);
+  buildingUI.setEnterPrompt(null, () => {});
+  swipeZone.setActive(true);
+  scene = {
+    type: "fight",
+    lot,
+    interior,
+    game: new FightScene(opponent, {
+      hp: playerState.hp,
+      powerBonus: playerState.training.power.bonus,
+      speedBonus: playerState.training.speed.bonus,
+      enduranceBonus: playerState.training.endurance.bonus,
+      chinBonus: playerState.training.chin.bonus,
+      cutmanLevel: playerState.cutmanLevel,
+    }),
+  };
+}
+
+// Applies a finished fight's real outcome — record, purse (activating the
+// purseMultiplier/divorceChildSupportPercent/cashAdvanceTaken
+// infrastructure that's been sitting inert since before this system
+// existed), and HP — then folds into the exact same FIGHT NIGHT ->
+// After Fight transition the old Simulate Fight placeholder did (Energy
+// drained, justFinishedFight for the Airport's Vacation, campCycle
+// advance, wife-neglect tick, phase/social-battery reset).
+function finishFightScene(lot: LotInstance, interior: InteriorScene, game: FightScene): string {
+  const outcome = game.getOutcome();
+  const opponent = game.getOpponent();
+  const won = outcome === "ko-win" || outcome === "decision-win";
+  const draw = outcome === "draw";
+  if (draw) playerState.record.draws += 1;
+  else if (won) playerState.record.wins += 1;
+  else playerState.record.losses += 1;
+  if (outcome === "ko-win") playerState.record.kos += 1;
+
+  const grossPurse = game.getPurseAwarded() * playerState.purseMultiplier;
+  const afterChildSupport = grossPurse * (1 - playerState.divorceChildSupportPercent / 100);
+  const afterAdvance = afterChildSupport - (playerState.cashAdvanceTaken ? CASH_ADVANCE_AMOUNT : 0);
+  const netPurse = Math.max(0, Math.round(afterAdvance));
+  playerState.money += netPurse;
+
+  playerState.hp = game.getFinalPlayerHp();
+  energy.spend(energy.remaining);
+  playerState.justFinishedFight = true;
+  const nextStage = campCycle.advance();
+  const neglectMessage = tickWifeNeglectDecay();
+  clearUsedThisPhase();
+  socialBattery.reset();
+  playerState.overnightCommuteStep = {};
+
+  finishMinigame(lot, interior);
+
+  const outcomeLabel = draw ? "Draw" : won ? "Win" : "Loss";
+  return `${outcomeLabel} vs. ${opponent.name}! Purse: $${netPurse.toLocaleString()}. Record: ${playerState.record.wins}-${playerState.record.losses}-${playerState.record.draws} (${playerState.record.kos} KOs). Next: ${nextStage.label}.${
+    neglectMessage ? " " + neglectMessage : ""
+  }`;
 }
 
 function resize() {
@@ -7888,7 +7938,7 @@ function loop(now: number) {
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
       else if (nearStation.id === "vacation") onTrigger = openVacationMenu;
-      else if (nearStation.id === "simulate-fight") onTrigger = openSimulateFightMenu;
+      else if (nearStation.id === "enter-ring") onTrigger = () => startFight(lot, interior);
       else if (nearStation.id in MALL_STORE_STATIONS) {
         const storeId = nearStation.id;
         onTrigger = () => {
@@ -8032,7 +8082,7 @@ function loop(now: number) {
         "DONE",
       );
     }
-  } else {
+  } else if (scene.type === "jumprope") {
     const { lot, interior, game } = scene;
     game.update(dt);
     game.render(ctx, window.innerWidth, window.innerHeight);
@@ -8045,6 +8095,23 @@ function loop(now: number) {
         () => {
           applyTraining("endurance", game.getResults());
           finishMinigame(lot, interior);
+        },
+        "DONE",
+      );
+    }
+  } else {
+    const { lot, interior, game } = scene;
+    game.update(dt);
+    game.render(ctx, window.innerWidth, window.innerHeight);
+    hudLabel.textContent = "Fight Night";
+
+    if (game.isDone()) {
+      swipeZone.setActive(false);
+      buildingUI.setEnterPrompt(
+        { x: window.innerWidth / 2, y: window.innerHeight * 0.9 },
+        () => {
+          const message = finishFightScene(lot, interior, game);
+          buildingUI.showToast(message, { x: window.innerWidth / 2, y: window.innerHeight - 140 }, "bottom");
         },
         "DONE",
       );

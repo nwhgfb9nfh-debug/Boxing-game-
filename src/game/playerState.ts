@@ -77,10 +77,15 @@ export interface PlayerState {
   // Starts at 100. Sleeping banks half of whatever Energy Star is left
   // into HP, so it can climb above 100 as pure fight-day insurance.
   // Training injuries / life-choice risk events (not implemented yet)
-  // will be able to drop it below 100. Resets to 100 when a fight
-  // starts (not implemented yet — no fight system).
+  // will be able to drop it below 100. Clamped to <=100 once the next
+  // stage is FIGHT NIGHT (see sleepAtBed/resolveOvernightStay), and the
+  // Fight scene (game/fight.ts) reads/writes it directly as the fight's
+  // starting/ending HP.
   hp: number;
   training: TrainingStats;
+  // Fight System (Stage 1): career record, updated once per resolved
+  // fight (see finishFightScene in main.ts). kos is a subset of wins.
+  record: { wins: number; losses: number; draws: number; kos: number };
   // Office reception (Section 5): coach/cutman levels are cumulative
   // (buying Lvl 3 keeps Lvl 1/2 unlocked). managerLevel is exclusive —
   // only one manager is on staff at a time, and hiring a different tier
@@ -115,11 +120,11 @@ export interface PlayerState {
   fanEventDestination: string | null;
   fightPrediction: string | null;
   // Starts at 1.0x; Emotional answers at Press Conference/Face-Off add 0.1.
-  // Inert until a real purse/Fight system exists to apply it.
+  // Applied to every fight's purse in finishFightScene (main.ts).
   purseMultiplier: number;
   // Airport "Go on Vacation" (Section 5): only biddable right after a
-  // fight. No Fight system exists yet to ever set this true, so the
-  // station stays locked until then — see openVacationMenu in main.ts.
+  // fight — set true by finishFightScene (main.ts) on every resolved
+  // fight, win or lose; consumed/reset by booking Vacation.
   justFinishedFight: boolean;
   // Set by vacation to 2 (one per Private Life stage in the camp it was
   // booked for). Each sleepAtBed() call that lands on a Private Life stage
@@ -242,9 +247,8 @@ export interface PlayerState {
   // Marriage System: cumulative % of every future fight's Purse owed in
   // child support from past divorces — 10% per child from that marriage,
   // permanent and stacking across every divorce over a career (2 kids =
-  // +20%, etc.). Inert until a real Fight/Purse payout system exists to
-  // actually apply it — same "placeholder, not wired up yet" status as
-  // purseMultiplier above.
+  // +20%, etc.). Applied to every fight's purse in finishFightScene
+  // (main.ts), same as purseMultiplier above.
   divorceChildSupportPercent: number;
   // "Actions" → Exchange Number (NPC Dialogue spec, Section 3): permanent
   // once successful, keyed by NPC id — unlocks the Contacts app + Phone
@@ -307,6 +311,7 @@ export function createPlayerState(): PlayerState {
     money: 50000, // dev/testing starting budget — revisit before this ships as the real v1 economy
     hp: 100,
     training: { power: freshStat(), speed: freshStat(), endurance: freshStat(), chin: freshStat() },
+    record: { wins: 0, losses: 0, draws: 0, kos: 0 },
     managerLevel: 1,
     coachLevel: 1,
     cutmanLevel: 1,

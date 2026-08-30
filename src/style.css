@@ -178,6 +178,14 @@ canvas {
   -webkit-tap-highlight-color: transparent;
 }
 
+.swipe-zone {
+  position: absolute;
+  inset: 0;
+  display: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Floating joystick: an invisible full-screen touch zone. Nothing is
    drawn until the player puts a finger down — the stick then appears
    centered exactly where they touched. */
