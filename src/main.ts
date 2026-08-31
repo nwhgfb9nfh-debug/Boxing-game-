@@ -3928,6 +3928,354 @@ const CHIDI: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+// Diner NPC Dialogue Content spec: 5 staff, all always-present (no
+// hiring/gating system like the Gym's Coaches) — no real portrait art was
+// attached this session (the spec says "Portrait delivered" but no image
+// files came with it), so all 5 use an emoji placeholder for now.
+const ALFONSO_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["luxury-watch", "custom-jewelry", "diamond-earrings"],
+};
+const ALFONSO_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, let\'s get to know each other a little first, yes?"' };
+    }
+    return { success: true, delta: 10, message: 'He hands over a card, sharp as ever. "Anytime, my friend."' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(ALFONSO_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"No, no, this is too much." He presses it back, dignified about it.',
+      "jewelry-uncertain": '"This is very generous of you." Genuinely touched, a little surprised.',
+      "jewelry-rank1": '"...This is a serious piece." His usual polish briefly drops.',
+      "jewelry-rank2": '"Now this is fine craftsmanship. Thank you." Genuinely pleased.',
+      "jewelry-rank3": '"That is very kind of you." Gracious, as always.',
+      "category-match": '"Now this is thoughtful — genuinely useful." Proud, pleased.',
+      "category-mismatch-neutral": '"That is kind of you, truly." Gracious about it either way.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const ALFONSO: NpcDef = {
+  id: "alfonso",
+  name: "Alfonso Vega",
+  portrait: "🤵",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Welcome, welcome! Alfonso Vega — this is my place. Sit anywhere you like.",
+    acquaintance: "Ah, good to see you again, my friend!",
+    friend: "There he is! Come, come — always good to see a familiar face.",
+    close: "My friend! You know you're always welcome here.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Proud of the place, despite it being modest.
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    // Married to Carmen — genuinely happy to talk family.
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: ALFONSO_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const CARMEN_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  specialJewelryRanking: ["custom-jewelry", "luxury-watch", "diamond-earrings"],
+};
+const CARMEN_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Oh, mijo, let\'s eat together a few more times first!"' };
+    }
+    return { success: true, delta: 10, message: 'She beams and writes her number down. "There — call anytime, okay?"' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(CARMEN_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Ay, no, this is too much!" She hands it back, warm but firm.',
+      "jewelry-uncertain": '"Oh, this is so generous of you." Genuinely moved.',
+      "jewelry-rank1": '"...Mijo, this is beautiful." She\'s near tears.',
+      "jewelry-rank2": '"Oh, I love it! Thank you, thank you." Genuinely thrilled.',
+      "jewelry-rank3": '"Aw, that\'s so sweet of you." Warm, appreciative.',
+      "category-match": '"Now THIS is fun! Thank you!" She\'s delighted.',
+      "category-mismatch-neutral": '"Aw, thank you, mijo." Warm regardless.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const CARMEN: NpcDef = {
+  id: "carmen",
+  name: "Carmen Vega",
+  portrait: "👩‍🍳",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Oh, hello there! Sit, sit — you look hungry. I'm Carmen, I run the kitchen.",
+    acquaintance: "Hello again! Good to see you.",
+    friend: "There you are! Come, come — let me feed you something good.",
+    close: "Mijo! Come here, come here. Always so good to see you.",
+  },
+  smallTalkTopics: [
+    // The warmest of the Diner's five staff — positive across the board.
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: CARMEN_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const YVONNE_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["luxury-watch", "diamond-earrings", "custom-jewelry"],
+};
+const YVONNE_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Mm, let\'s get to know each other a bit first, honey."' };
+    }
+    return { success: true, delta: 10, message: 'She nods, no-nonsense. "Alright then, here you go."' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(YVONNE_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Mm-mm, that\'s way too much." She hands it right back, firm but kind.',
+      "jewelry-uncertain": '"Well, that\'s awfully generous of you." Caught off guard.',
+      "jewelry-rank1": '"...Now that is a serious piece." Genuinely impressed.',
+      "jewelry-rank2": '"Well now, I appreciate that." Warm, if a little reserved.',
+      "jewelry-rank3": '"That\'s kind of you, honey." Warm, no-nonsense as ever.',
+      "category-match": '"Now that\'s actually useful — thank you." Genuinely pleased.',
+      "category-mismatch-neutral": '"Well, thank you, honey." Warm regardless.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+// Canonically already married in-world — the romance door is narratively
+// closed, not just "not yet interested." No Flirty category at all,
+// permanently hidden, same treatment as Simone Reyes at the Clothing Store.
+const YVONNE: NpcDef = {
+  id: "yvonne",
+  name: "Yvonne Price",
+  portrait: "🧑‍🍳",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Well hello there. I'm Yvonne, I help Carmen keep this kitchen running.",
+    acquaintance: "Hey there, good to see you again.",
+    friend: "Hey now! Good to see you, come on in.",
+    close: "There you are, honey! Good to see you.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    // No-nonsense — doesn't linger on this stuff.
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: YVONNE_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const DIMITRI_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["diamond-earrings", "luxury-watch", "custom-jewelry"],
+};
+const DIMITRI_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Perhaps once we know each other better."' };
+    }
+    return { success: true, delta: 10, message: 'He nods once, formal. "Very well. Here."' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(DIMITRI_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"This is far too much." He returns it, stoic but firm.',
+      "jewelry-uncertain": '"This is... very generous." A rare flicker of surprise.',
+      "jewelry-rank1": '"...This is excellent." His composure briefly cracks.',
+      "jewelry-rank2": '"This is a fine piece. Thank you." Formal, but sincere.',
+      "jewelry-rank3": '"That is kind of you." Reserved, but genuine.',
+      "category-match": '"This is practical. Thank you." A rare, small smile.',
+      "category-mismatch-neutral": '"Thank you." Formal about it either way.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const DIMITRI: NpcDef = {
+  id: "dimitri",
+  name: "Dimitri Volkov",
+  portrait: "🧑",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Good day. I am Dimitri — I will be your waiter.",
+    acquaintance: "Good day to you again.",
+    friend: "Good to see you. Please, sit.",
+    close: "Good to see you, my friend. Please, sit.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    // The most emotionally reserved of the Diner's cast — stays neutral
+    // even on topics most NPCs light up for.
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: DIMITRI_ACTIONS,
+  inviteToFightMinTier: "friend",
+};
+
+// Placeholder Propose thresholds — the spec only gives the Ask Her Out
+// Romance threshold and the Home-as-Date unlock condition, same
+// "scaled against Priya/Bianca's existing thresholds" placeholder status
+// as Rosa Delgado at the Mall Gift Shop.
+const MICHELLE_ROMANCE_THRESHOLD = 3;
+const MICHELLE_PROPOSE_DATE_THRESHOLD = 3;
+const MICHELLE_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const MICHELLE_PROPOSE_ROMANCE_THRESHOLD = 8;
+
+const MICHELLE_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  specialJewelryRanking: ["diamond-earrings", "custom-jewelry", "luxury-watch"],
+};
+const MICHELLE_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, maybe once you\'re a regular!" She winks.' };
+    }
+    return { success: true, delta: 10, message: 'She grins and rattles off her number. "There — don\'t be a stranger!"' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(MICHELLE_GIFT_PREFS, category, itemId, tier, {
+      "romantic-baseline": '"Oh my gosh, you didn\'t have to!" She\'s beaming.',
+      "jewelry-rejected": '"Whoa, way too much!" She laughs, pushing it back gently.',
+      "jewelry-uncertain": '"Oh! That\'s so generous of you." Flattered, a little unsure.',
+      "jewelry-rank1": '"...Is this for me?" She\'s stunned.',
+      "jewelry-rank2": '"Oh my gosh, it\'s gorgeous!" She\'s glowing.',
+      "jewelry-rank3": '"Aw, it\'s so pretty, thank you!" Delighted.',
+      "category-match": '"Yes! I love this!" She\'s thrilled.',
+      "category-mismatch-neutral": '"Aw, thank you!" Sweet about it regardless.',
+    }),
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= MICHELLE_ROMANCE_THRESHOLD) {
+      return { success: true, message: 'Her face lights up. "I was hoping you\'d ask!"' };
+    }
+    return { success: false, message: '"Aw — I don\'t think we\'re quite there yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= MICHELLE_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= MICHELLE_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= MICHELLE_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: 'She gasps, hands over her mouth. "Yes! Yes, of course — yes!"' };
+    }
+    return { success: false, message: '"...Ask me again a little later, okay?"' };
+  },
+};
+
+const MICHELLE: NpcDef = {
+  id: "michelle",
+  name: "Michelle Kim",
+  portrait: "🙋‍♀️",
+  romanceEligible: true,
+  greetings: {
+    stranger: "Hi there! I'm Michelle — welcome in, sit anywhere you like!",
+    acquaintance: "Hey, you're back! Good to see a familiar face.",
+    friend: "There you are! I was hoping you'd stop by today.",
+    close: "Hey you! Come here, I've been dying to talk to you.",
+  },
+  smallTalkTopics: [
+    // Genuinely open and warm from the start — positive across the board.
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About Her Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "style", label: "Style", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  actions: MICHELLE_ACTIONS,
+  homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
+};
+
 // Manager Lvl 1/2/3 and, where designed, their secretary/second-assistant —
 // used to lay out each Office floor (see buildOfficeFloorRoom) and to
 // resolve which NPC a floor's manager desk belongs to at dispatch time.
@@ -3982,6 +4330,11 @@ const ALL_NPCS: NpcDef[] = [
   OLIVER,
   RAFAEL,
   CHIDI,
+  ALFONSO,
+  CARMEN,
+  YVONNE,
+  DIMITRI,
+  MICHELLE,
 ];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
@@ -4015,6 +4368,11 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   oliver: "Gym",
   rafael: "Gym",
   chidi: "Gym",
+  alfonso: "Diner",
+  carmen: "Diner",
+  yvonne: "Diner",
+  dimitri: "Diner",
+  michelle: "Diner",
 };
 // Which Office floor an NPC's own station lives on, if any — derived from
 // the same manager/staff layout used to build the floors themselves,
@@ -7532,6 +7890,17 @@ const OFFICE_DECORATIONS: Decoration[] = [
   { nx: 0.88, ny: 0.72, width: 50, height: 70, color: "#3a5a78" },
 ];
 
+// Diner NPC Dialogue Content spec: a blocking counter walls off the
+// top-left kitchen corner (Carmen/Yvonne stand behind it, approached from
+// the south — same pattern as Office's reception desk) plus a few purely
+// visual table blocks in the middle, where Dimitri/Michelle work.
+const DINER_DECORATIONS: Decoration[] = [
+  { id: "kitchen-counter", nx: 0.22, ny: 0.24, width: 140, height: 32, blocking: true, color: "#6b4a35" },
+  { nx: 0.55, ny: 0.42, width: 50, height: 50, color: "#7a5c3e" },
+  { nx: 0.4, ny: 0.62, width: 50, height: 50, color: "#7a5c3e" },
+  { nx: 0.68, ny: 0.65, width: 50, height: 50, color: "#7a5c3e" },
+];
+
 const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Trailer: HOUSE_STATIONS,
   Apartment: HOUSE_STATIONS,
@@ -7550,7 +7919,38 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
     { id: "sparring", label: "Sparring Ring", nx: 0.95, ny: 0.15 },
     { id: "workoutclip", label: "Weight Area", nx: 0.95, ny: 0.4 },
   ],
-  Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
+  // Diner NPC Dialogue Content spec's layout: Alfonso greets at the
+  // entrance, the two waiters work the middle (where DINER_DECORATIONS'
+  // table blocks sit), and the two cooks are tucked behind their own
+  // counter in the top-left corner (see DINER_DECORATIONS' kitchen-counter
+  // and the two cooks' approachDecorationId below).
+  Diner: [
+    // Upper-middle, clear of the straight walking lines from the door to
+    // both cooks (it sat almost exactly on the door->Carmen line at its
+    // first, closer-to-the-kitchen placement, intercepting that walk).
+    { id: "order", label: "Order Menu", nx: 0.5, ny: 0.25 },
+    {
+      id: "carmen-station",
+      label: "Carmen",
+      nx: 0.14,
+      ny: 0.12,
+      kind: "npc",
+      radius: 24,
+      approachDecorationId: "kitchen-counter",
+    },
+    {
+      id: "yvonne-station",
+      label: "Yvonne",
+      nx: 0.3,
+      ny: 0.12,
+      kind: "npc",
+      radius: 24,
+      approachDecorationId: "kitchen-counter",
+    },
+    { id: "dimitri-station", label: "Dimitri", nx: 0.65, ny: 0.48, kind: "npc", radius: 24 },
+    { id: "michelle-station", label: "Michelle", nx: 0.4, ny: 0.5, kind: "npc", radius: 24 },
+    { id: "alfonso-station", label: "Alfonso", nx: 0.75, ny: 0.85, kind: "npc", radius: 24 },
+  ],
   Office: [
     {
       id: "reception-priya",
@@ -8091,7 +8491,8 @@ function computeStationsFor(buildingName: string): Station[] {
 function buildInteriorScene(lot: LotInstance, spawnStationId?: string): InteriorScene {
   const stations = computeStationsFor(lot.building.name);
   const blockedZone = lot.building.name === "Lounge" ? LOUNGE_VIP_ZONE : undefined;
-  const decorations = lot.building.name === "Office" ? OFFICE_DECORATIONS : undefined;
+  const decorations =
+    lot.building.name === "Office" ? OFFICE_DECORATIONS : lot.building.name === "Diner" ? DINER_DECORATIONS : undefined;
   return new InteriorScene(lot, stations, blockedZone, decorations, true, spawnStationId);
 }
 
@@ -8499,6 +8900,11 @@ function loop(now: number) {
         onTrigger = isRafaelUnlocked() ? () => openNpcDialogue(RAFAEL) : openRafaelLockedDialogue;
       }
       else if (nearStation.id === "chidi-lobby") onTrigger = () => openNpcDialogue(CHIDI);
+      else if (nearStation.id === "alfonso-station") onTrigger = () => openNpcDialogue(ALFONSO);
+      else if (nearStation.id === "carmen-station") onTrigger = () => openNpcDialogue(CARMEN);
+      else if (nearStation.id === "yvonne-station") onTrigger = () => openNpcDialogue(YVONNE);
+      else if (nearStation.id === "dimitri-station") onTrigger = () => openNpcDialogue(DIMITRI);
+      else if (nearStation.id === "michelle-station") onTrigger = () => openNpcDialogue(MICHELLE);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
         const store = mallStore;
