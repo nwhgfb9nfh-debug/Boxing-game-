@@ -5162,6 +5162,50 @@ function openRafaelLockedDialogue() {
   }));
 }
 
+// Gym stations locked for the current camp stage (see getStationPhaseLock)
+// open the currently-hired Coach's talking head instead of a plain toast —
+// he's standing right there, so he's the one telling you what's actually
+// on today's program rather than a disembodied "closed" message.
+const GYM_TRAINING_STATIONS = new Set(["heavybag", "reflexdots", "jumprope", "sparring", "workoutclip"]);
+
+/** Which Gym station id trains the stat this camp's current Training stage targets, if any. */
+function getTodaysTrainingStationLabel(): string | null {
+  const stat = campCycle.current.stat;
+  if (!stat) return null;
+  const stationId = Object.keys(TRAINING_STAT_BY_STATION).find((id) => TRAINING_STAT_BY_STATION[id] === stat);
+  return STATIONS_BY_BUILDING.Gym.find((s) => s.id === stationId)?.label ?? null;
+}
+
+function getGymCoachLockedLine(stationId: string): string {
+  const stage = campCycle.current;
+  if (stationId === "workoutclip") {
+    // Weight Area is the one Gym station gated to Private Life, not Training.
+    const todayLabel = getTodaysTrainingStationLabel();
+    return stage.type === "training" && todayLabel
+      ? `"We're mid-camp — ${todayLabel} is on the program first. Weights are a Private Life thing."`
+      : `"Nothing for you at the weights right now — that's a Private Life thing."`;
+  }
+  if (stage.type === "privatelife") {
+    return `"It's recovery time. Feel free to hit the weights, though."`;
+  }
+  const todayLabel = getTodaysTrainingStationLabel();
+  if (stage.type === "training" && todayLabel) {
+    return `"${todayLabel} is on the program first."`;
+  }
+  return `"Nothing on the training card for today."`;
+}
+
+function openGymCoachLockedDialogue(stationId: string) {
+  const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
+  if (!coach) return;
+  dialogueBox.open(() => ({
+    portrait: coach.portrait,
+    name: coach.name,
+    text: getGymCoachLockedLine(stationId),
+    options: [{ id: "leave", label: "Leave", onSelect: () => dialogueBox.close() }],
+  }));
+}
+
 function buildDialogueNotWritten(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
@@ -8132,7 +8176,7 @@ function enterBuilding(lot: LotInstance, anchor: { x: number; y: number }) {
 /** Leaves the current interior for the street, no vehicle change — used by both a plain door exit and the Garage's Drive/Set as Standard. */
 function returnToStreet() {
   scene = { type: "street" };
-  controls.root.style.display = "flex";
+  controls.root.style.display = "block";
   joystick.setActive(false);
 }
 
@@ -8318,10 +8362,11 @@ function loop(now: number) {
     campPill.textContent = `🥊 Camp ${campCycle.campNumber} · ${stage.label}${statSuffix}`;
   }
 
-  // The Phone only works inside a building, not while driving, and stays
+  // The Phone works inside a building or out on the street (bottom-right,
+  // clear of the drive controls — see controls.ts/.btn--gas), and stays
   // hidden while another location's action menu is already open.
   phoneBtn.style.display =
-    scene.type === "interior" &&
+    (scene.type === "interior" || scene.type === "street") &&
     !phoneUI.isOpen() &&
     !locationMenu.isOpen() &&
     !dialogueBox.isOpen() &&
@@ -8390,7 +8435,11 @@ function loop(now: number) {
       const pos = interior.getStationScreenPos(nearStation, window.innerWidth, window.innerHeight);
       const phaseLock = getStationPhaseLock(nearStation.id);
       let onTrigger: () => void;
-      if (phaseLock) onTrigger = () => buildingUI.showToast(phaseLock, pos, "bottom");
+      if (phaseLock) {
+        onTrigger = GYM_TRAINING_STATIONS.has(nearStation.id)
+          ? () => openGymCoachLockedDialogue(nearStation.id)
+          : () => buildingUI.showToast(phaseLock, pos, "bottom");
+      }
       else if (nearStation.id === "bed") {
         const bedLock = getBedLock();
         onTrigger = bedLock ? () => buildingUI.showToast(bedLock, pos, "bottom") : () => sleepAtBed(pos);

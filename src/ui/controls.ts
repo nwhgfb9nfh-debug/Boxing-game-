@@ -6,6 +6,12 @@
 // browser preview. Reverse/Autopilot start hidden — main.ts shows them
 // via setReverseVisible/setAutopilotVisible only while the active vehicle
 // owns that skillset.
+//
+// Layout: U-Turn stays bottom-left, with Autopilot stacked directly above
+// it (only that one skillset button lives outside the main row); Reverse
+// sits immediately to U-Turn's right; Gas is centered at bottom-middle —
+// freeing up bottom-right for the Phone button, which is now usable while
+// driving too (see main.ts's phoneBtn visibility).
 
 export interface DriveControls {
   root: HTMLDivElement;
@@ -26,7 +32,17 @@ export function createDriveControls(container: HTMLElement): DriveControls {
   const root = document.createElement("div");
   root.className = "controls";
 
-  // Left-to-right layout: U-TURN, AUTOPILOT, REVERSE, GAS.
+  // Left cluster: U-Turn with Autopilot stacked directly above it
+  // (column-reverse — first DOM child sits at the bottom), and Reverse
+  // immediately to the right of that stack. Gas is a separate, independently
+  // centered sibling so it stays bottom-middle regardless of which of
+  // Reverse/Autopilot happen to be visible.
+  const leftCluster = document.createElement("div");
+  leftCluster.className = "controls__left";
+
+  const leftStack = document.createElement("div");
+  leftStack.className = "controls__left-stack";
+
   const uturnBtn = document.createElement("button");
   uturnBtn.className = "btn btn--uturn";
   uturnBtn.type = "button";
@@ -38,11 +54,17 @@ export function createDriveControls(container: HTMLElement): DriveControls {
   autopilotBtn.textContent = "🧭 AUTO";
   autopilotBtn.style.display = "none";
 
+  leftStack.appendChild(uturnBtn);
+  leftStack.appendChild(autopilotBtn);
+
   const reverseBtn = document.createElement("button");
   reverseBtn.className = "btn btn--reverse";
   reverseBtn.type = "button";
   reverseBtn.textContent = "REVERSE";
   reverseBtn.style.display = "none";
+
+  leftCluster.appendChild(leftStack);
+  leftCluster.appendChild(reverseBtn);
 
   const gasBtn = document.createElement("button");
   gasBtn.className = "btn btn--gas";
@@ -50,9 +72,7 @@ export function createDriveControls(container: HTMLElement): DriveControls {
   gasBtn.textContent = "HOLD\nGAS";
   gasBtn.style.whiteSpace = "pre";
 
-  root.appendChild(uturnBtn);
-  root.appendChild(autopilotBtn);
-  root.appendChild(reverseBtn);
+  root.appendChild(leftCluster);
   root.appendChild(gasBtn);
   container.appendChild(root);
 

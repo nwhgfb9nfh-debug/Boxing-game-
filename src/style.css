@@ -53,14 +53,27 @@ canvas {
 
 .controls {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* U-Turn (+ Autopilot stacked above it) and Reverse, left-anchored as one
+   cluster so Gas can be independently centered regardless of which of
+   Reverse/Autopilot are currently visible. */
+.controls__left {
+  position: absolute;
+  left: max(14px, env(safe-area-inset-left));
   bottom: max(18px, env(safe-area-inset-bottom));
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
-  padding: 0 22px;
-  pointer-events: none;
+  gap: 8px;
+}
+
+.controls__left-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 14px;
 }
 
 .btn {
@@ -85,12 +98,24 @@ canvas {
   filter: brightness(1.25);
 }
 
+/* Bottom-middle, independent of the left cluster (see .controls__left) so
+   it stays centered regardless of which of Reverse/Autopilot are visible —
+   also keeps bottom-right clear for the Phone button. */
 .btn--gas {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
   width: 92px;
   height: 92px;
   font-size: 16px;
   background: radial-gradient(circle at 35% 30%, #ff6b4a, #c22b1e);
   box-shadow: 0 6px 18px rgba(194, 43, 30, 0.45);
+}
+
+.btn--gas:active,
+.btn--gas.is-active {
+  transform: translateX(-50%) scale(0.94);
 }
 
 .btn--uturn {
@@ -101,9 +126,9 @@ canvas {
   box-shadow: 0 6px 18px rgba(30, 95, 194, 0.45);
 }
 
-/* Vehicle Dealer skillset buttons — sit between U-TURN and GAS in the
-   controls bar, hidden (via inline style) until the active vehicle owns
-   that skillset. */
+/* Vehicle Dealer skillset buttons, hidden (via inline style) until the
+   active vehicle owns that skillset. Autopilot stacks directly above
+   U-Turn (see .controls__left-stack); Reverse sits to U-Turn's right. */
 .btn--autopilot {
   width: 64px;
   height: 64px;
@@ -113,9 +138,11 @@ canvas {
 }
 
 .btn--reverse {
-  width: 72px;
-  height: 72px;
-  font-size: 12px;
+  /* Slightly smaller than U-Turn so the left cluster (U-Turn + Reverse)
+     never crowds the independently-centered Gas button — see .controls__left. */
+  width: 64px;
+  height: 64px;
+  font-size: 11px;
   background: radial-gradient(circle at 35% 30%, #b23fff, #5a1ea8);
   box-shadow: 0 6px 18px rgba(90, 30, 168, 0.45);
 }
@@ -543,8 +570,10 @@ canvas {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Phone — only usable inside a building. Bottom-right, bigger than the
-   status pills so it reads as a real button, not another readout. */
+/* Phone — usable inside a building or out on the street. Bottom-right,
+   bigger than the status pills so it reads as a real button, not another
+   readout; Gas is centered at bottom-middle (see .btn--gas) to keep this
+   corner clear while driving. */
 .btn--phone {
   position: absolute;
   bottom: max(18px, env(safe-area-inset-bottom));
