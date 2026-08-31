@@ -232,6 +232,12 @@ export interface NpcDef {
   // otherwise he's already around at the Office all the time. Omitted for
   // every non-manager NPC.
   managerTier?: number;
+  // Same idea as managerTier, for the Gym's hired Coach (Sal/Otis/Oliver,
+  // playerState.coachLevel) — only the currently-hired tier is physically
+  // present at the Gym (see getGymCoachStation/isNpcAway in main.ts); the
+  // other two follow the same Meetup-once-no-longer-active rule managers
+  // use. Omitted for every non-coach NPC.
+  coachTier?: number;
 }
 
 // Placeholder thresholds — easy to retune once relationship pacing is tested.

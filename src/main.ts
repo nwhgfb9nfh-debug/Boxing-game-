@@ -363,15 +363,17 @@ const phoneApi: PhoneApi = {
   getMeetupTypes: (npcId) => {
     const npc = getNpcById(npcId);
     if (!npc) return [];
-    // Managers: while he's your currently-hired manager, Meetup doesn't
-    // apply — he's already around at the Office constantly, no need to
-    // schedule anything. Only once you've moved on to a different manager
-    // tier, AND built real Friend-tier trust with him, does Regular
-    // Meetup open up — re-hiring him closes it again.
-    const isActiveManager = npc.managerTier !== undefined && playerState.managerLevel === npc.managerTier;
+    // Managers/Coaches: while he's your currently-hired staff, Meetup
+    // doesn't apply — he's already around at the Office/Gym constantly, no
+    // need to schedule anything. Only once you've moved on to a different
+    // tier, AND built real Friend-tier trust with him, does Regular Meetup
+    // open up — re-hiring him closes it again.
+    const staffTier = npc.managerTier ?? npc.coachTier;
+    const isActiveStaff =
+      (npc.managerTier !== undefined && playerState.managerLevel === npc.managerTier) ||
+      (npc.coachTier !== undefined && playerState.coachLevel === npc.coachTier);
     const managerEligible =
-      npc.managerTier === undefined ||
-      (!isActiveManager && tierAtLeast(getRelationshipTier(getRelationshipScore(npcId)), "friend"));
+      staffTier === undefined || (!isActiveStaff && tierAtLeast(getRelationshipTier(getRelationshipScore(npcId)), "friend"));
     // Married to her — meetups aren't disabled outright (spec correction):
     // only the Home location is redundant (she already lives there — see
     // getMeetupLocations). Diner/Beach/Lounge stay fully available, both
@@ -381,9 +383,11 @@ const phoneApi: PhoneApi = {
         id: "regular",
         label: "Regular Meetup",
         available: managerEligible,
-        reason: isActiveManager
-          ? "Just meet me at the Office."
-          : npc.managerTier !== undefined && !managerEligible
+        reason: isActiveStaff
+          ? npc.managerTier !== undefined
+            ? "Just meet me at the Office."
+            : "Just meet me at the Gym."
+          : staffTier !== undefined && !managerEligible
             ? "You're not close enough yet."
             : undefined,
       },
@@ -1513,8 +1517,13 @@ function setStaffLevel(role: StaffRole["id"], level: number) {
     // (this only ever sets the flag true, never clears it).
     const managerNpc = OFFICE_FLOOR_MANAGER[level];
     if (managerNpc) playerState.exchangedNumbers[managerNpc.id] = true;
-  } else if (role === "coach") playerState.coachLevel = level;
-  else playerState.cutmanLevel = level;
+  } else if (role === "coach") {
+    playerState.coachLevel = level;
+    // Same permanent-Contacts-add rule as Managers (see above) — Sal/Otis/
+    // Oliver never need Exchange Number (hideExchangeNumber: true).
+    const coachNpc = GYM_COACH_BY_LEVEL[level];
+    if (coachNpc) playerState.exchangedNumbers[coachNpc.id] = true;
+  } else playerState.cutmanLevel = level;
 }
 
 interface GymCategory {
@@ -3604,6 +3613,321 @@ const TONY: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+// Gym NPC Dialogue Content spec: no real portrait art was attached for any
+// of the 5 NPCs below (the spec says "Portrait delivered" but no image
+// files came with it this session) — all 5 use an emoji placeholder, same
+// as e.g. a pet's breed image, until real art shows up.
+
+// Coach Lvl 1/2/3 (Sal/Otis/Oliver): restricted Manager-style rules — no
+// Exchange Number (auto-added to Contacts the moment hired, see
+// setStaffLevel), no Invite to Next Fight (always in the player's corner
+// regardless) — but Give a Gift works normally, so the Actions menu stays
+// (see *_ACTIONS below). Only the currently-hired tier is physically
+// present at the Gym (see getGymCoachStation/coachTier).
+const SAL_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["custom-jewelry", "luxury-watch", "diamond-earrings"],
+};
+const SAL_ACTIONS: NpcActionRules = {
+  exchangeNumber: () => ({ success: false, delta: 0, message: "" }),
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(SAL_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Whoa, whoa, put that away." He waves it off, gruff but not unkind.',
+      "jewelry-uncertain": '"That\'s a lot, kid." Gruffly touched, if a little thrown.',
+      "jewelry-rank1": '"...Kid, this is too much." He\'s genuinely moved, tries to hide it.',
+      "jewelry-rank2": '"Hey, now that\'s a nice piece." A rare, real smile.',
+      "jewelry-rank3": '"Appreciate it, kid." Gruff, but he means it.',
+      "category-match": '"Now THIS I can use." Genuinely pleased — practical wins him over every time.',
+      "category-mismatch-neutral": '"Eh, it\'s the thought, kid." Gruff, easygoing about it either way.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const SAL: NpcDef = {
+  id: "sal",
+  name: "Sal Romano",
+  portrait: "🧔",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Yeah, yeah, come on in. Sal Romano — trained more hungry kids than I can count. Let's see what you got.",
+    acquaintance: "Hey, kid. Ready to put in the work?",
+    friend: "There he is! Come on, let's get you sharp.",
+    close: "Hey, kid. You know I'm always in your corner — for real.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gym", label: "The Gym", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Old-school, doesn't care much for chit-chat about days off.
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    // Tough-love guy, doesn't linger on this stuff.
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: SAL_ACTIONS,
+  hideExchangeNumber: true,
+  hideInviteToFight: true,
+  coachTier: 1,
+};
+
+const OTIS_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["luxury-watch", "custom-jewelry", "diamond-earrings"],
+};
+const OTIS_ACTIONS: NpcActionRules = {
+  exchangeNumber: () => ({ success: false, delta: 0, message: "" }),
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(OTIS_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Now hold on, that\'s too much." Warm, but firmly hands it back.',
+      "jewelry-uncertain": '"That\'s real generous of you." Genuinely warm about it.',
+      "jewelry-rank1": '"...Son, this is something else." Quietly, deeply moved.',
+      "jewelry-rank2": '"Now that\'s a fine piece. Thank you." Warm, easy smile.',
+      "jewelry-rank3": '"I appreciate that, truly." Warm as ever.',
+      "category-match": '"Now that\'s a thoughtful gift." Genuinely warm about it.',
+      "category-mismatch-neutral": '"I appreciate the thought, truly." Warm regardless.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const OTIS: NpcDef = {
+  id: "otis",
+  name: "Otis Freeman",
+  portrait: "🧑‍🦳",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Otis Freeman. Trained a few champions in my day — figured I'd see what you're made of.",
+    acquaintance: "Good to see you again. How's the body holding up?",
+    friend: "There's my fighter. Come on in, sit a minute.",
+    close: "Hey now. Good to see you, son. Always got time for you.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gym", label: "The Gym", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    // The warmest of the three Coaches, across the board.
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: OTIS_ACTIONS,
+  hideExchangeNumber: true,
+  hideInviteToFight: true,
+  coachTier: 2,
+};
+
+const OLIVER_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  specialJewelryRanking: ["diamond-earrings", "luxury-watch", "custom-jewelry"],
+};
+const OLIVER_ACTIONS: NpcActionRules = {
+  exchangeNumber: () => ({ success: false, delta: 0, message: "" }),
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(OLIVER_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Ha — bit early for that, isn\'t it?" Amused, hands it straight back.',
+      "jewelry-uncertain": '"That\'s properly generous of you." Caught off guard, genuinely.',
+      "jewelry-rank1": '"...Right, this is excellent." His usual polish briefly drops.',
+      "jewelry-rank2": '"Now that\'s a proper gift." Genuinely pleased.',
+      "jewelry-rank3": '"Cheers, appreciate that." Easy, professional warmth.',
+      "category-match": '"Now that\'s a fun one — cheers." Genuinely pleased.',
+      "category-mismatch-neutral": '"Cheers for that." Polite, professional as ever.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const OLIVER: NpcDef = {
+  id: "oliver",
+  name: "Oliver Hayes",
+  portrait: "🧑",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Oliver Hayes. Best in the business, and I mean that — let's get you fight-ready.",
+    acquaintance: "Alright, good to see you. Let's talk numbers.",
+    friend: "Hey, good to see you! Ready to work?",
+    close: "Good to see you, mate. You know I've got your back in the corner.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gym", label: "The Gym", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    // Results-focused, modern approach — more emotionally distant here.
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    // More emotionally distant on deeper topics — fits his results-focused
+    // modern approach, real contrast to Sal and Otis's old-school warmth.
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: OLIVER_ACTIONS,
+  hideExchangeNumber: true,
+  hideInviteToFight: true,
+  coachTier: 3,
+};
+
+// Gym Wanderers, Phase 1 — present regardless of which Coach is hired (see
+// getRafaelStation/getChidiStation). Friend-only, full Actions menu (unlike
+// the 3 Coaches above): Exchange Number/Invite to Next Fight both open at
+// Tier 2, same pattern as Kyle.
+const RAFAEL_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "practical",
+  specialJewelryRanking: ["luxury-watch", "diamond-earrings", "custom-jewelry"],
+};
+const RAFAEL_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Let\'s see if there\'s actually a reason to, first."' };
+    }
+    return { success: true, delta: 10, message: 'He hands over his card. "Don\'t waste my time with it."' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(RAFAEL_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Whoa — way too soon for that." He hands it back, professionally firm.',
+      "jewelry-uncertain": '"That\'s a lot." Caught off guard, genuinely.',
+      "jewelry-rank1": '"...This is a serious piece." His usual composure briefly cracks.',
+      "jewelry-rank2": '"Huh. I appreciate that." Genuinely, if reservedly, pleased.',
+      "jewelry-rank3": '"Appreciate it." Professional, but sincere.',
+      "category-match": '"Alright, this is actually useful. Appreciate it." Genuinely pleased.',
+      "category-mismatch-neutral": '"Appreciate the thought." Professional about it either way.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const RAFAEL: NpcDef = {
+  id: "rafael",
+  name: "Rafael Ortiz",
+  portrait: "🎙️",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Rafael Ortiz. I don't usually talk to fighters who haven't proven anything — but you've got my attention now.",
+    acquaintance: "Good to see you. You've been busy.",
+    friend: "Hey, good to see you. Always good talking to someone who actually gets it.",
+    close: "Good to see you, my friend. You know I respect what you've built.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gym", label: "The Gym", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    // Professionally aloof, doesn't much care for small talk about days off.
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    // Keeps a professional distance even once trusted.
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: RAFAEL_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
+const CHIDI_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  specialJewelryRanking: ["custom-jewelry", "diamond-earrings", "luxury-watch"],
+};
+const CHIDI_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Oh — maybe once we know each other a bit, yeah?"' };
+    }
+    return { success: true, delta: 10, message: 'He grins and hands his number over. "For sure, anytime!"' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(CHIDI_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Whoa, no way, this is too much!" He hands it back, almost embarrassed.',
+      "jewelry-uncertain": '"Oh — wow, thank you?" Genuinely unsure what to say.',
+      "jewelry-rank1": '"Whoa. This is incredible, man." He\'s beaming.',
+      "jewelry-rank2": '"For me? That\'s amazing, thank you!" Thrilled.',
+      "jewelry-rank3": '"Aw, thanks, man!" Happy, easygoing.',
+      "category-match": '"No way, this is great, thank you!" He\'s thrilled.',
+      "category-mismatch-neutral": '"Hey, thanks, man!" Warm regardless.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const CHIDI: NpcDef = {
+  id: "chidi",
+  name: "Chidi Adeyemi",
+  portrait: "🥊",
+  romanceEligible: false,
+  greetings: {
+    stranger: "Oh, hey! Chidi Adeyemi — I train here too. Good to meet you!",
+    acquaintance: "Hey! Good to see you again.",
+    friend: "Hey man! Great to see you!",
+    close: "Hey, good to see you! Always glad to have you around.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "gym", label: "The Gym", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    // Warm from the start, no access gate — open with everyone he meets.
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: CHIDI_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
 // Manager Lvl 1/2/3 and, where designed, their secretary/second-assistant —
 // used to lay out each Office floor (see buildOfficeFloorRoom) and to
 // resolve which NPC a floor's manager desk belongs to at dispatch time.
@@ -3653,6 +3977,11 @@ const ALL_NPCS: NpcDef[] = [
   JASMINE,
   DOROTHY,
   TONY,
+  SAL,
+  OTIS,
+  OLIVER,
+  RAFAEL,
+  CHIDI,
 ];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
@@ -3681,6 +4010,11 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   jasmine: "Mall",
   dorothy: "Mall",
   tony: "Mall",
+  sal: "Gym",
+  otis: "Gym",
+  oliver: "Gym",
+  rafael: "Gym",
+  chidi: "Gym",
 };
 // Which Office floor an NPC's own station lives on, if any — derived from
 // the same manager/staff layout used to build the floors themselves,
@@ -7066,11 +7400,20 @@ function buildFurnitureItemSheet(): VehicleSheetData {
   };
 }
 
+// Coach Perk System (Gym NPC Dialogue Content spec) — Training Results:
+// Otis (Lvl 2) gives bigger training gains than Sal (Lvl 1); Oliver (Lvl 3)
+// gives the SAME gains as Otis, since his tier's value comes from the
+// Purse Cut perk instead (see getCoachPurseCutPercent). Placeholder
+// multiplier, same "mechanics before real numbers" convention as the rest
+// of the Fight/Training systems.
+const COACH_TRAINING_MULTIPLIER: Record<number, number> = { 1: 1, 2: 1.5, 3: 1.5 };
+
 /**
  * Perfect = +2, Good = +1, everything else = +0 — banked into the matching
- * training stat. Marks the stat as trained regardless of the bonus earned,
- * so a session that scored all misses still reads "+0", not "Not trained
- * yet" — that label is reserved for a stat with no completed session at all.
+ * training stat, scaled by the hired Coach's Training Results perk. Marks
+ * the stat as trained regardless of the bonus earned, so a session that
+ * scored all misses still reads "+0", not "Not trained yet" — that label is
+ * reserved for a stat with no completed session at all.
  */
 function applyTraining(stat: keyof TrainingStats, results: string[]) {
   let bonus = 0;
@@ -7078,6 +7421,7 @@ function applyTraining(stat: keyof TrainingStats, results: string[]) {
     if (r === "perfect") bonus += 2;
     else if (r === "good") bonus += 1;
   }
+  bonus = Math.round(bonus * (COACH_TRAINING_MULTIPLIER[playerState.coachLevel] ?? 1));
   playerState.training[stat].bonus += bonus;
   playerState.training[stat].trained = true;
 }
@@ -7591,6 +7935,42 @@ function getJasmineStation(buildingName: string): Station | null {
   return { id: "jasmine-lobby", label: "Jasmine", kind: "npc", nx: 0.5, ny: 0.55 };
 }
 
+// Gym NPC Dialogue Content spec — Coach System: only the currently-hired
+// tier (playerState.coachLevel) is physically present at the Gym, same
+// "additive station, other tiers exist only in Contacts" pattern as
+// OFFICE_FLOOR_MANAGER, just keyed by a single wandering station instead of
+// separate floors (the Gym isn't a multi-room building).
+const GYM_COACH_BY_LEVEL: Record<number, NpcDef> = { 1: SAL, 2: OTIS, 3: OLIVER };
+function getGymCoachStation(buildingName: string): Station | null {
+  if (buildingName !== "Gym") return null;
+  const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
+  if (!coach) return null;
+  // Radius shrunk to match the Gym's other npc-kind markers (see Derek/
+  // Jasmine at the Office/Mall) — the room already packs 5 equipment
+  // stations in tight, so this stays well clear of all of them.
+  return { id: "gym-coach", label: coach.name, kind: "npc", nx: 0.25, ny: 0.6, radius: 24 };
+}
+
+// Gym Wanderers (Phase 1) — present regardless of which Coach is hired.
+// Rafael is gated behind real career proof: Fame 30 (placeholder) AND 5
+// career wins, both required — fully invisible/silent before that (no
+// station at all, not just a locked one), per the spec.
+const RAFAEL_FAME_REQUIREMENT = 30;
+const RAFAEL_WINS_REQUIREMENT = 5;
+function isRafaelUnlocked(): boolean {
+  return playerState.fame >= RAFAEL_FAME_REQUIREMENT && playerState.record.wins >= RAFAEL_WINS_REQUIREMENT;
+}
+function getRafaelStation(buildingName: string): Station | null {
+  if (buildingName !== "Gym" || !isRafaelUnlocked() || isNpcAway("rafael")) return null;
+  return { id: "rafael-lobby", label: "Rafael", kind: "npc", nx: 0.75, ny: 0.45, radius: 24 };
+}
+
+/** Chidi's Gym spot — no access gate, warm from the start, just the generic isNpcAway check. */
+function getChidiStation(buildingName: string): Station | null {
+  if (buildingName !== "Gym" || isNpcAway("chidi")) return null;
+  return { id: "chidi-lobby", label: "Chidi", kind: "npc", nx: 0.75, ny: 0.6, radius: 24 };
+}
+
 // Right after sleeping together, her spouse-npc/overnight-guest marker
 // moves to sit beside the bed instead of her regular spot (see
 // justSleptTogether) — offset slightly from the bed's own position so the
@@ -7613,6 +7993,12 @@ function computeStationsFor(buildingName: string): Station[] {
   if (derekStation) base = [...base, derekStation];
   const jasmineStation = getJasmineStation(buildingName);
   if (jasmineStation) base = [...base, jasmineStation];
+  const gymCoachStation = getGymCoachStation(buildingName);
+  if (gymCoachStation) base = [...base, gymCoachStation];
+  const rafaelStation = getRafaelStation(buildingName);
+  if (rafaelStation) base = [...base, rafaelStation];
+  const chidiStation = getChidiStation(buildingName);
+  if (chidiStation) base = [...base, chidiStation];
   base = [...base, ...getPetStations(buildingName)];
   const spouseStation = getSpouseStation(buildingName);
   if (spouseStation) return [...base, applyBedPositionIfJustSlept(spouseStation), ...getChildStations(buildingName)];
@@ -7755,7 +8141,12 @@ function startStation(lot: LotInstance, interior: InteriorScene, stationId: stri
     scene = { type: "jumprope", lot, interior, game: new JumpRopeScene() };
     tapZone.setActive(true);
   } else if (stationId === "sparring") {
-    scene = { type: "sparring", lot, interior, game: new SparringScene() };
+    // Coach Perk System — Oliver's unique perk: the sparring partner's
+    // combos exactly mirror the upcoming real opponent's signature combos,
+    // genuine practice for the specific fight ahead rather than a generic
+    // partner pool.
+    const comboPool = playerState.coachLevel === 3 ? getOpponentForCamp(campCycle.campNumber).signatureCombos : undefined;
+    scene = { type: "sparring", lot, interior, game: new SparringScene(comboPool) };
     swipeZone.setActive(true);
   }
 }
@@ -7796,13 +8187,34 @@ function startFight(lot: LotInstance, interior: InteriorScene) {
   };
 }
 
+// Coach Perk System (Gym NPC Dialogue Content spec) — Purse Cut: normally
+// scales UP with tier (Sal < Otis < Oliver as a baseline placeholder, same
+// "real numbers come later" convention as the rest of the roster/damage
+// values). Perfect Relationship Bonus (100 Relationship with the currently-
+// hired Coach): Sal -> Image boost, Otis -> Fame boost, Oliver -> his own
+// Purse Cut drops BELOW Sal's baseline instead, genuinely flipping the
+// normal tier hierarchy once real trust is built.
+const COACH_PURSE_CUT_PERCENT: Record<number, number> = { 1: 5, 2: 8, 3: 12 };
+const OLIVER_PERFECT_RELATIONSHIP_PURSE_CUT_PERCENT = 3; // below Sal's 5% baseline
+const SAL_PERFECT_RELATIONSHIP_IMAGE_BONUS = 5;
+const OTIS_PERFECT_RELATIONSHIP_FAME_BONUS = 5;
+const COACH_PERFECT_RELATIONSHIP_SCORE = 100;
+
+function getCoachPurseCutPercent(): number {
+  const level = playerState.coachLevel;
+  if (level === 3 && getRelationshipScore(OLIVER.id) >= COACH_PERFECT_RELATIONSHIP_SCORE) {
+    return OLIVER_PERFECT_RELATIONSHIP_PURSE_CUT_PERCENT;
+  }
+  return COACH_PURSE_CUT_PERCENT[level] ?? COACH_PURSE_CUT_PERCENT[1];
+}
+
 // Applies a finished fight's real outcome — record, purse (activating the
-// purseMultiplier/divorceChildSupportPercent/cashAdvanceTaken
-// infrastructure that's been sitting inert since before this system
-// existed), and HP — then folds into the exact same FIGHT NIGHT ->
-// After Fight transition the old Simulate Fight placeholder did (Energy
-// drained, justFinishedFight for the Airport's Vacation, campCycle
-// advance, wife-neglect tick, phase/social-battery reset).
+// purseMultiplier/divorceChildSupportPercent/cashAdvanceTaken infrastructure
+// that's been sitting inert since before this system existed, plus the
+// Coach's Purse Cut perk above), and HP — then folds into the exact same
+// FIGHT NIGHT -> After Fight transition the old Simulate Fight placeholder
+// did (Energy drained, justFinishedFight for the Airport's Vacation,
+// campCycle advance, wife-neglect tick, phase/social-battery reset).
 function finishFightScene(lot: LotInstance, interior: InteriorScene, game: FightScene): string {
   const outcome = game.getOutcome();
   const opponent = game.getOpponent();
@@ -7815,9 +8227,19 @@ function finishFightScene(lot: LotInstance, interior: InteriorScene, game: Fight
 
   const grossPurse = game.getPurseAwarded() * playerState.purseMultiplier;
   const afterChildSupport = grossPurse * (1 - playerState.divorceChildSupportPercent / 100);
-  const afterAdvance = afterChildSupport - (playerState.cashAdvanceTaken ? CASH_ADVANCE_AMOUNT : 0);
+  const afterCoachCut = afterChildSupport * (1 - getCoachPurseCutPercent() / 100);
+  const afterAdvance = afterCoachCut - (playerState.cashAdvanceTaken ? CASH_ADVANCE_AMOUNT : 0);
   const netPurse = Math.max(0, Math.round(afterAdvance));
   playerState.money += netPurse;
+
+  // Perfect Relationship Bonus — Sal (Image) and Otis (Fame) reward the
+  // camp's outcome directly; Oliver's is already folded into the purse
+  // chain above via getCoachPurseCutPercent.
+  if (playerState.coachLevel === 1 && getRelationshipScore(SAL.id) >= COACH_PERFECT_RELATIONSHIP_SCORE) {
+    playerState.image += SAL_PERFECT_RELATIONSHIP_IMAGE_BONUS;
+  } else if (playerState.coachLevel === 2 && getRelationshipScore(OTIS.id) >= COACH_PERFECT_RELATIONSHIP_SCORE) {
+    playerState.fame += OTIS_PERFECT_RELATIONSHIP_FAME_BONUS;
+  }
 
   playerState.hp = game.getFinalPlayerHp();
   energy.spend(energy.remaining);
@@ -7990,6 +8412,12 @@ function loop(now: number) {
       else if (nearStation.id === "reception-2") onTrigger = () => openNpcDialogue(CAROL, receptionSharedOptions());
       else if (nearStation.id === "derek-lobby") onTrigger = () => openNpcDialogue(DEREK);
       else if (nearStation.id === "jasmine-lobby") onTrigger = () => openNpcDialogue(JASMINE);
+      else if (nearStation.id === "gym-coach") {
+        const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
+        onTrigger = coach ? () => openNpcDialogue(coach) : () => {};
+      }
+      else if (nearStation.id === "rafael-lobby") onTrigger = () => openNpcDialogue(RAFAEL);
+      else if (nearStation.id === "chidi-lobby") onTrigger = () => openNpcDialogue(CHIDI);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
         const store = mallStore;

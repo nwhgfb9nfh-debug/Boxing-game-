@@ -61,7 +61,14 @@ export class SparringScene {
 
   private resolveTimer = 0;
 
-  constructor() {
+  // Coach Perk System (Gym NPC spec) — Oliver's unique perk swaps this pool
+  // in for the upcoming real opponent's signatureCombos (see main.ts's
+  // startStation sparring branch); every other coach leaves it undefined
+  // and falls back to the generic partner pool below.
+  private partnerCombos: Direction[][];
+
+  constructor(comboPool?: Direction[][]) {
+    this.partnerCombos = comboPool && comboPool.length > 0 ? comboPool : PARTNER_COMBOS;
     this.combo = this.pickPartnerCombo();
   }
 
@@ -153,7 +160,7 @@ export class SparringScene {
   }
 
   private pickPartnerCombo(): Direction[] {
-    return PARTNER_COMBOS[Math.floor(Math.random() * PARTNER_COMBOS.length)];
+    return this.partnerCombos[Math.floor(Math.random() * this.partnerCombos.length)];
   }
 
   isDone(): boolean {
