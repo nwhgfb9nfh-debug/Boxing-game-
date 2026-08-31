@@ -150,7 +150,6 @@ const TRAINING_STAT_BY_STATION: Record<string, "power" | "speed" | "endurance" |
 };
 const PRIVATE_LIFE_STATIONS = new Set([
   "workoutclip",
-  "order",
   "sunbathe",
   "swim",
   "bar",
@@ -894,8 +893,13 @@ function openWeightAreaMenu() {
   });
 }
 
+// Reached through a waiter (Dimitri/Michelle — see dinerOrderOption) rather
+// than its own walk-up station, so the Private Life gate that used to live
+// in getStationPhaseLock is enforced right here instead.
 function openDinerMenu() {
   locationMenu.open(() => {
+    const stage = campCycle.current;
+    const locked = stage.type !== "privatelife";
     const used = hasUsedThisPhase("order");
     return {
       title: "🍔 Diner",
@@ -905,9 +909,10 @@ function openDinerMenu() {
           id: "order",
           label: "Order Menu",
           cost: 10,
-          costLabel: used ? "DONE" : "10 EN",
-          disabled: used,
+          costLabel: locked ? "PRIVATE LIFE" : used ? "DONE" : "10 EN",
+          disabled: locked || used,
           run: () => {
+            if (locked) return `Only available during a Private Life phase (currently "${stage.label}").`;
             if (used) return "Already done this Private Life phase.";
             if (!energy.spend(10)) return "Not enough energy to order.";
             playerState.hp += 5;
@@ -918,6 +923,22 @@ function openDinerMenu() {
       ],
     };
   });
+}
+
+// Dimitri/Michelle's shared "Order Menu" option, folded into their normal
+// dialogue main screen (see buildDialogueMain's extraOptions) — the
+// waiter IS the order counter now, no separate walk-up station.
+function dinerOrderOption(): DialogueOption[] {
+  return [
+    {
+      id: "order-menu",
+      label: "Order Menu",
+      onSelect: () => {
+        dialogueBox.close();
+        openDinerMenu();
+      },
+    },
+  ];
 }
 
 // Press Building (Section 6, Promotion): the room's other 4 stations are
@@ -7993,12 +8014,10 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   // entrance, the two waiters work the middle (where DINER_DECORATIONS'
   // table blocks sit), and the two cooks are tucked behind their own
   // counter in the top-left corner (see DINER_DECORATIONS' kitchen-counter
-  // and the two cooks' approachDecorationId below).
+  // and the two cooks' approachDecorationId below). No separate Order Menu
+  // station anymore — ordering happens through a waiter directly (see
+  // dinerOrderOption, offered from Dimitri/Michelle's dialogue).
   Diner: [
-    // Upper-middle, clear of the straight walking lines from the door to
-    // both cooks (it sat almost exactly on the door->Carmen line at its
-    // first, closer-to-the-kitchen placement, intercepting that walk).
-    { id: "order", label: "Order Menu", nx: 0.5, ny: 0.25 },
     {
       id: "carmen-station",
       label: "Carmen",
@@ -8936,7 +8955,6 @@ function loop(now: number) {
       else if (nearStation.id === "garage") onTrigger = openGarageMenu;
       else if (nearStation.id === "wardrobe") onTrigger = openWardrobeMenu;
       else if (nearStation.id === "workoutclip") onTrigger = openWeightAreaMenu;
-      else if (nearStation.id === "order") onTrigger = openDinerMenu;
       else if (nearStation.id === "vip-bouncer") onTrigger = openVipBouncerMenu;
       else if (nearStation.id === "bar") onTrigger = openBarMenu;
       else if (nearStation.id === "bottle") onTrigger = openBottleMenu;
@@ -8991,8 +9009,8 @@ function loop(now: number) {
       else if (nearStation.id === "alfonso-station") onTrigger = () => openNpcDialogue(ALFONSO);
       else if (nearStation.id === "carmen-station") onTrigger = () => openNpcDialogue(CARMEN);
       else if (nearStation.id === "yvonne-station") onTrigger = () => openNpcDialogue(YVONNE);
-      else if (nearStation.id === "dimitri-station") onTrigger = () => openNpcDialogue(DIMITRI);
-      else if (nearStation.id === "michelle-station") onTrigger = () => openNpcDialogue(MICHELLE);
+      else if (nearStation.id === "dimitri-station") onTrigger = () => openNpcDialogue(DIMITRI, dinerOrderOption());
+      else if (nearStation.id === "michelle-station") onTrigger = () => openNpcDialogue(MICHELLE, dinerOrderOption());
       else if (nearStation.id === "bobby-table") onTrigger = () => openNpcDialogue(BOBBY);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
