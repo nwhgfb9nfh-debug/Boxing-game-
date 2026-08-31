@@ -7941,6 +7941,19 @@ function getJasmineStation(buildingName: string): Station | null {
 // OFFICE_FLOOR_MANAGER, just keyed by a single wandering station instead of
 // separate floors (the Gym isn't a multi-room building).
 const GYM_COACH_BY_LEVEL: Record<number, NpcDef> = { 1: SAL, 2: OTIS, 3: OLIVER };
+
+// The starting Lvl 1 Manager and Coach are already "hired" the moment a
+// career begins (the free starting tier, never run through an explicit
+// Hire action) — setStaffLevel's permanent-Contacts-add only fires on a
+// later hire/promotion, so without this, Vinnie and Sal would be missing
+// from Contacts until the player switched staff tiers at least once.
+if (OFFICE_FLOOR_MANAGER[playerState.managerLevel]) {
+  playerState.exchangedNumbers[OFFICE_FLOOR_MANAGER[playerState.managerLevel].id] = true;
+}
+if (GYM_COACH_BY_LEVEL[playerState.coachLevel]) {
+  playerState.exchangedNumbers[GYM_COACH_BY_LEVEL[playerState.coachLevel].id] = true;
+}
+
 function getGymCoachStation(buildingName: string): Station | null {
   if (buildingName !== "Gym") return null;
   const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
@@ -7952,16 +7965,20 @@ function getGymCoachStation(buildingName: string): Station | null {
 }
 
 // Gym Wanderers (Phase 1) — present regardless of which Coach is hired.
-// Rafael is gated behind real career proof: Fame 30 (placeholder) AND 5
-// career wins, both required — fully invisible/silent before that (no
-// station at all, not just a locked one), per the spec.
+// Rafael is visible and walkable-to from the start, but gated behind real
+// career proof for actual conversation: Fame 30 (placeholder) AND 5 career
+// wins, both required. Before that he brushes the player off with a one-
+// line dismissal (see RAFAEL_LOCKED_LINE) instead of opening his real
+// Talk/Actions menu — the gate is about relationship access, not about
+// whether he's there to look at.
 const RAFAEL_FAME_REQUIREMENT = 30;
 const RAFAEL_WINS_REQUIREMENT = 5;
+const RAFAEL_LOCKED_LINE = '"I\'m a journalist. I\'m looking to talk to pros here — maybe you\'ll get there one day, kid."';
 function isRafaelUnlocked(): boolean {
   return playerState.fame >= RAFAEL_FAME_REQUIREMENT && playerState.record.wins >= RAFAEL_WINS_REQUIREMENT;
 }
 function getRafaelStation(buildingName: string): Station | null {
-  if (buildingName !== "Gym" || !isRafaelUnlocked() || isNpcAway("rafael")) return null;
+  if (buildingName !== "Gym" || isNpcAway("rafael")) return null;
   return { id: "rafael-lobby", label: "Rafael", kind: "npc", nx: 0.75, ny: 0.45, radius: 24 };
 }
 
@@ -8416,7 +8433,11 @@ function loop(now: number) {
         const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
         onTrigger = coach ? () => openNpcDialogue(coach) : () => {};
       }
-      else if (nearStation.id === "rafael-lobby") onTrigger = () => openNpcDialogue(RAFAEL);
+      else if (nearStation.id === "rafael-lobby") {
+        onTrigger = isRafaelUnlocked()
+          ? () => openNpcDialogue(RAFAEL)
+          : () => buildingUI.showToast(RAFAEL_LOCKED_LINE, pos, "bottom");
+      }
       else if (nearStation.id === "chidi-lobby") onTrigger = () => openNpcDialogue(CHIDI);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
