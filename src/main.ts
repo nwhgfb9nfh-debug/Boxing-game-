@@ -47,6 +47,11 @@ import {
   OLIVER_PORTRAIT,
   RAFAEL_PORTRAIT,
   CHIDI_PORTRAIT,
+  ALFONSO_PORTRAIT,
+  CARMEN_PORTRAIT,
+  YVONNE_PORTRAIT,
+  DIMITRI_PORTRAIT,
+  MICHELLE_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -3929,9 +3934,7 @@ const CHIDI: NpcDef = {
 };
 
 // Diner NPC Dialogue Content spec: 5 staff, all always-present (no
-// hiring/gating system like the Gym's Coaches) — no real portrait art was
-// attached this session (the spec says "Portrait delivered" but no image
-// files came with it), so all 5 use an emoji placeholder for now.
+// hiring/gating system like the Gym's Coaches).
 const ALFONSO_GIFT_PREFS: GiftPreferences = {
   favoriteGeneralCategory: "practical",
   specialJewelryRanking: ["luxury-watch", "custom-jewelry", "diamond-earrings"],
@@ -3960,7 +3963,7 @@ const ALFONSO_ACTIONS: NpcActionRules = {
 const ALFONSO: NpcDef = {
   id: "alfonso",
   name: "Alfonso Vega",
-  portrait: "🤵",
+  portrait: ALFONSO_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Welcome, welcome! Alfonso Vega — this is my place. Sit anywhere you like.",
@@ -4022,7 +4025,7 @@ const CARMEN_ACTIONS: NpcActionRules = {
 const CARMEN: NpcDef = {
   id: "carmen",
   name: "Carmen Vega",
-  portrait: "👩‍🍳",
+  portrait: CARMEN_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Oh, hello there! Sit, sit — you look hungry. I'm Carmen, I run the kitchen.",
@@ -4086,7 +4089,7 @@ const YVONNE_ACTIONS: NpcActionRules = {
 const YVONNE: NpcDef = {
   id: "yvonne",
   name: "Yvonne Price",
-  portrait: "🧑‍🍳",
+  portrait: YVONNE_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Well hello there. I'm Yvonne, I help Carmen keep this kitchen running.",
@@ -4147,7 +4150,7 @@ const DIMITRI_ACTIONS: NpcActionRules = {
 const DIMITRI: NpcDef = {
   id: "dimitri",
   name: "Dimitri Volkov",
-  portrait: "🧑",
+  portrait: DIMITRI_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Good day. I am Dimitri — I will be your waiter.",
@@ -4233,7 +4236,7 @@ const MICHELLE_ACTIONS: NpcActionRules = {
 const MICHELLE: NpcDef = {
   id: "michelle",
   name: "Michelle Kim",
-  portrait: "🙋‍♀️",
+  portrait: MICHELLE_PORTRAIT,
   romanceEligible: true,
   greetings: {
     stranger: "Hi there! I'm Michelle — welcome in, sit anywhere you like!",
