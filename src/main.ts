@@ -4080,8 +4080,17 @@ const CARMEN: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
+// Placeholder thresholds, same "scaled against Priya/Bianca's existing
+// thresholds" status as Rosa Delgado/Michelle Kim.
+const YVONNE_ROMANCE_THRESHOLD = 3;
+const YVONNE_PROPOSE_DATE_THRESHOLD = 3;
+const YVONNE_PROPOSE_RELATIONSHIP_THRESHOLD = 90; // Close tier
+const YVONNE_PROPOSE_ROMANCE_THRESHOLD = 8;
+
 const YVONNE_GIFT_PREFS: GiftPreferences = {
   favoriteGeneralCategory: "practical",
+  favoriteRomanticItemId: "perfume",
+  dislikedRomanticItemId: "bouquet",
   specialJewelryRanking: ["luxury-watch", "diamond-earrings", "custom-jewelry"],
 };
 const YVONNE_ACTIONS: NpcActionRules = {
@@ -4093,6 +4102,9 @@ const YVONNE_ACTIONS: NpcActionRules = {
   },
   giftReaction: (tier, category, itemId) =>
     buildGiftResult(YVONNE_GIFT_PREFS, category, itemId, tier, {
+      "romantic-favorite": '"...Now that\'s thoughtful." She\'s quietly, genuinely touched.',
+      "romantic-baseline": '"Well, aren\'t you sweet." Warm, a little surprised.',
+      "romantic-disliked": '"Oh — well, isn\'t that nice." Warm, if a touch more reserved.',
       "jewelry-rejected": '"Mm-mm, that\'s way too much." She hands it right back, firm but kind.',
       "jewelry-uncertain": '"Well, that\'s awfully generous of you." Caught off guard.',
       "jewelry-rank1": '"...Now that is a serious piece." Genuinely impressed.',
@@ -4101,18 +4113,29 @@ const YVONNE_ACTIONS: NpcActionRules = {
       "category-match": '"Now that\'s actually useful — thank you." Genuinely pleased.',
       "category-mismatch-neutral": '"Well, thank you, honey." Warm regardless.',
     }),
-  askHerOut: () => ({ success: false, message: "" }),
-  propose: () => ({ success: false, message: "" }),
+  askHerOut: (romanceScore) => {
+    if (romanceScore >= YVONNE_ROMANCE_THRESHOLD) {
+      return { success: true, message: '"Well, honey... I thought you\'d never ask." She\'s smiling despite herself.' };
+    }
+    return { success: false, message: '"Mm, slow down now. We\'re not quite there yet."' };
+  },
+  propose: (relationshipScore, romanceScore, dateCount) => {
+    if (
+      dateCount >= YVONNE_PROPOSE_DATE_THRESHOLD &&
+      relationshipScore >= YVONNE_PROPOSE_RELATIONSHIP_THRESHOLD &&
+      romanceScore >= YVONNE_PROPOSE_ROMANCE_THRESHOLD
+    ) {
+      return { success: true, message: '"...Yes." Her composure finally breaks, tears in her eyes. "Yes, of course."' };
+    }
+    return { success: false, message: '"...Ask me again a little later, honey."' };
+  },
 };
 
-// Canonically already married in-world — the romance door is narratively
-// closed, not just "not yet interested." No Flirty category at all,
-// permanently hidden, same treatment as Simone Reyes at the Clothing Store.
 const YVONNE: NpcDef = {
   id: "yvonne",
   name: "Yvonne Price",
   portrait: YVONNE_PORTRAIT,
-  romanceEligible: false,
+  romanceEligible: true,
   greetings: {
     stranger: "Well hello there. I'm Yvonne, I help Carmen keep this kitchen running.",
     acquaintance: "Hey there, good to see you again.",
@@ -4138,10 +4161,22 @@ const YVONNE: NpcDef = {
     { id: "vent", label: "Vent", ratingByTier: { friend: "neutral", close: "neutral" } },
     { id: "check-in", label: "Check In On Her", ratingByTier: { friend: "positive", close: "positive" } },
   ],
-  flirtyComplimentTopics: [],
-  flirtyCharmTopics: [],
+  flirtyComplimentTopics: [
+    { id: "looks", label: "Looks", ratingByTier: { friend: "positive", close: "positive" } },
+    // Practical, not fashion-conscious — doesn't light up over Style specifically.
+    { id: "style", label: "Style", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "personality", label: "Personality", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "competence", label: "Competence", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyCharmTopics: [
+    { id: "tease", label: "Playful Tease", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "bold-move", label: "Make a Bold Move", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "show-off", label: "Show Off", ratingByTier: { friend: "neutral", close: "neutral" } },
+    { id: "line", label: "Drop a Line", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
   actions: YVONNE_ACTIONS,
   inviteToFightMinTier: "acquaintance",
+  homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
 };
 
 const DIMITRI_GIFT_PREFS: GiftPreferences = {
