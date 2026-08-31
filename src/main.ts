@@ -42,6 +42,11 @@ import {
   TONY_PORTRAIT,
   DOROTHY_PORTRAIT,
   JASMINE_PORTRAIT,
+  SAL_PORTRAIT,
+  OTIS_PORTRAIT,
+  OLIVER_PORTRAIT,
+  RAFAEL_PORTRAIT,
+  CHIDI_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -3613,11 +3618,6 @@ const TONY: NpcDef = {
   inviteToFightMinTier: "acquaintance",
 };
 
-// Gym NPC Dialogue Content spec: no real portrait art was attached for any
-// of the 5 NPCs below (the spec says "Portrait delivered" but no image
-// files came with it this session) — all 5 use an emoji placeholder, same
-// as e.g. a pet's breed image, until real art shows up.
-
 // Coach Lvl 1/2/3 (Sal/Otis/Oliver): restricted Manager-style rules — no
 // Exchange Number (auto-added to Contacts the moment hired, see
 // setStaffLevel), no Invite to Next Fight (always in the player's corner
@@ -3647,7 +3647,7 @@ const SAL_ACTIONS: NpcActionRules = {
 const SAL: NpcDef = {
   id: "sal",
   name: "Sal Romano",
-  portrait: "🧔",
+  portrait: SAL_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Yeah, yeah, come on in. Sal Romano — trained more hungry kids than I can count. Let's see what you got.",
@@ -3706,7 +3706,7 @@ const OTIS_ACTIONS: NpcActionRules = {
 const OTIS: NpcDef = {
   id: "otis",
   name: "Otis Freeman",
-  portrait: "🧑‍🦳",
+  portrait: OTIS_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Otis Freeman. Trained a few champions in my day — figured I'd see what you're made of.",
@@ -3764,7 +3764,7 @@ const OLIVER_ACTIONS: NpcActionRules = {
 const OLIVER: NpcDef = {
   id: "oliver",
   name: "Oliver Hayes",
-  portrait: "🧑",
+  portrait: OLIVER_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Oliver Hayes. Best in the business, and I mean that — let's get you fight-ready.",
@@ -3833,7 +3833,7 @@ const RAFAEL_ACTIONS: NpcActionRules = {
 const RAFAEL: NpcDef = {
   id: "rafael",
   name: "Rafael Ortiz",
-  portrait: "🎙️",
+  portrait: RAFAEL_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Rafael Ortiz. I don't usually talk to fighters who haven't proven anything — but you've got my attention now.",
@@ -3895,7 +3895,7 @@ const CHIDI_ACTIONS: NpcActionRules = {
 const CHIDI: NpcDef = {
   id: "chidi",
   name: "Chidi Adeyemi",
-  portrait: "🥊",
+  portrait: CHIDI_PORTRAIT,
   romanceEligible: false,
   greetings: {
     stranger: "Oh, hey! Chidi Adeyemi — I train here too. Good to meet you!",
