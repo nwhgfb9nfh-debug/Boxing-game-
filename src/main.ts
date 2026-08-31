@@ -464,6 +464,12 @@ const phoneApi: PhoneApi = {
           reason: hasContent ? undefined : "Not yet designed.",
         };
       }
+      // She works here (e.g. Yvonne/Michelle at the Diner) — meeting her
+      // "there" would just mean seeing her on shift, not an actual outing.
+      const homeBuilding = NPC_HOME_BUILDING[npcId];
+      if (homeBuilding && MEETUP_LOCATION_BUILDING[loc.id](homeBuilding)) {
+        return { id: loc.id, label: loc.label, available: false, reason: "She works there." };
+      }
       const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
       return {
         id: loc.id,
@@ -4176,7 +4182,11 @@ const YVONNE: NpcDef = {
   ],
   actions: YVONNE_ACTIONS,
   inviteToFightMinTier: "acquaintance",
-  homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
+  // No prior-Dates minimum — since she works at the Diner (now excluded as
+  // a meetup/date location, see getMeetupLocations' homeBuilding check),
+  // Beach/Lounge would otherwise be the only way to rack up a "real" Date
+  // before Home ever unlocks. Just needs real trust (Friend tier).
+  homeDateUnlock: (_dateCount, tier) => tierAtLeast(tier, "friend"),
 };
 
 const DIMITRI_GIFT_PREFS: GiftPreferences = {
