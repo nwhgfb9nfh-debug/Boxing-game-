@@ -66,7 +66,7 @@ canvas {
   bottom: max(18px, env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 14px;
 }
 
 .controls__left-stack {
@@ -98,12 +98,13 @@ canvas {
   filter: brightness(1.25);
 }
 
-/* Bottom-middle, independent of the left cluster (see .controls__left) so
-   it stays centered regardless of which of Reverse/Autopilot are visible —
-   also keeps bottom-right clear for the Phone button. */
+/* Independent of the left cluster (see .controls__left) so it stays put
+   regardless of which of Reverse/Autopilot are visible. Offset a bit right
+   of true-center — dead-center left it nearly touching Reverse when both
+   are visible — while leaving plenty of clearance before the Phone button. */
 .btn--gas {
   position: absolute;
-  left: 50%;
+  left: calc(50% + 26px);
   bottom: max(18px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: 92px;
