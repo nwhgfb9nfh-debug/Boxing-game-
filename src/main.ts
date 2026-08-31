@@ -52,6 +52,7 @@ import {
   YVONNE_PORTRAIT,
   DIMITRI_PORTRAIT,
   MICHELLE_PORTRAIT,
+  BOBBY_PORTRAIT,
 } from "./assets/portraits";
 import {
   type NpcDef,
@@ -4279,6 +4280,70 @@ const MICHELLE: NpcDef = {
   homeDateUnlock: (dateCount, tier) => dateCount >= 1 && tierAtLeast(tier, "friend"),
 };
 
+// Bobby Kowalski — a Diner regular, not staff, only present during "No
+// Fight Scheduled" (Phase 1) — see isBobbyPresentThisPhase, same gating
+// pattern as Derek's Office Lobby appearance.
+const BOBBY_GIFT_PREFS: GiftPreferences = {
+  favoriteGeneralCategory: "fun",
+  specialJewelryRanking: ["luxury-watch", "custom-jewelry", "diamond-earrings"],
+};
+const BOBBY_ACTIONS: NpcActionRules = {
+  exchangeNumber: (tier) => {
+    if (tier === "stranger") {
+      return { success: false, delta: -5, message: '"Ha, let\'s talk fights a few more times first!"' };
+    }
+    return { success: true, delta: 10, message: 'He grins and rattles off his number. "There ya go, buddy!"' };
+  },
+  giftReaction: (tier, category, itemId) =>
+    buildGiftResult(BOBBY_GIFT_PREFS, category, itemId, tier, {
+      "jewelry-rejected": '"Whoa, whoa, way too much, man!" He waves it off, laughing.',
+      "jewelry-uncertain": '"Whoa, that\'s real generous of you." Genuinely touched.',
+      "jewelry-rank1": '"...No way. This is unreal, man." He\'s stunned.',
+      "jewelry-rank2": '"Aw man, this is great! Thank you!" Beaming.',
+      "jewelry-rank3": '"Hey, thanks, man!" Warm, easygoing.',
+      "category-match": '"No way, this is awesome! Thanks, man!" He\'s thrilled.',
+      "category-mismatch-neutral": '"Hey, thanks, man!" Warm regardless.',
+    }),
+  askHerOut: () => ({ success: false, message: "" }),
+  propose: () => ({ success: false, message: "" }),
+};
+
+const BOBBY: NpcDef = {
+  id: "bobby",
+  name: "Bobby Kowalski",
+  portrait: BOBBY_PORTRAIT,
+  romanceEligible: false,
+  greetings: {
+    stranger: "Hey, how's it going! Bobby Kowalski — you catch the fight last night? Unbelievable.",
+    acquaintance: "Hey, good to see you! You catch the fight last night?",
+    friend: "Hey, buddy! There you are — get over here, gotta tell you about this fight.",
+    close: "Hey, buddy! Perfect timing, sit down, sit down.",
+  },
+  smallTalkTopics: [
+    { id: "weather", label: "Weather", ratingByTier: { stranger: "neutral", acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    // Always has an opinion on last night's fight.
+    { id: "gossip", label: "Boxing World Gossip", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "diner", label: "The Diner", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "ask-day", label: "Ask About His Day", ratingByTier: { stranger: "positive", acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  personalTopics: [
+    { id: "family", label: "Family", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "hobbies", label: "Hobbies", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+    { id: "weekend", label: "Weekend Plans", ratingByTier: { acquaintance: "neutral", friend: "neutral", close: "neutral" } },
+    { id: "music", label: "Music", ratingByTier: { acquaintance: "positive", friend: "positive", close: "positive" } },
+  ],
+  heartToHeartTopics: [
+    { id: "advice", label: "Ask for Advice", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "worry", label: "Share a Worry", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "vent", label: "Vent", ratingByTier: { friend: "positive", close: "positive" } },
+    { id: "check-in", label: "Check In On Him", ratingByTier: { friend: "positive", close: "positive" } },
+  ],
+  flirtyComplimentTopics: [],
+  flirtyCharmTopics: [],
+  actions: BOBBY_ACTIONS,
+  inviteToFightMinTier: "acquaintance",
+};
+
 // Manager Lvl 1/2/3 and, where designed, their secretary/second-assistant —
 // used to lay out each Office floor (see buildOfficeFloorRoom) and to
 // resolve which NPC a floor's manager desk belongs to at dispatch time.
@@ -4338,6 +4403,7 @@ const ALL_NPCS: NpcDef[] = [
   YVONNE,
   DIMITRI,
   MICHELLE,
+  BOBBY,
 ];
 function getNpcById(id: string): NpcDef | undefined {
   return ALL_NPCS.find((n) => n.id === id);
@@ -4376,6 +4442,7 @@ const NPC_HOME_BUILDING: Record<string, string> = {
   yvonne: "Diner",
   dimitri: "Diner",
   michelle: "Diner",
+  bobby: "Diner",
 };
 // Which Office floor an NPC's own station lives on, if any — derived from
 // the same manager/staff layout used to build the floors themselves,
@@ -8359,11 +8426,20 @@ function isDerekPresentThisPhase(): boolean {
   return campCycle.current.type === "nofight";
 }
 
+// Bobby Kowalski (Diner NPC Dialogue Content spec): a Diner regular only
+// present during "No Fight Scheduled" (Phase 1) — same single-phase gating
+// as Derek's Office Lobby appearance, just its own helper since the two
+// NPCs' presence isn't otherwise related.
+function isBobbyPresentThisPhase(): boolean {
+  return campCycle.current.type === "nofight";
+}
+
 function isNpcAway(npcId: string): boolean {
   if (playerState.divorced[npcId]) return true; // permanent — she's gone from the game for good
   if (playerState.married[npcId]) return true; // permanent — she's moved out for good
   if (playerState.activeMeetup?.npcId === npcId) return true;
   if (npcId === "derek" && !isDerekPresentThisPhase()) return true;
+  if (npcId === "bobby" && !isBobbyPresentThisPhase()) return true;
   const step = playerState.overnightCommuteStep[npcId];
   return step !== undefined && step < 2;
 }
@@ -8386,6 +8462,13 @@ function getDerekStation(buildingName: string): Station | null {
   if (buildingName !== "Office" || !isDerekPresentThisPhase()) return null;
   // Parked in the left of the two lobby seats, opposite Reception.
   return { id: "derek-lobby", label: "Derek", kind: "npc", nx: 0.75, ny: 0.72 };
+}
+
+/** Bobby's Diner table — only present during "No Fight Scheduled" (Phase 1, see isBobbyPresentThisPhase), so this is additive rather than a static STATIONS_BY_BUILDING entry. */
+function getBobbyStation(buildingName: string): Station | null {
+  if (buildingName !== "Diner" || isNpcAway("bobby")) return null;
+  // Parked at the table nearest the entrance, away from the staff stations.
+  return { id: "bobby-table", label: "Bobby", kind: "npc", nx: 0.78, ny: 0.65, radius: 24 };
 }
 
 /** Jasmine's Mall Lobby spot — a wanderer like Derek, but no camp-phase restriction, just the generic isNpcAway check. */
@@ -8468,6 +8551,8 @@ function computeStationsFor(buildingName: string): Station[] {
   }
   const derekStation = getDerekStation(buildingName);
   if (derekStation) base = [...base, derekStation];
+  const bobbyStation = getBobbyStation(buildingName);
+  if (bobbyStation) base = [...base, bobbyStation];
   const jasmineStation = getJasmineStation(buildingName);
   if (jasmineStation) base = [...base, jasmineStation];
   const gymCoachStation = getGymCoachStation(buildingName);
@@ -8908,6 +8993,7 @@ function loop(now: number) {
       else if (nearStation.id === "yvonne-station") onTrigger = () => openNpcDialogue(YVONNE);
       else if (nearStation.id === "dimitri-station") onTrigger = () => openNpcDialogue(DIMITRI);
       else if (nearStation.id === "michelle-station") onTrigger = () => openNpcDialogue(MICHELLE);
+      else if (nearStation.id === "bobby-table") onTrigger = () => openNpcDialogue(BOBBY);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
         const staffNpc = getNpcById(nearStation.id.slice("mall-staff-".length));
         const store = mallStore;
