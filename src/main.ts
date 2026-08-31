@@ -5149,6 +5149,19 @@ function buildDialogueActionsResponse(npc: NpcDef): DialogueData {
   };
 }
 
+// Rafael Ortiz, pre-unlock (see isRafaelUnlocked): a real talking-head
+// dialogue box with his portrait, same as any other NPC — just a single
+// brush-off line and Leave, never the real Talk/Actions menus, since he
+// genuinely won't engage until the player's actually proven something.
+function openRafaelLockedDialogue() {
+  dialogueBox.open(() => ({
+    portrait: RAFAEL.portrait,
+    name: RAFAEL.name,
+    text: RAFAEL_LOCKED_LINE,
+    options: [{ id: "leave", label: "Leave", onSelect: () => dialogueBox.close() }],
+  }));
+}
+
 function buildDialogueNotWritten(npc: NpcDef): DialogueData {
   return {
     portrait: npc.portrait,
@@ -7482,16 +7495,16 @@ const STATIONS_BY_BUILDING: Record<string, Station[]> = {
   Mansion: HOUSE_STATIONS,
   "Suburban House": HOUSE_STATIONS,
   Townhouse: HOUSE_STATIONS,
-  // Smaller-than-default trigger radius (55 -> 35) — the room packs 5
-  // stations into a tight column/row, and the default radius let
-  // adjacent ones (Reflex Dots/Sparring Ring/Weight Area, all nx=0.5)
-  // overlap enough that walking toward one could trigger its neighbor.
+  // Wall-hugging layout (same convention as Mall below) — every equipment
+  // station sits against the left/right/top wall instead of packed into a
+  // center grid, leaving the whole middle of the room open to walk
+  // through. No radius override needed once they're spread out like this.
   Gym: [
-    { id: "heavybag", label: "Heavy Bag", nx: 0.25, ny: 0.3, radius: 35 },
-    { id: "reflexdots", label: "Reflex Dots", nx: 0.5, ny: 0.3, radius: 35 },
-    { id: "jumprope", label: "Jump Rope", nx: 0.75, ny: 0.3, radius: 35 },
-    { id: "sparring", label: "Sparring Ring", nx: 0.5, ny: 0.45, radius: 35 },
-    { id: "workoutclip", label: "Weight Area", nx: 0.5, ny: 0.6, radius: 35 },
+    { id: "heavybag", label: "Heavy Bag", nx: 0.05, ny: 0.15 },
+    { id: "reflexdots", label: "Reflex Dots", nx: 0.05, ny: 0.4 },
+    { id: "jumprope", label: "Jump Rope", nx: 0.05, ny: 0.65 },
+    { id: "sparring", label: "Sparring Ring", nx: 0.95, ny: 0.15 },
+    { id: "workoutclip", label: "Weight Area", nx: 0.95, ny: 0.4 },
   ],
   Diner: [{ id: "order", label: "Order Menu", nx: 0.5, ny: 0.4 }],
   Office: [
@@ -7958,10 +7971,9 @@ function getGymCoachStation(buildingName: string): Station | null {
   if (buildingName !== "Gym") return null;
   const coach = GYM_COACH_BY_LEVEL[playerState.coachLevel];
   if (!coach) return null;
-  // Radius shrunk to match the Gym's other npc-kind markers (see Derek/
-  // Jasmine at the Office/Mall) — the room already packs 5 equipment
-  // stations in tight, so this stays well clear of all of them.
-  return { id: "gym-coach", label: coach.name, kind: "npc", nx: 0.25, ny: 0.6, radius: 24 };
+  // Right wall, below Weight Area — same wall-hugging layout as the 5
+  // equipment stations, keeping the room's center open to walk through.
+  return { id: "gym-coach", label: coach.name, kind: "npc", nx: 0.95, ny: 0.65 };
 }
 
 // Gym Wanderers (Phase 1) — present regardless of which Coach is hired.
@@ -7979,13 +7991,14 @@ function isRafaelUnlocked(): boolean {
 }
 function getRafaelStation(buildingName: string): Station | null {
   if (buildingName !== "Gym" || isNpcAway("rafael")) return null;
-  return { id: "rafael-lobby", label: "Rafael", kind: "npc", nx: 0.75, ny: 0.45, radius: 24 };
+  // Top wall, left of center — wall-hugging layout, same as the equipment.
+  return { id: "rafael-lobby", label: "Rafael", kind: "npc", nx: 0.3, ny: 0.08 };
 }
 
 /** Chidi's Gym spot — no access gate, warm from the start, just the generic isNpcAway check. */
 function getChidiStation(buildingName: string): Station | null {
   if (buildingName !== "Gym" || isNpcAway("chidi")) return null;
-  return { id: "chidi-lobby", label: "Chidi", kind: "npc", nx: 0.75, ny: 0.6, radius: 24 };
+  return { id: "chidi-lobby", label: "Chidi", kind: "npc", nx: 0.7, ny: 0.08 };
 }
 
 // Right after sleeping together, her spouse-npc/overnight-guest marker
@@ -8434,9 +8447,7 @@ function loop(now: number) {
         onTrigger = coach ? () => openNpcDialogue(coach) : () => {};
       }
       else if (nearStation.id === "rafael-lobby") {
-        onTrigger = isRafaelUnlocked()
-          ? () => openNpcDialogue(RAFAEL)
-          : () => buildingUI.showToast(RAFAEL_LOCKED_LINE, pos, "bottom");
+        onTrigger = isRafaelUnlocked() ? () => openNpcDialogue(RAFAEL) : openRafaelLockedDialogue;
       }
       else if (nearStation.id === "chidi-lobby") onTrigger = () => openNpcDialogue(CHIDI);
       else if (mallStore && nearStation.id.startsWith("mall-staff-")) {
