@@ -8613,6 +8613,16 @@ function computeStationsFor(buildingName: string): Station[] {
   if (buildingName === "Office" && isNpcAway("priya")) {
     base = base.filter((s) => s.id !== "reception-priya");
   }
+  // Same idea for the Diner's 5 staff — unlike the Gift Shop's Rosa/Kevin
+  // (alternate by phase) or the Pet Store's Mei/Tyler (Tyler only steps in
+  // once Mei's gone for good), all 5 are normally present at once. The "2
+  // waiters, 2 cooks" pairing exists so a romance-eligible one marrying
+  // out (isNpcAway) still leaves a working staff member behind — not so
+  // one takes over the other's specific role — but her own station still
+  // needs to actually disappear once she's away, same as Priya above.
+  if (buildingName === "Diner") {
+    base = base.filter((s) => !s.id.endsWith("-station") || !isNpcAway(s.id.slice(0, -"-station".length)));
+  }
   const derekStation = getDerekStation(buildingName);
   if (derekStation) base = [...base, derekStation];
   const bobbyStation = getBobbyStation(buildingName);
