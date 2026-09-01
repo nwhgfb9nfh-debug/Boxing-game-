@@ -98,21 +98,32 @@ const START_MARGIN = 80;
 const AUTOPILOT_ARRIVAL_DISTANCE = 400; // world px
 const AUTOPILOT_DURATION = 1; // seconds
 
-const ROAD_HALF_HEIGHT = 90;
-const LANE_OFFSET = 45; // right-hand-drive: car sits in its half of the road, not straddling the centerline
+// The asphalt band was rendering roughly 4x as deep as the sidewalk
+// (visually too thick) — halved to bring it to roughly 2x, the reported
+// correct proportion. LANE_OFFSET keeps the same 0.5 ratio to
+// ROAD_HALF_HEIGHT it always had, so the car still sits safely inside the
+// (now narrower) lane instead of drifting toward the new edge.
+const ROAD_HALF_HEIGHT = 45;
+const LANE_OFFSET = 22; // right-hand-drive: car sits in its half of the road, not straddling the centerline
 const UTURN_DURATION = 0.8; // seconds for a real turn-around, not an instant flip
 
 const BUILDING_DEPTH = 140;
 const BUILDING_MARGIN = 24;
 const LOT_GAP = 14; // gap between neighboring lots so buildings read as separate
 
-// Sidewalk band depth baked into the road texture (see roadTexture.ts) —
-// the "ground starts here" boundary the Trailer's ground-texture lot keys
-// off of, so its edge lines up exactly with the sidewalk's outer edge
-// instead of guessing at BUILDING_MARGIN.
-const ROAD_TEXTURE_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
-const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * ROAD_TEXTURE_SCALE;
-const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * ROAD_TEXTURE_SCALE;
+// The sidewalk band's scale is pinned to the depth it has always rendered
+// at (as if ROAD_HALF_HEIGHT were still its original 90) — decoupled from
+// the current ROAD_HALF_HEIGHT so shrinking the road doesn't also shrink
+// the sidewalk. See drawRoadSurface(), which draws the sidewalk and road
+// bands as separate, independently-scaled strips of the same photo.
+const ORIGINAL_ROAD_HALF_HEIGHT = 90;
+const SIDEWALK_SCALE =
+  (ORIGINAL_ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
+const ROAD_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
+// The Trailer/Apartment ground-image lots key off this to line their edge
+// up with the sidewalk's outer edge — unaffected by the road resize.
+const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * SIDEWALK_SCALE;
+const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * SIDEWALK_SCALE;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -439,11 +450,12 @@ const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
 
 /**
  * Draws the road + flanking sidewalk strip using the real texture (see
- * assets/roadTexture.ts), tiled left-to-right in screen space — same
- * screen-locked approach the old dashed centerline already used, so the
- * texture doesn't need to track world-scroll phase separately. Falls back
- * to the original flat-color road/dashes if the image hasn't finished
- * decoding yet (module load is async).
+ * assets/roadTexture.ts). The sidewalk and road bands are cropped from the
+ * source photo and drawn as two independently-scaled strips (SIDEWALK_SCALE
+ * vs ROAD_SCALE) rather than one uniform scale for the whole image, so the
+ * road can be resized (ROAD_HALF_HEIGHT) without also resizing the
+ * sidewalk. Falls back to the original flat-color road/dashes if the image
+ * hasn't finished decoding yet (module load is async).
  */
 function drawRoadSurface(
   ctx: CanvasRenderingContext2D,
@@ -454,7 +466,8 @@ function drawRoadSurface(
 ) {
   // The sidewalk-tone ground fill (SIDEWALK_FALLBACK_COLOR) is already
   // painted for the full canvas in render(), before the building-lot
-  // layer — this function only has to add the road band on top of that.
+  // layer — this function only has to add the sidewalk + road bands on
+  // top of that.
   if (!roadImage.complete || roadImage.naturalWidth === 0) {
     // Not decoded yet — keep the original flat road + dashed centerline
     // instead of a gap while roadImage finishes loading.
@@ -471,27 +484,62 @@ function drawRoadSurface(
     return;
   }
 
-  // Scale so the texture's own asphalt band (ROAD_TEXTURE_ROAD_TOP..
-  // ROAD_TEXTURE_ROAD_BOTTOM) exactly matches the game's road band
-  // (ROAD_HALF_HEIGHT*2) — the whole image scales uniformly by this same
-  // factor, so the sidewalk portions stay in proportion instead of
-  // stretching independently.
-  const tileW = ROAD_TEXTURE_WIDTH * ROAD_TEXTURE_SCALE;
-  const tileH = ROAD_TEXTURE_HEIGHT * ROAD_TEXTURE_SCALE;
-  const destTop = roadY - ROAD_HALF_HEIGHT - SIDEWALK_NORTH_DEPTH;
+  const roadBandSourceHeight = ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP;
+  const southSidewalkSourceHeight = ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM;
 
-  // World-locked tiling (like the buildings), not screen-locked — a tile's
-  // position is fixed to a world-x multiple of tileW, converted to screen
-  // space via toScreenX every frame, so the texture (and its baked-in
-  // dashed line) scrolls under the player exactly in sync with the world
-  // as camX changes, instead of sitting fixed on screen while only the
-  // buildings scroll past it.
+  drawTexturedBand(
+    ctx,
+    width,
+    camX,
+    toScreenX,
+    0,
+    ROAD_TEXTURE_ROAD_TOP,
+    roadY - ROAD_HALF_HEIGHT - SIDEWALK_NORTH_DEPTH,
+    SIDEWALK_SCALE,
+  );
+  drawTexturedBand(
+    ctx,
+    width,
+    camX,
+    toScreenX,
+    ROAD_TEXTURE_ROAD_TOP,
+    roadBandSourceHeight,
+    roadY - ROAD_HALF_HEIGHT,
+    ROAD_SCALE,
+  );
+  drawTexturedBand(
+    ctx,
+    width,
+    camX,
+    toScreenX,
+    ROAD_TEXTURE_ROAD_BOTTOM,
+    southSidewalkSourceHeight,
+    roadY + ROAD_HALF_HEIGHT,
+    SIDEWALK_SCALE,
+  );
+}
+
+// Tiles one horizontal slice of the road texture (source rows [sy, sy+sh))
+// left-to-right, world-locked (like the buildings) so it scrolls with the
+// world instead of sitting screen-fixed, at its own independent scale.
+function drawTexturedBand(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  camX: number,
+  toScreenX: (wx: number) => number,
+  sy: number,
+  sh: number,
+  destTop: number,
+  scale: number,
+) {
+  const tileW = ROAD_TEXTURE_WIDTH * scale;
+  const destH = sh * scale;
   const worldLeft = camX - width / 2;
   const firstTileIndex = Math.floor(worldLeft / tileW) - 1;
   for (let i = firstTileIndex; ; i++) {
     const screenX = toScreenX(i * tileW);
     if (screenX > width) break;
-    ctx.drawImage(roadImage, screenX, destTop, tileW, tileH);
+    ctx.drawImage(roadImage, 0, sy, ROAD_TEXTURE_WIDTH, sh, screenX, destTop, tileW, destH);
   }
 }
 
