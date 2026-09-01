@@ -271,7 +271,7 @@ export class StreetScene {
     // Road + flanking sidewalk strip — real texture (see roadTexture.ts),
     // tiled left-to-right; see drawRoadSurface for the fallback while it
     // loads and the scale-to-ROAD_HALF_HEIGHT math.
-    drawRoadSurface(ctx, width, height, roadY);
+    drawRoadSurface(ctx, width, height, roadY, camX, toScreenX);
 
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
@@ -373,7 +373,14 @@ const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
  * to the original flat-color road/dashes if the image hasn't finished
  * decoding yet (module load is async).
  */
-function drawRoadSurface(ctx: CanvasRenderingContext2D, width: number, height: number, roadY: number) {
+function drawRoadSurface(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  roadY: number,
+  camX: number,
+  toScreenX: (wx: number) => number,
+) {
   // Base fill first — covers the full sidewalk depth (unbounded, varies
   // with viewport height) so there's never a gap, regardless of whether
   // the tiled texture below ends up covering it.
@@ -408,8 +415,18 @@ function drawRoadSurface(ctx: CanvasRenderingContext2D, width: number, height: n
   const tileH = ROAD_TEXTURE_HEIGHT * scale;
   const destTop = roadY - ROAD_HALF_HEIGHT - ROAD_TEXTURE_ROAD_TOP * scale;
 
-  for (let x = -tileW; x < width + tileW; x += tileW) {
-    ctx.drawImage(roadImage, x, destTop, tileW, tileH);
+  // World-locked tiling (like the buildings), not screen-locked — a tile's
+  // position is fixed to a world-x multiple of tileW, converted to screen
+  // space via toScreenX every frame, so the texture (and its baked-in
+  // dashed line) scrolls under the player exactly in sync with the world
+  // as camX changes, instead of sitting fixed on screen while only the
+  // buildings scroll past it.
+  const worldLeft = camX - width / 2;
+  const firstTileIndex = Math.floor(worldLeft / tileW) - 1;
+  for (let i = firstTileIndex; ; i++) {
+    const screenX = toScreenX(i * tileW);
+    if (screenX > width) break;
+    ctx.drawImage(roadImage, screenX, destTop, tileW, tileH);
   }
 }
 
