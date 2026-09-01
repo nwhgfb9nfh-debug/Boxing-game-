@@ -25,6 +25,7 @@ import {
   ROAD_TEXTURE_ROAD_BOTTOM,
 } from "../assets/roadTexture";
 import { TRAILER_LOT_DATA_URI, TRAILER_LOT_WIDTH, TRAILER_LOT_HEIGHT } from "../assets/trailerLot";
+import { GRASS_TEXTURE_DATA_URI, GRASS_TEXTURE_WIDTH, GRASS_TEXTURE_HEIGHT } from "../assets/grassTexture";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -36,6 +37,11 @@ roadImage.src = ROAD_TEXTURE_DATA_URI;
 // old flat-color fill for the Trailer lot until this decodes.
 const trailerLotImage = new Image();
 trailerLotImage.src = TRAILER_LOT_DATA_URI;
+
+// Same async-load pattern — drawHousingGrass() falls back to a flat green
+// fill for the Housing frame's ground until this decodes.
+const grassImage = new Image();
+grassImage.src = GRASS_TEXTURE_DATA_URI;
 
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
@@ -58,6 +64,14 @@ const UTURN_DURATION = 0.8; // seconds for a real turn-around, not an instant fl
 const BUILDING_DEPTH = 140;
 const BUILDING_MARGIN = 24;
 const LOT_GAP = 14; // gap between neighboring lots so buildings read as separate
+
+// Sidewalk band depth baked into the road texture (see roadTexture.ts) —
+// the "ground starts here" boundary that the Trailer's ground-texture lot
+// and drawHousingGrass() both key off of, so they line up exactly with the
+// sidewalk's outer edge instead of guessing at BUILDING_MARGIN.
+const ROAD_TEXTURE_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
+const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * ROAD_TEXTURE_SCALE;
+const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * ROAD_TEXTURE_SCALE;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -274,15 +288,21 @@ export class StreetScene {
     const topEdgeY = roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN; // flavor row (north)
     const bottomEdgeY = roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN; // required row (south)
 
-    // Road + flanking sidewalk strip — real texture (see roadTexture.ts),
-    // tiled left-to-right; see drawRoadSurface for the fallback while it
-    // loads and the scale-to-ROAD_HALF_HEIGHT math.
-    drawRoadSurface(ctx, width, height, roadY, camX, toScreenX);
-
+    // Layer order: ground → building lots → sidewalk → road → player/UI.
+    // Generic ground first (same sidewalk-tone backdrop every frame has
+    // always had beyond its buildings) — the Housing frame's grass then
+    // overwrites its own strip of this before buildings draw on top of
+    // that, and the sidewalk/road texture is drawn last of all, so nothing
+    // in the lot layer — e.g. the Trailer's ground-texture lot reaching for
+    // the sidewalk's edge — can ever paint over the sidewalk or road.
+    ctx.fillStyle = SIDEWALK_FALLBACK_COLOR;
+    ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
+    ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, height - (roadY + ROAD_HALF_HEIGHT));
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
 
       if (frame.kind === "housing") {
+        drawHousingGrass(ctx, width, height, roadY, camX, toScreenX, frameLeftWorld);
         for (let lot = 0; lot < HOUSING_LOTS_PER_ROW; lot++) {
           const lotCenterWorld = frameLeftWorld + (lot + 0.5) * HOUSING_LOT_WIDTH;
           const sx = toScreenX(lotCenterWorld);
@@ -332,6 +352,12 @@ export class StreetScene {
       ctx.stroke();
     }
 
+    // Road + flanking sidewalk strip — real texture (see roadTexture.ts),
+    // tiled left-to-right; see drawRoadSurface for the fallback while it
+    // loads and the scale-to-ROAD_HALF_HEIGHT math. Drawn after every lot
+    // above so it always sits on top of them (see the layer-order note).
+    drawRoadSurface(ctx, width, roadY, camX, toScreenX);
+
     // Arena terminus: parking lots flanking the road, then the arena
     // facade spanning the full width of the road at the literal dead end.
     drawArenaTerminus(ctx, toScreenX, width, roadY, topEdgeY, bottomEdgeY);
@@ -364,11 +390,10 @@ function hash01(n: number): number {
 
 const FILLER_COLORS = ["#4a4f5c", "#3f4a52", "#4f4640", "#454050", "#3d4a3f"];
 
-// Blended from the road texture's own sidewalk tone (see roadTexture.ts)
-// rather than the old flat sidewalk color, so there's no visible seam
-// where the tiled image's edge meets the plain background beyond it
-// (mostly hidden behind buildings anyway, but shows through on tall
-// viewports where BUILDING_DEPTH doesn't reach all the way to the edge).
+// Blended from the road texture's own sidewalk tone (see roadTexture.ts) —
+// the generic ground fill painted before every lot layer in render() (grass
+// then overwrites the Housing frame's own strip of it), and also what
+// backs the real sidewalk texture if it hasn't decoded yet.
 const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
 
 /**
@@ -382,18 +407,13 @@ const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
 function drawRoadSurface(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
   roadY: number,
   camX: number,
   toScreenX: (wx: number) => number,
 ) {
-  // Base fill first — covers the full sidewalk depth (unbounded, varies
-  // with viewport height) so there's never a gap, regardless of whether
-  // the tiled texture below ends up covering it.
-  ctx.fillStyle = SIDEWALK_FALLBACK_COLOR;
-  ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
-  ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, height - (roadY + ROAD_HALF_HEIGHT));
-
+  // The sidewalk-tone ground fill (SIDEWALK_FALLBACK_COLOR) is already
+  // painted for the full canvas in render(), before the building-lot
+  // layer — this function only has to add the road band on top of that.
   if (!roadImage.complete || roadImage.naturalWidth === 0) {
     // Not decoded yet — keep the original flat road + dashed centerline
     // instead of a gap while roadImage finishes loading.
@@ -415,11 +435,9 @@ function drawRoadSurface(
   // (ROAD_HALF_HEIGHT*2) — the whole image scales uniformly by this same
   // factor, so the sidewalk portions stay in proportion instead of
   // stretching independently.
-  const roadBandSourceHeight = ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP;
-  const scale = (ROAD_HALF_HEIGHT * 2) / roadBandSourceHeight;
-  const tileW = ROAD_TEXTURE_WIDTH * scale;
-  const tileH = ROAD_TEXTURE_HEIGHT * scale;
-  const destTop = roadY - ROAD_HALF_HEIGHT - ROAD_TEXTURE_ROAD_TOP * scale;
+  const tileW = ROAD_TEXTURE_WIDTH * ROAD_TEXTURE_SCALE;
+  const tileH = ROAD_TEXTURE_HEIGHT * ROAD_TEXTURE_SCALE;
+  const destTop = roadY - ROAD_HALF_HEIGHT - SIDEWALK_NORTH_DEPTH;
 
   // World-locked tiling (like the buildings), not screen-locked — a tile's
   // position is fixed to a world-x multiple of tileW, converted to screen
@@ -434,6 +452,76 @@ function drawRoadSurface(
     if (screenX > width) break;
     ctx.drawImage(roadImage, screenX, destTop, tileW, tileH);
   }
+}
+
+// Average tone of the grass texture (see assets/grassTexture.ts) — shown
+// while it decodes so there's no flash of the old dark background.
+const GRASS_FALLBACK_COLOR = "#7b9b32";
+
+/**
+ * Fills the Housing frame's ground — the flat area above and below the
+ * road, outside the sidewalk band — with the tiled grass texture. Confined
+ * to this one frame's world-x span (Housing is a special case; every other
+ * frame keeps its plain background) and to the y-range strictly beyond the
+ * sidewalk's outer edge (SIDEWALK_NORTH_DEPTH/SIDEWALK_SOUTH_DEPTH), so it
+ * can never paint over the road or sidewalk.
+ */
+function drawHousingGrass(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  roadY: number,
+  camX: number,
+  toScreenX: (wx: number) => number,
+  frameLeftWorld: number,
+) {
+  const sx0 = toScreenX(frameLeftWorld);
+  const sx1 = toScreenX(frameLeftWorld + FRAME_WIDTH);
+  if (sx1 < 0 || sx0 > width) return;
+
+  const topBandBottom = roadY - ROAD_HALF_HEIGHT - SIDEWALK_NORTH_DEPTH;
+  const bottomBandTop = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH;
+
+  drawGrassBand(ctx, sx0, sx1, 0, topBandBottom, width, camX, toScreenX);
+  drawGrassBand(ctx, sx0, sx1, bottomBandTop, height, width, camX, toScreenX);
+}
+
+function drawGrassBand(
+  ctx: CanvasRenderingContext2D,
+  sx0: number,
+  sx1: number,
+  yStart: number,
+  yEnd: number,
+  width: number,
+  camX: number,
+  toScreenX: (wx: number) => number,
+) {
+  if (yEnd <= yStart || sx1 <= sx0) return;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(sx0, yStart, sx1 - sx0, yEnd - yStart);
+  ctx.clip();
+
+  ctx.fillStyle = GRASS_FALLBACK_COLOR;
+  ctx.fillRect(sx0, yStart, sx1 - sx0, yEnd - yStart);
+
+  if (grassImage.complete && grassImage.naturalWidth > 0) {
+    const tileW = GRASS_TEXTURE_WIDTH;
+    const tileH = GRASS_TEXTURE_HEIGHT;
+    const worldLeft = camX - width / 2;
+    const firstTileIndex = Math.floor(worldLeft / tileW) - 1;
+    for (let row = yStart; row < yEnd; row += tileH) {
+      for (let i = firstTileIndex; ; i++) {
+        const screenX = toScreenX(i * tileW);
+        if (screenX > sx1) break;
+        if (screenX + tileW < sx0) continue;
+        ctx.drawImage(grassImage, screenX, row, tileW, tileH);
+      }
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawLot(
@@ -479,8 +567,14 @@ function drawBuilding(
     // gravel meets the sidewalk with no bare strip showing — this only
     // moves pixels, the ENTER trigger (world.ts) still keys off the
     // original edgeY/w passed into this call, so the hitbox is unchanged.
-    const roadTop = dir === "up" ? top : top - BUILDING_MARGIN;
-    const imgDepth = depth + BUILDING_MARGIN;
+    // The extension is sized to SIDEWALK_SOUTH_DEPTH/NORTH_DEPTH (the real
+    // sidewalk band baked into the road texture), not a guessed margin, so
+    // the lot's edge lands exactly on the sidewalk's outer edge — and the
+    // sidewalk/road layer, now drawn after every lot (see render()'s layer
+    // order), paints over any of this that lands underneath it anyway.
+    const sidewalkDepth = dir === "up" ? SIDEWALK_NORTH_DEPTH : SIDEWALK_SOUTH_DEPTH;
+    const roadTop = dir === "up" ? top : top - sidewalkDepth;
+    const imgDepth = depth + sidewalkDepth;
     const coverScale = Math.max(w / TRAILER_LOT_WIDTH, imgDepth / TRAILER_LOT_HEIGHT);
     const drawW = TRAILER_LOT_WIDTH * coverScale;
     const drawH = TRAILER_LOT_HEIGHT * coverScale;
