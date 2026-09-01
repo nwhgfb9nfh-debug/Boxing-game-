@@ -583,22 +583,10 @@ function drawBuilding(
   const useGroundImage = !!groundLot && groundLot.image.complete && groundLot.image.naturalWidth > 0;
 
   if (useGroundImage) {
+    // No LOCKED overlay here — the ground photo is the whole lot, not a
+    // labeled card, and the purchase gate is already enforced on entry
+    // (main.ts) regardless of any on-lot text.
     drawGroundImageLot(ctx, groundLot, x, w, top, canvasHeight);
-    if (building.locked) {
-      // The sidewalk's true outer edge sits SIDEWALK_SOUTH_DEPTH -
-      // BUILDING_MARGIN below `top` (drawn on top of the lot afterward,
-      // see render()'s layer order) — text placed any closer than that
-      // gets cut off by the sidewalk, showing only its bottom sliver.
-      const sidewalkEdgeOffset = SIDEWALK_SOUTH_DEPTH - BUILDING_MARGIN;
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur = 4;
-      ctx.fillText("LOCKED", centerX, top + sidewalkEdgeOffset + 20);
-      ctx.shadowBlur = 0;
-    }
     return;
   }
 
