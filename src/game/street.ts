@@ -474,37 +474,37 @@ function drawBuilding(
     building.name === "Trailer" && trailerLotImage.complete && trailerLotImage.naturalWidth > 0;
 
   if (useTrailerImage) {
-    // Uniform-scale-to-cover the box (matches the road-texture pattern: one
-    // scale factor, no independent width/height stretch), top-aligned so
-    // the lot's road-facing entrance path lands at the box's near-road
-    // edge; any excess is clipped rather than squashing the image.
-    const coverScale = Math.max(w / TRAILER_LOT_WIDTH, depth / TRAILER_LOT_HEIGHT);
+    // Ground texture, not a UI card: no border, no label. The drawn rect
+    // is stretched across the flavor gap toward the road so the lot's
+    // gravel meets the sidewalk with no bare strip showing — this only
+    // moves pixels, the ENTER trigger (world.ts) still keys off the
+    // original edgeY/w passed into this call, so the hitbox is unchanged.
+    const roadTop = dir === "up" ? top : top - BUILDING_MARGIN;
+    const imgDepth = depth + BUILDING_MARGIN;
+    const coverScale = Math.max(w / TRAILER_LOT_WIDTH, imgDepth / TRAILER_LOT_HEIGHT);
     const drawW = TRAILER_LOT_WIDTH * coverScale;
     const drawH = TRAILER_LOT_HEIGHT * coverScale;
     const drawX = x + (w - drawW) / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x, top, w, depth);
+    ctx.rect(x, roadTop, w, imgDepth);
     ctx.clip();
-    ctx.drawImage(trailerLotImage, drawX, top, drawW, drawH);
+    ctx.drawImage(trailerLotImage, drawX, roadTop, drawW, drawH);
     ctx.restore();
-  } else {
-    ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
-    ctx.fillRect(x, top, w, depth);
+    return;
   }
+
+  ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
+  ctx.fillRect(x, top, w, depth);
   ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 2;
   ctx.strokeRect(x, top, w, depth);
 
-  if (useTrailerImage) {
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.fillRect(x, top, w, 22);
-  }
   ctx.fillStyle = "#fff";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  wrapText(ctx, building.name, centerX, useTrailerImage ? top + 11 : top + depth / 2, w - 12);
+  wrapText(ctx, building.name, centerX, top + depth / 2, w - 12);
 
   if (building.locked) {
     ctx.font = "12px sans-serif";
