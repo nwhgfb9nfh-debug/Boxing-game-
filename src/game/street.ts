@@ -31,6 +31,13 @@ import {
   TRAILER_LOT_GROUND_STRIP_TOP,
   TRAILER_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/trailerLot";
+import {
+  APARTMENT_LOT_DATA_URI,
+  APARTMENT_LOT_WIDTH,
+  APARTMENT_LOT_HEIGHT,
+  APARTMENT_LOT_GROUND_STRIP_TOP,
+  APARTMENT_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/apartmentLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -39,9 +46,43 @@ const roadImage = new Image();
 roadImage.src = ROAD_TEXTURE_DATA_URI;
 
 // Same async-load pattern as roadImage — drawBuilding() falls back to the
-// old flat-color fill for the Trailer lot until this decodes.
+// old flat-color fill for these ground-image lots until each decodes.
 const trailerLotImage = new Image();
 trailerLotImage.src = TRAILER_LOT_DATA_URI;
+const apartmentLotImage = new Image();
+apartmentLotImage.src = APARTMENT_LOT_DATA_URI;
+
+// Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
+// not a single building icon, so it's drawn as ground rather than a
+// labeled/bordered box — see drawGroundImageLot(). Keyed by building name.
+interface GroundImageLot {
+  image: HTMLImageElement;
+  imageWidth: number;
+  imageHeight: number;
+  groundStripTop: number;
+  groundStripHeight: number;
+  touchesRight?: boolean; // extends its drawn rect across the lot gap on its east side
+  touchesLeft?: boolean; // extends its drawn rect across the lot gap on its west side
+}
+
+const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
+  Trailer: {
+    image: trailerLotImage,
+    imageWidth: TRAILER_LOT_WIDTH,
+    imageHeight: TRAILER_LOT_HEIGHT,
+    groundStripTop: TRAILER_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: TRAILER_LOT_GROUND_STRIP_HEIGHT,
+    touchesRight: true, // touches the Apartment lot next door, no gap
+  },
+  Apartment: {
+    image: apartmentLotImage,
+    imageWidth: APARTMENT_LOT_WIDTH,
+    imageHeight: APARTMENT_LOT_HEIGHT,
+    groundStripTop: APARTMENT_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: APARTMENT_LOT_GROUND_STRIP_HEIGHT,
+    touchesLeft: true, // touches the Trailer lot next door, no gap
+  },
+};
 
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
@@ -490,54 +531,21 @@ function drawBuilding(
   const top = dir === "up" ? edgeY - depth : edgeY;
   const x = centerX - w / 2;
 
-  const useTrailerImage =
-    building.name === "Trailer" && trailerLotImage.complete && trailerLotImage.naturalWidth > 0;
+  const groundLot = GROUND_IMAGE_LOTS[building.name];
+  const useGroundImage = !!groundLot && groundLot.image.complete && groundLot.image.naturalWidth > 0;
 
-  if (useTrailerImage) {
-    // Ground texture, not a UI card: no border, no label. The drawn rect
-    // is stretched across the flavor gap toward the road, and all the way
-    // down to the bottom of the play area, so the lot IS the ground for
-    // that whole strip (no sidewalk-gray or background showing under it)
-    // — this only moves pixels, the ENTER trigger (world.ts) still keys
-    // off the original edgeY/w passed into this call, so the hitbox is
-    // unchanged. The near-road edge is sized to SIDEWALK_SOUTH_DEPTH (the
-    // real sidewalk band baked into the road texture), not a guessed
-    // margin, so it lands exactly on the sidewalk's outer edge — and the
-    // sidewalk/road layer, drawn after every lot (see render()'s layer
-    // order), paints over the part of this that lands underneath it,
-    // so the lot is drawn under the sidewalk, never on top of it.
-    //
-    // Scale by width only — the same scale the lot has always used, so
-    // the trailers are never shrunk further — and draw the full,
-    // uncropped photo at that size. The box (roadTop..canvasHeight) is
-    // taller than the photo at that scale, so the leftover depth below it
-    // is filled by repeating a trailer-free gravel strip sampled from the
-    // photo itself (TRAILER_LOT_GROUND_STRIP_*), at the same scale, so the
-    // yard visibly continues instead of a flat-color or blank gap.
-    const roadTop = top - SIDEWALK_SOUTH_DEPTH;
-    const imgDepth = canvasHeight - roadTop;
-    const scale = w / TRAILER_LOT_WIDTH;
-    const drawH = TRAILER_LOT_HEIGHT * scale;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, roadTop, w, imgDepth);
-    ctx.clip();
-    ctx.drawImage(trailerLotImage, x, roadTop, w, drawH);
-    const stripDrawH = TRAILER_LOT_GROUND_STRIP_HEIGHT * scale;
-    for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
-      ctx.drawImage(
-        trailerLotImage,
-        0,
-        TRAILER_LOT_GROUND_STRIP_TOP,
-        TRAILER_LOT_WIDTH,
-        TRAILER_LOT_GROUND_STRIP_HEIGHT,
-        x,
-        cursorY,
-        w,
-        stripDrawH,
-      );
+  if (useGroundImage) {
+    drawGroundImageLot(ctx, groundLot, x, w, top, canvasHeight);
+    if (building.locked) {
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,0.85)";
+      ctx.shadowBlur = 4;
+      ctx.fillText("LOCKED", centerX, top + 22);
+      ctx.shadowBlur = 0;
     }
-    ctx.restore();
     return;
   }
 
@@ -558,6 +566,73 @@ function drawBuilding(
     ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.fillText("LOCKED", centerX, top + depth / 2 + 34);
   }
+}
+
+/**
+ * Ground-image lots (Trailer, Apartment, ...): the photo is a whole small
+ * lot, not one building icon, so it's drawn as ground — no border, no name
+ * label. South row only (every entry in GROUND_IMAGE_LOTS is dir="down" —
+ * SIDEWALK_SOUTH_DEPTH and "extend down to canvasHeight" both assume that).
+ * None of this touches the ENTER trigger, which keys off the original
+ * edgeY/w the caller (drawBuilding) received — this only moves pixels
+ * drawn on top of it.
+ */
+function drawGroundImageLot(
+  ctx: CanvasRenderingContext2D,
+  lot: GroundImageLot,
+  x: number,
+  w: number,
+  top: number,
+  canvasHeight: number,
+) {
+  // Extend the drawn rect across half the lot gap on whichever side this
+  // lot touches its ground-image neighbor, so there's no gray strip
+  // between them (their outer, non-touching edges are untouched, so the
+  // gap toward every other neighbor is unchanged).
+  let drawX = x;
+  let drawWidth = w;
+  if (lot.touchesLeft) {
+    drawX -= LOT_GAP / 2;
+    drawWidth += LOT_GAP / 2;
+  }
+  if (lot.touchesRight) {
+    drawWidth += LOT_GAP / 2;
+  }
+
+  const roadTop = top - SIDEWALK_SOUTH_DEPTH;
+  const imgDepth = canvasHeight - roadTop;
+
+  // Scale by width only — never shrink the buildings in the photo — and
+  // draw the whole photo at that size. If the box is shorter than the
+  // photo at that scale, the bottom is clipped (never the sides, since the
+  // photo is scaled to exactly match the lot's width) rather than shrinking
+  // anything; if the box is taller, the leftover depth below the photo is
+  // filled by repeating a building-free ground strip sampled from the
+  // photo itself, instead of a flat-color or blank gap.
+  const scale = drawWidth / lot.imageWidth;
+  const drawH = lot.imageHeight * scale;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(drawX, roadTop, drawWidth, imgDepth);
+  ctx.clip();
+  ctx.drawImage(lot.image, drawX, roadTop, drawWidth, drawH);
+
+  const stripDrawH = lot.groundStripHeight * scale;
+  for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
+    ctx.drawImage(
+      lot.image,
+      0,
+      lot.groundStripTop,
+      lot.imageWidth,
+      lot.groundStripHeight,
+      drawX,
+      cursorY,
+      drawWidth,
+      stripDrawH,
+    );
+  }
+  ctx.restore();
 }
 
 function drawFillerBuilding(
