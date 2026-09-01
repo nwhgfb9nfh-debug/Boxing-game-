@@ -24,7 +24,13 @@ import {
   ROAD_TEXTURE_ROAD_TOP,
   ROAD_TEXTURE_ROAD_BOTTOM,
 } from "../assets/roadTexture";
-import { TRAILER_LOT_DATA_URI, TRAILER_LOT_WIDTH, TRAILER_LOT_HEIGHT } from "../assets/trailerLot";
+import {
+  TRAILER_LOT_DATA_URI,
+  TRAILER_LOT_WIDTH,
+  TRAILER_LOT_HEIGHT,
+  TRAILER_LOT_GROUND_STRIP_TOP,
+  TRAILER_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/trailerLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -36,12 +42,6 @@ roadImage.src = ROAD_TEXTURE_DATA_URI;
 // old flat-color fill for the Trailer lot until this decodes.
 const trailerLotImage = new Image();
 trailerLotImage.src = TRAILER_LOT_DATA_URI;
-
-// Sampled from the bottom strip of the trailer-lot photo — the letterbox
-// fill below the (contain-scaled, never-cropped) image, so the extra
-// ground down to the bottom of the play area reads as a continuation of
-// the photo's own gravel/tree tone instead of a hard-edged seam.
-const TRAILER_LOT_GROUND_COLOR = "#24291d";
 
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
@@ -507,25 +507,36 @@ function drawBuilding(
     // order), paints over the part of this that lands underneath it,
     // so the lot is drawn under the sidewalk, never on top of it.
     //
-    // The box (roadTop..canvasHeight) is much taller than the photo's own
-    // aspect ratio, so this fits the WHOLE image inside it by the tighter
-    // axis (contain, not cover) — no trailer is ever cropped — and
-    // letterboxes any leftover depth below the image with a flat fill
-    // sampled from the photo's own ground tone, so the extra ground reads
-    // as a continuation rather than a hard seam.
+    // Scale by width only — the same scale the lot has always used, so
+    // the trailers are never shrunk further — and draw the full,
+    // uncropped photo at that size. The box (roadTop..canvasHeight) is
+    // taller than the photo at that scale, so the leftover depth below it
+    // is filled by repeating a trailer-free gravel strip sampled from the
+    // photo itself (TRAILER_LOT_GROUND_STRIP_*), at the same scale, so the
+    // yard visibly continues instead of a flat-color or blank gap.
     const roadTop = top - SIDEWALK_SOUTH_DEPTH;
     const imgDepth = canvasHeight - roadTop;
-    const containScale = Math.min(w / TRAILER_LOT_WIDTH, imgDepth / TRAILER_LOT_HEIGHT);
-    const drawW = TRAILER_LOT_WIDTH * containScale;
-    const drawH = TRAILER_LOT_HEIGHT * containScale;
-    const drawX = x + (w - drawW) / 2;
+    const scale = w / TRAILER_LOT_WIDTH;
+    const drawH = TRAILER_LOT_HEIGHT * scale;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, roadTop, w, imgDepth);
     ctx.clip();
-    ctx.fillStyle = TRAILER_LOT_GROUND_COLOR;
-    ctx.fillRect(x, roadTop, w, imgDepth);
-    ctx.drawImage(trailerLotImage, drawX, roadTop, drawW, drawH);
+    ctx.drawImage(trailerLotImage, x, roadTop, w, drawH);
+    const stripDrawH = TRAILER_LOT_GROUND_STRIP_HEIGHT * scale;
+    for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
+      ctx.drawImage(
+        trailerLotImage,
+        0,
+        TRAILER_LOT_GROUND_STRIP_TOP,
+        TRAILER_LOT_WIDTH,
+        TRAILER_LOT_GROUND_STRIP_HEIGHT,
+        x,
+        cursorY,
+        w,
+        stripDrawH,
+      );
+    }
     ctx.restore();
     return;
   }
