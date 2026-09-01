@@ -38,6 +38,13 @@ import {
   APARTMENT_LOT_GROUND_STRIP_TOP,
   APARTMENT_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/apartmentLot";
+import {
+  PENTHOUSE_LOT_DATA_URI,
+  PENTHOUSE_LOT_WIDTH,
+  PENTHOUSE_LOT_HEIGHT,
+  PENTHOUSE_LOT_GROUND_STRIP_TOP,
+  PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/penthouseLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -51,6 +58,8 @@ const trailerLotImage = new Image();
 trailerLotImage.src = TRAILER_LOT_DATA_URI;
 const apartmentLotImage = new Image();
 apartmentLotImage.src = APARTMENT_LOT_DATA_URI;
+const penthouseLotImage = new Image();
+penthouseLotImage.src = PENTHOUSE_LOT_DATA_URI;
 
 // Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
 // not a single building icon, so it's drawn as ground rather than a
@@ -81,6 +90,15 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripTop: APARTMENT_LOT_GROUND_STRIP_TOP,
     groundStripHeight: APARTMENT_LOT_GROUND_STRIP_HEIGHT,
     touchesLeft: true, // touches the Trailer lot next door, no gap
+    touchesRight: true, // touches the Penthouse Apartment lot next door, no gap
+  },
+  "Penthouse Apartment": {
+    image: penthouseLotImage,
+    imageWidth: PENTHOUSE_LOT_WIDTH,
+    imageHeight: PENTHOUSE_LOT_HEIGHT,
+    groundStripTop: PENTHOUSE_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
+    touchesLeft: true, // touches the Apartment lot next door, no gap
   },
 };
 
