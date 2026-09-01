@@ -24,12 +24,18 @@ import {
   ROAD_TEXTURE_ROAD_TOP,
   ROAD_TEXTURE_ROAD_BOTTOM,
 } from "../assets/roadTexture";
+import { TRAILER_LOT_DATA_URI, TRAILER_LOT_WIDTH, TRAILER_LOT_HEIGHT } from "../assets/trailerLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
 // below) until it's ready, rather than risk a blank frame.
 const roadImage = new Image();
 roadImage.src = ROAD_TEXTURE_DATA_URI;
+
+// Same async-load pattern as roadImage — drawBuilding() falls back to the
+// old flat-color fill for the Trailer lot until this decodes.
+const trailerLotImage = new Image();
+trailerLotImage.src = TRAILER_LOT_DATA_URI;
 
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
@@ -464,17 +470,41 @@ function drawBuilding(
   const top = dir === "up" ? edgeY - depth : edgeY;
   const x = centerX - w / 2;
 
-  ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
-  ctx.fillRect(x, top, w, depth);
+  const useTrailerImage =
+    building.name === "Trailer" && trailerLotImage.complete && trailerLotImage.naturalWidth > 0;
+
+  if (useTrailerImage) {
+    // Uniform-scale-to-cover the box (matches the road-texture pattern: one
+    // scale factor, no independent width/height stretch), top-aligned so
+    // the lot's road-facing entrance path lands at the box's near-road
+    // edge; any excess is clipped rather than squashing the image.
+    const coverScale = Math.max(w / TRAILER_LOT_WIDTH, depth / TRAILER_LOT_HEIGHT);
+    const drawW = TRAILER_LOT_WIDTH * coverScale;
+    const drawH = TRAILER_LOT_HEIGHT * coverScale;
+    const drawX = x + (w - drawW) / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, top, w, depth);
+    ctx.clip();
+    ctx.drawImage(trailerLotImage, drawX, top, drawW, drawH);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
+    ctx.fillRect(x, top, w, depth);
+  }
   ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 2;
   ctx.strokeRect(x, top, w, depth);
 
+  if (useTrailerImage) {
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(x, top, w, 22);
+  }
   ctx.fillStyle = "#fff";
   ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  wrapText(ctx, building.name, centerX, top + depth / 2, w - 12);
+  wrapText(ctx, building.name, centerX, useTrailerImage ? top + 11 : top + depth / 2, w - 12);
 
   if (building.locked) {
     ctx.font = "12px sans-serif";
