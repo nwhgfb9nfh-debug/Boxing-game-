@@ -17,6 +17,19 @@ import {
   type LotInstance,
 } from "./world";
 import type { DriveControls } from "../ui/controls";
+import {
+  ROAD_TEXTURE_DATA_URI,
+  ROAD_TEXTURE_WIDTH,
+  ROAD_TEXTURE_HEIGHT,
+  ROAD_TEXTURE_ROAD_TOP,
+  ROAD_TEXTURE_ROAD_BOTTOM,
+} from "../assets/roadTexture";
+
+// Loaded once at module scope — decoding is async, so render() falls back
+// to the old flat-color road/sidewalk (see the `roadImage.complete` check
+// below) until it's ready, rather than risk a blank frame.
+const roadImage = new Image();
+roadImage.src = ROAD_TEXTURE_DATA_URI;
 
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
@@ -255,24 +268,10 @@ export class StreetScene {
     const topEdgeY = roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN; // flavor row (north)
     const bottomEdgeY = roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN; // required row (south)
 
-    // Sidewalks / ground either side of the road
-    ctx.fillStyle = "#2a2f3a";
-    ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
-    ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, height - (roadY + ROAD_HALF_HEIGHT));
-
-    // Road
-    ctx.fillStyle = "#3a3f4b";
-    ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT, width, ROAD_HALF_HEIGHT * 2);
-
-    // Lane dashes (centerline)
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = 4;
-    ctx.setLineDash([28, 22]);
-    ctx.beginPath();
-    ctx.moveTo(0, roadY);
-    ctx.lineTo(width, roadY);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // Road + flanking sidewalk strip — real texture (see roadTexture.ts),
+    // tiled left-to-right; see drawRoadSurface for the fallback while it
+    // loads and the scale-to-ROAD_HALF_HEIGHT math.
+    drawRoadSurface(ctx, width, height, roadY);
 
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
@@ -358,6 +357,61 @@ function hash01(n: number): number {
 }
 
 const FILLER_COLORS = ["#4a4f5c", "#3f4a52", "#4f4640", "#454050", "#3d4a3f"];
+
+// Blended from the road texture's own sidewalk tone (see roadTexture.ts)
+// rather than the old flat sidewalk color, so there's no visible seam
+// where the tiled image's edge meets the plain background beyond it
+// (mostly hidden behind buildings anyway, but shows through on tall
+// viewports where BUILDING_DEPTH doesn't reach all the way to the edge).
+const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
+
+/**
+ * Draws the road + flanking sidewalk strip using the real texture (see
+ * assets/roadTexture.ts), tiled left-to-right in screen space — same
+ * screen-locked approach the old dashed centerline already used, so the
+ * texture doesn't need to track world-scroll phase separately. Falls back
+ * to the original flat-color road/dashes if the image hasn't finished
+ * decoding yet (module load is async).
+ */
+function drawRoadSurface(ctx: CanvasRenderingContext2D, width: number, height: number, roadY: number) {
+  // Base fill first — covers the full sidewalk depth (unbounded, varies
+  // with viewport height) so there's never a gap, regardless of whether
+  // the tiled texture below ends up covering it.
+  ctx.fillStyle = SIDEWALK_FALLBACK_COLOR;
+  ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
+  ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, height - (roadY + ROAD_HALF_HEIGHT));
+
+  if (!roadImage.complete || roadImage.naturalWidth === 0) {
+    // Not decoded yet — keep the original flat road + dashed centerline
+    // instead of a gap while roadImage finishes loading.
+    ctx.fillStyle = "#3a3f4b";
+    ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT, width, ROAD_HALF_HEIGHT * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 4;
+    ctx.setLineDash([28, 22]);
+    ctx.beginPath();
+    ctx.moveTo(0, roadY);
+    ctx.lineTo(width, roadY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  // Scale so the texture's own asphalt band (ROAD_TEXTURE_ROAD_TOP..
+  // ROAD_TEXTURE_ROAD_BOTTOM) exactly matches the game's road band
+  // (ROAD_HALF_HEIGHT*2) — the whole image scales uniformly by this same
+  // factor, so the sidewalk portions stay in proportion instead of
+  // stretching independently.
+  const roadBandSourceHeight = ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP;
+  const scale = (ROAD_HALF_HEIGHT * 2) / roadBandSourceHeight;
+  const tileW = ROAD_TEXTURE_WIDTH * scale;
+  const tileH = ROAD_TEXTURE_HEIGHT * scale;
+  const destTop = roadY - ROAD_HALF_HEIGHT - ROAD_TEXTURE_ROAD_TOP * scale;
+
+  for (let x = -tileW; x < width + tileW; x += tileW) {
+    ctx.drawImage(roadImage, x, destTop, tileW, tileH);
+  }
+}
 
 function drawLot(
   ctx: CanvasRenderingContext2D,
