@@ -292,6 +292,10 @@ const phoneApi: PhoneApi = {
     return `Purchased ${name}!`;
   },
   post: (text) => {
+    const phaseLock = requirePrivateLifePhase();
+    if (phaseLock) {
+      return { blocked: true, blockedReason: phaseLock, replies: [] };
+    }
     if (!energy.spend(10)) {
       return { blocked: true, blockedReason: "Not enough energy to post.", replies: [] };
     }
@@ -311,6 +315,8 @@ const phoneApi: PhoneApi = {
   postPhoto: (id) => {
     const idx = playerState.availablePhotos.findIndex((p) => p.id === id);
     if (idx === -1) return "Photo not found.";
+    const phaseLock = requirePrivateLifePhase();
+    if (phaseLock) return phaseLock;
     if (!energy.spend(10)) return "Not enough energy to post.";
     const [photo] = playerState.availablePhotos.splice(idx, 1);
     playerState.imagestarPosts = [photo, ...playerState.imagestarPosts];
@@ -488,6 +494,8 @@ const phoneApi: PhoneApi = {
     const loc = getMeetupLocation(locationId as MeetupLocationId);
     const hasContent = meetupType === "date" ? loc.dateConnect.length > 0 : loc.regularGeneral.length > 0;
     if (!hasContent) return { ok: false, message: "Not yet designed." };
+    const phaseLock = requirePrivateLifePhase();
+    if (phaseLock) return { ok: false, message: phaseLock };
     if (!energy.spend(MEETUP_ENERGY_COST)) {
       return { ok: false, message: `Not enough energy — need ${MEETUP_ENERGY_COST}.` };
     }
@@ -5235,6 +5243,7 @@ function buildDialogueTalkResponse(npc: NpcDef): DialogueData {
 function buildInviteToFightOption(npc: NpcDef): DialogueOption {
   const tier = getRelationshipTier(getRelationshipScore(npc.id));
   const tooEarly = !!npc.inviteToFightMinTier && !tierAtLeast(tier, npc.inviteToFightMinTier);
+  const phaseLock = requirePrivateLifePhase();
   return {
     id: "invite-fight",
     label: "Invite to Next Fight",
@@ -5244,14 +5253,17 @@ function buildInviteToFightOption(npc: NpcDef): DialogueOption {
         ? "INVITED"
         : !playerState.fightScheduled
           ? "NO FIGHT"
-          : `${INVITE_TO_FIGHT_COST} EN`,
+          : phaseLock
+            ? "PRIVATE LIFE"
+            : `${INVITE_TO_FIGHT_COST} EN`,
     disabled:
       tooEarly ||
       !!playerState.fightInvites[npc.id] ||
       !playerState.fightScheduled ||
+      !!phaseLock ||
       !energy.canAfford(INVITE_TO_FIGHT_COST),
     onSelect: () => {
-      if (tooEarly || playerState.fightInvites[npc.id] || !playerState.fightScheduled) return;
+      if (tooEarly || playerState.fightInvites[npc.id] || !playerState.fightScheduled || phaseLock) return;
       if (!energy.spend(INVITE_TO_FIGHT_COST)) return;
       playerState.fightInvites[npc.id] = true;
       bumpRelationship(npc.id, INVITE_TO_FIGHT_DELTA);
@@ -5281,10 +5293,10 @@ function buildMarriedHomeActions(npc: NpcDef): DialogueData {
       {
         id: "gift",
         label: "Gift",
-        costLabel: hasGift ? undefined : "NO GIFTS",
-        disabled: !hasGift,
+        costLabel: !hasGift ? "NO GIFTS" : requirePrivateLifePhase() ? "PRIVATE LIFE" : undefined,
+        disabled: !hasGift || !!requirePrivateLifePhase(),
         onSelect: () => {
-          if (!hasGift) return;
+          if (!hasGift || requirePrivateLifePhase()) return;
           dialogueView = "actions-gift-picker";
         },
       },
@@ -5304,9 +5316,10 @@ function buildMarriedHomeActions(npc: NpcDef): DialogueData {
       {
         id: "have-drink",
         label: "Have a Drink Together",
-        costLabel: `${HAVE_DRINK_COST} EN`,
-        disabled: !energy.canAfford(HAVE_DRINK_COST),
+        costLabel: requirePrivateLifePhase() ? "PRIVATE LIFE" : `${HAVE_DRINK_COST} EN`,
+        disabled: !!requirePrivateLifePhase() || !energy.canAfford(HAVE_DRINK_COST),
         onSelect: () => {
+          if (requirePrivateLifePhase()) return;
           if (!energy.spend(HAVE_DRINK_COST)) return;
           bumpRelationship(npc.id, HAVE_DRINK_DELTA);
           lastActionResult = `You two unwind together after a long day. (${formatTopicResult(HAVE_DRINK_DELTA)})`;
@@ -5340,7 +5353,8 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
   const tier = getRelationshipTier(score);
   const rules = npc.actions!;
   const hasNumber = !!playerState.exchangedNumbers[npc.id];
-  const affordExchange = energy.canAfford(EXCHANGE_NUMBER_COST);
+  const phaseLock = requirePrivateLifePhase();
+  const affordExchange = !phaseLock && energy.canAfford(EXCHANGE_NUMBER_COST);
   const hasGift = totalGiftsOwned() > 0;
   return {
     portrait: npc.portrait,
@@ -5353,10 +5367,10 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
             {
               id: "exchange-number",
               label: "Exchange Number",
-              costLabel: hasNumber ? "HAVE IT" : `${EXCHANGE_NUMBER_COST} EN`,
+              costLabel: hasNumber ? "HAVE IT" : phaseLock ? "PRIVATE LIFE" : `${EXCHANGE_NUMBER_COST} EN`,
               disabled: hasNumber || !affordExchange,
               onSelect: () => {
-                if (hasNumber || !energy.spend(EXCHANGE_NUMBER_COST)) return;
+                if (hasNumber || phaseLock || !energy.spend(EXCHANGE_NUMBER_COST)) return;
                 const result = rules.exchangeNumber(tier, score);
                 bumpRelationship(npc.id, result.delta);
                 if (result.success) playerState.exchangedNumbers[npc.id] = true;
@@ -5368,10 +5382,10 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
       {
         id: "give-gift",
         label: "Give a Gift",
-        costLabel: hasGift ? undefined : "NO GIFTS",
-        disabled: !hasGift,
+        costLabel: !hasGift ? "NO GIFTS" : phaseLock ? "PRIVATE LIFE" : undefined,
+        disabled: !hasGift || !!phaseLock,
         onSelect: () => {
-          if (!hasGift) return;
+          if (!hasGift || phaseLock) return;
           dialogueView = "actions-gift-picker";
         },
       },
@@ -5385,13 +5399,21 @@ function buildDialogueActions(npc: NpcDef): DialogueData {
                 ? "OVER"
                 : playerState.dating[npc.id]
                   ? "DATING"
-                  : `${ASK_HER_OUT_COST} EN`,
+                  : phaseLock
+                    ? "PRIVATE LIFE"
+                    : `${ASK_HER_OUT_COST} EN`,
               disabled:
                 !!playerState.romanceEnded[npc.id] ||
                 !!playerState.dating[npc.id] ||
+                !!phaseLock ||
                 !energy.canAfford(ASK_HER_OUT_COST),
               onSelect: () => {
-                if (playerState.romanceEnded[npc.id] || playerState.dating[npc.id] || !energy.canAfford(ASK_HER_OUT_COST))
+                if (
+                  playerState.romanceEnded[npc.id] ||
+                  playerState.dating[npc.id] ||
+                  phaseLock ||
+                  !energy.canAfford(ASK_HER_OUT_COST)
+                )
                   return;
                 dialogueView = "actions-askherout-confirm";
               },
@@ -5444,13 +5466,14 @@ function buildDialogueActionsGiftPicker(npc: NpcDef): DialogueData {
         id: g.id,
         icon: g.icon,
         label: `${g.name} (${getGiftCount(g.id)})`,
-        costLabel: g.isRing ? undefined : `${GIVE_GIFT_COST} EN`,
-        disabled: !g.isRing && !energy.canAfford(GIVE_GIFT_COST),
+        costLabel: g.isRing ? undefined : requirePrivateLifePhase() ? "PRIVATE LIFE" : `${GIVE_GIFT_COST} EN`,
+        disabled: !g.isRing && (!!requirePrivateLifePhase() || !energy.canAfford(GIVE_GIFT_COST)),
         onSelect: () => {
           if (g.isRing) {
             dialogueView = "actions-propose-confirm";
             return;
           }
+          if (requirePrivateLifePhase()) return;
           if (!energy.spend(GIVE_GIFT_COST)) return;
           playerState.giftInventory[g.id] = getGiftCount(g.id) - 1;
           const result = npc.actions!.giftReaction(tier, g.category, g.id);
@@ -5483,9 +5506,10 @@ function buildDialogueActionsAskHerOutConfirm(npc: NpcDef): DialogueData {
       {
         id: "yes",
         label: "Yes",
-        costLabel: `${ASK_HER_OUT_COST} EN`,
-        disabled: !energy.canAfford(ASK_HER_OUT_COST),
+        costLabel: requirePrivateLifePhase() ? "PRIVATE LIFE" : `${ASK_HER_OUT_COST} EN`,
+        disabled: !!requirePrivateLifePhase() || !energy.canAfford(ASK_HER_OUT_COST),
         onSelect: () => {
+          if (requirePrivateLifePhase()) return;
           if (!energy.spend(ASK_HER_OUT_COST)) return;
           const result = npc.actions!.askHerOut(getRomanceScore(npc.id));
           if (result.success) playerState.dating[npc.id] = true;
@@ -5515,9 +5539,10 @@ function buildDialogueActionsProposeConfirm(npc: NpcDef): DialogueData {
       {
         id: "yes",
         label: "Yes",
-        costLabel: `${PROPOSE_COST} EN`,
-        disabled: !energy.canAfford(PROPOSE_COST),
+        costLabel: requirePrivateLifePhase() ? "PRIVATE LIFE" : `${PROPOSE_COST} EN`,
+        disabled: !!requirePrivateLifePhase() || !energy.canAfford(PROPOSE_COST),
         onSelect: () => {
+          if (requirePrivateLifePhase()) return;
           if (!energy.spend(PROPOSE_COST)) return;
           lastActionResult = resolveProposeAttempt(npc);
           if (playerState.married[npc.id]) {
