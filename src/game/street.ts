@@ -37,6 +37,12 @@ roadImage.src = ROAD_TEXTURE_DATA_URI;
 const trailerLotImage = new Image();
 trailerLotImage.src = TRAILER_LOT_DATA_URI;
 
+// Sampled from the bottom strip of the trailer-lot photo — the letterbox
+// fill below the (contain-scaled, never-cropped) image, so the extra
+// ground down to the bottom of the play area reads as a continuation of
+// the photo's own gravel/tree tone instead of a hard-edged seam.
+const TRAILER_LOT_GROUND_COLOR = "#24291d";
+
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
 const DECEL = 1400; // px/sec^2 while released
@@ -500,16 +506,25 @@ function drawBuilding(
     // sidewalk/road layer, drawn after every lot (see render()'s layer
     // order), paints over the part of this that lands underneath it,
     // so the lot is drawn under the sidewalk, never on top of it.
+    //
+    // The box (roadTop..canvasHeight) is much taller than the photo's own
+    // aspect ratio, so this fits the WHOLE image inside it by the tighter
+    // axis (contain, not cover) — no trailer is ever cropped — and
+    // letterboxes any leftover depth below the image with a flat fill
+    // sampled from the photo's own ground tone, so the extra ground reads
+    // as a continuation rather than a hard seam.
     const roadTop = top - SIDEWALK_SOUTH_DEPTH;
     const imgDepth = canvasHeight - roadTop;
-    const coverScale = Math.max(w / TRAILER_LOT_WIDTH, imgDepth / TRAILER_LOT_HEIGHT);
-    const drawW = TRAILER_LOT_WIDTH * coverScale;
-    const drawH = TRAILER_LOT_HEIGHT * coverScale;
+    const containScale = Math.min(w / TRAILER_LOT_WIDTH, imgDepth / TRAILER_LOT_HEIGHT);
+    const drawW = TRAILER_LOT_WIDTH * containScale;
+    const drawH = TRAILER_LOT_HEIGHT * containScale;
     const drawX = x + (w - drawW) / 2;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, roadTop, w, imgDepth);
     ctx.clip();
+    ctx.fillStyle = TRAILER_LOT_GROUND_COLOR;
+    ctx.fillRect(x, roadTop, w, imgDepth);
     ctx.drawImage(trailerLotImage, drawX, roadTop, drawW, drawH);
     ctx.restore();
     return;
