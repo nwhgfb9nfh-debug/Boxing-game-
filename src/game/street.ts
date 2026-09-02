@@ -700,6 +700,7 @@ interface SidewalkCrossing {
   srcY: number;
   srcW: number;
   srcH: number;
+  extraDepth?: number; // extends past the sidewalk's outer edge, into the lot, toward the building
 }
 
 // Every lot still stops at the sidewalk like normal (drawn after every lot,
@@ -713,16 +714,17 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // Trailer: its own central gravel lane, sampled from directly below
   // where this crossing sits, continues right up through the sidewalk.
   { worldX: 150, width: 30, image: trailerLotImage, srcX: 215, srcY: 40, srcW: 75, srcH: 80 },
-  // Apartment: same idea, sampled from its own gravel path between the
-  // two front buildings.
-  { worldX: 450, width: 30, image: apartmentLotImage, srcX: 200, srcY: 90, srcW: 100, srcH: 70 },
+  // Apartment: paved asphalt, not dirt (matches the road's own look) —
+  // reuses the office-park photo's road-colored patch, same as Penthouse.
+  { worldX: 450, width: 30, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
   // Penthouse: paved, not dirt — its own photo's real driveway ended up at
   // the far end of the building once the image was kept unrotated (pool
   // deck at top instead — see the "undo rotation" note in penthouseLot.ts
   // history), so there's nothing of its own to sample here; reuses the
   // office-park photo's road-colored patch instead, matching "a road
-  // coming off the big road."
-  { worldX: 750, width: 45, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
+  // coming off the big road." Wider than the others and extended past the
+  // sidewalk into the lot, up to the building's own roofline.
+  { worldX: 750, width: 65, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90, extraDepth: 22 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
@@ -737,7 +739,6 @@ function drawSidewalkCrossings(
   toScreenX: (wx: number) => number,
 ) {
   const yStart = roadY + ROAD_HALF_HEIGHT; // the road's own outer edge
-  const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH; // the sidewalk's outer edge, where the lots already pick up
 
   for (const crossing of SIDEWALK_CROSSINGS) {
     if (!crossing.image.complete || crossing.image.naturalWidth === 0) continue;
@@ -746,6 +747,9 @@ function drawSidewalkCrossings(
     if (screenX < -crossing.width || screenX > width + crossing.width) continue;
 
     const drawX = screenX - crossing.width / 2;
+    // The sidewalk's outer edge, where the lots already pick up — plus
+    // extraDepth, for a crossing that continues past it into the lot.
+    const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH + (crossing.extraDepth ?? 0);
     const tileH = crossing.srcH * (crossing.width / crossing.srcW);
 
     ctx.save();
