@@ -81,6 +81,11 @@ interface GroundImageLot {
   groundStripHeight: number;
   touchesRight?: boolean; // extends its drawn rect across the lot gap on its east side
   touchesLeft?: boolean; // extends its drawn rect across the lot gap on its west side
+  // Some photos (e.g. a busy streetscape) have no plain, object-free strip
+  // to repeat-tile — repeating one with benches/lampposts in it visibly
+  // duplicates them. When set, leftover depth below the photo is filled
+  // with this flat color instead of tiling groundStripTop/Height.
+  groundFallbackColor?: string;
 }
 
 const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
@@ -133,6 +138,7 @@ const FILLER_GROUP_IMAGES: Record<string, FillerGroupImage> = {
     imageHeight: OFFICE_PARK_LOT_HEIGHT,
     groundStripTop: OFFICE_PARK_LOT_GROUND_STRIP_TOP,
     groundStripHeight: OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
+    groundFallbackColor: "#978573", // no plain strip to tile in this scene — see officeParkLot.ts
     lotCount: 2,
     touchesLeft: true, // touches Penthouse Apartment (previous frame), no gap
   },
@@ -482,6 +488,11 @@ export class StreetScene {
     // above so it always sits on top of them (see the layer-order note).
     drawRoadSurface(ctx, width, roadY, camX, toScreenX);
 
+    // The Penthouse Apartment / office-park seam's road-colored strip
+    // crosses the sidewalk here, on top of it, instead of stopping dead
+    // at the lot boundary like every other lot's edge.
+    drawSidewalkBridge(ctx, width, roadY, toScreenX);
+
     // Arena terminus: parking lots flanking the road, then the arena
     // facade spanning the full width of the road at the literal dead end.
     drawArenaTerminus(ctx, toScreenX, width, roadY, topEdgeY, bottomEdgeY);
@@ -681,6 +692,52 @@ function drawBuilding(
   }
 }
 
+// World-x of the Housing / Frame 1 boundary — the Penthouse Apartment /
+// office-park seam that drawSidewalkBridge() bridges across the sidewalk.
+const SIDEWALK_BRIDGE_WORLD_X = FRAME_WIDTH;
+const SIDEWALK_BRIDGE_WIDTH = 40; // screen/world px — matches the seam's own road-colored strip
+
+/**
+ * The Penthouse Apartment and office-park lot images both extend a
+ * road-colored strip right up to this seam, but like every lot they still
+ * stop at the sidewalk (drawn after every lot, on top of them all — see
+ * render()'s layer-order note). This draws a short continuation of that
+ * same strip — sampled from the office-park photo's own road-colored
+ * column, tiled vertically — filling just the sidewalk's depth at this one
+ * x position, so the road-colored seam reads as running all the way from
+ * the lots to the actual road instead of stopping dead at the lot edge.
+ */
+function drawSidewalkBridge(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  roadY: number,
+  toScreenX: (wx: number) => number,
+) {
+  if (!officeParkLotImage.complete || officeParkLotImage.naturalWidth === 0) return;
+
+  const screenX = toScreenX(SIDEWALK_BRIDGE_WORLD_X);
+  if (screenX < -SIDEWALK_BRIDGE_WIDTH || screenX > width + SIDEWALK_BRIDGE_WIDTH) return;
+
+  const drawX = screenX - SIDEWALK_BRIDGE_WIDTH / 2;
+  const yStart = roadY + ROAD_HALF_HEIGHT; // the road's own outer edge
+  const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH; // the sidewalk's outer edge, where the lots already pick up
+
+  const srcX = 0;
+  const srcW = 26;
+  const srcY = 150;
+  const srcH = 90;
+  const tileH = srcH * (SIDEWALK_BRIDGE_WIDTH / srcW);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(drawX, yStart, SIDEWALK_BRIDGE_WIDTH, yEnd - yStart);
+  ctx.clip();
+  for (let y = yStart; y < yEnd; y += tileH) {
+    ctx.drawImage(officeParkLotImage, srcX, srcY, srcW, srcH, drawX, y, SIDEWALK_BRIDGE_WIDTH, tileH);
+  }
+  ctx.restore();
+}
+
 /**
  * Ground-image lots (Trailer, Apartment, ...): the photo is a whole small
  * lot, not one building icon, so it's drawn as ground — no border, no name
@@ -731,19 +788,26 @@ function drawGroundImageLot(
   ctx.clip();
   ctx.drawImage(lot.image, drawX, roadTop, drawWidth, drawH);
 
-  const stripDrawH = lot.groundStripHeight * scale;
-  for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
-    ctx.drawImage(
-      lot.image,
-      0,
-      lot.groundStripTop,
-      lot.imageWidth,
-      lot.groundStripHeight,
-      drawX,
-      cursorY,
-      drawWidth,
-      stripDrawH,
-    );
+  if (roadTop + drawH < roadTop + imgDepth) {
+    if (lot.groundFallbackColor) {
+      ctx.fillStyle = lot.groundFallbackColor;
+      ctx.fillRect(drawX, roadTop + drawH, drawWidth, imgDepth - drawH);
+    } else {
+      const stripDrawH = lot.groundStripHeight * scale;
+      for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
+        ctx.drawImage(
+          lot.image,
+          0,
+          lot.groundStripTop,
+          lot.imageWidth,
+          lot.groundStripHeight,
+          drawX,
+          cursorY,
+          drawWidth,
+          stripDrawH,
+        );
+      }
+    }
   }
   ctx.restore();
 }
