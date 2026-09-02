@@ -770,7 +770,11 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
       groundLot: GROUND_IMAGE_LOTS["Penthouse Apartment"],
       lotWorldLeft: 600, // Penthouse lot's own world bounds: 750 (center) - 300/2 (HOUSING_LOT_WIDTH) = 600
       lotDrawWidth: 300, // HOUSING_LOT_WIDTH — touchesLeft/Right both fill the LOT_GAP, so this is the full 300, not 300-LOT_GAP
-      nativeY: 178, // a few px of safety margin above the measured grass/deck boundary (~185)
+      // Re-measured directly against the actual deck edge: the earlier 185
+      // reading only checked for saturated green and stopped a full ~15px
+      // early, at a transitional/shadowed strip that still reads as grass
+      // once rendered — the deck's actual white coping trim starts at 188.
+      nativeY: 188,
     },
   },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
