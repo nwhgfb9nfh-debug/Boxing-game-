@@ -714,6 +714,9 @@ function drawBuilding(
 
 interface SidewalkCrossing {
   worldX: number; // where this crossing is centered — same world-x as the lot's ENTER trigger
+  side?: "south" | "north"; // which sidewalk this crosses — south (default) for a bottom-row
+  // lot, north for a top-row one. Mirrors everything about the road's own edge on that side:
+  // "away from the road" is increasing screen y for south, decreasing for north.
   width: number; // screen/world px
   image: HTMLImageElement;
   srcX: number;
@@ -802,6 +805,13 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // road-colored strip right up to this seam — this just continues it
   // through the sidewalk to the road's edge.
   { worldX: FRAME_WIDTH, width: 40, ...asphaltCrossingWidth(40, 300), roadOverlap: 10 },
+  // Mansion: north row (side: "north") — its own photo's gate was
+  // deliberately trimmed/padded (see mansionLot.ts) to sit fully visible
+  // right at the sidewalk with no gap, so this needs no extraDepth/reclaim
+  // like Penthouse did. Sized to the gate opening itself (~65 of the
+  // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
+  // wider posts-and-lamps span either side of it.
+  { worldX: 150, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
@@ -810,8 +820,6 @@ function drawSidewalkCrossings(
   roadY: number,
   toScreenX: (wx: number) => number,
 ) {
-  const yStart = roadY + ROAD_HALF_HEIGHT; // the road's own outer edge
-
   for (const crossing of SIDEWALK_CROSSINGS) {
     if (!crossing.image.complete || crossing.image.naturalWidth === 0) continue;
 
@@ -819,50 +827,60 @@ function drawSidewalkCrossings(
     if (screenX < -crossing.width || screenX > width + crossing.width) continue;
 
     const drawX = screenX - crossing.width / 2;
-    // The sidewalk's outer edge, where the lots already pick up — plus
-    // extraDepth, for a crossing that continues past it into the lot.
-    const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH + (crossing.extraDepth ?? 0);
-    // roadOverlap pulls the top edge back into the road itself, painting
+
+    // dir mirrors every offset below about the road's own edge on this
+    // side: south (dir +1) grows toward larger screen y, away from the
+    // road; north (dir -1) grows toward smaller screen y instead. "near"
+    // is always the road edge itself, "far" always the sidewalk's own far
+    // edge (plus extraDepth, reaching into the lot beyond it).
+    const south = (crossing.side ?? "south") === "south";
+    const dir = south ? 1 : -1;
+    const nearY = roadY + dir * ROAD_HALF_HEIGHT;
+    const sidewalkDepth = south ? SIDEWALK_SOUTH_DEPTH : SIDEWALK_NORTH_DEPTH;
+    const farY = nearY + dir * (sidewalkDepth + (crossing.extraDepth ?? 0));
+    // roadOverlap pushes the near edge back into the road itself, painting
     // over the road/sidewalk curb line instead of stopping right at it.
-    const rectTop = yStart - (crossing.roadOverlap ?? 0);
+    const rectNear = nearY - dir * (crossing.roadOverlap ?? 0);
+    const rectTop = Math.min(rectNear, farY);
+    const rectBottom = Math.max(rectNear, farY);
     const tileH = crossing.srcH * (crossing.width / crossing.srcW);
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(drawX, rectTop, crossing.width, yEnd - rectTop);
+    ctx.rect(drawX, rectTop, crossing.width, rectBottom - rectTop);
     ctx.clip();
-    for (let y = rectTop; y < yEnd; y += tileH) {
-      ctx.drawImage(
-        crossing.image,
-        crossing.srcX,
-        crossing.srcY,
-        crossing.srcW,
-        crossing.srcH,
-        drawX,
-        y,
-        crossing.width,
-        tileH,
-      );
+    // Tiles outward from the near (road) edge either way, so the texture
+    // always starts fresh at the road instead of at whichever of rectTop/
+    // rectBottom happens to be numerically smaller.
+    for (let d = 0; ; d += tileH) {
+      const y0 = rectNear + dir * d;
+      const y1 = rectNear + dir * (d + tileH);
+      if (south ? y0 > rectBottom : y0 < rectTop) break;
+      ctx.drawImage(crossing.image, crossing.srcX, crossing.srcY, crossing.srcW, crossing.srcH, drawX, Math.min(y0, y1), crossing.width, tileH);
     }
     ctx.restore();
 
     if (crossing.reclaim) {
+      // South-row geometry only so far — no north-row crossing has needed
+      // this yet (see the Mansion crossing above, whose photo was instead
+      // pre-trimmed/padded to land exactly on the sidewalk with nothing to
+      // reclaim). Extend this branch for dir when one does.
       const { groundLot, lotWorldLeft, lotDrawWidth, nativeY } = crossing.reclaim;
       if (groundLot.image.complete && groundLot.image.naturalWidth > 0) {
         // Reproduces drawGroundImageLot's own roadTop for this same lot —
-        // NOT yStart itself (a bottom-row lot's `top` is bottomEdgeY =
+        // NOT nearY itself (a bottom-row lot's `top` is bottomEdgeY =
         // roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN, so its roadTop =
-        // bottomEdgeY - SIDEWALK_SOUTH_DEPTH = yStart + BUILDING_MARGIN -
-        // SIDEWALK_SOUTH_DEPTH; treating it as plain yStart was a bug that
+        // bottomEdgeY - SIDEWALK_SOUTH_DEPTH = nearY + BUILDING_MARGIN -
+        // SIDEWALK_SOUTH_DEPTH; treating it as plain nearY was a bug that
         // placed the reclaim ~23px too deep, letting the crossing paint
         // over the building right at the boundary before being reclaimed).
         const scale = lotDrawWidth / groundLot.imageWidth;
-        const roadTop = yStart + BUILDING_MARGIN - SIDEWALK_SOUTH_DEPTH;
+        const roadTop = nearY + BUILDING_MARGIN - SIDEWALK_SOUTH_DEPTH;
         const clipY = roadTop + nativeY * scale;
-        if (clipY < yEnd) {
+        if (clipY < rectBottom) {
           ctx.save();
           ctx.beginPath();
-          ctx.rect(drawX, clipY, crossing.width, yEnd - clipY);
+          ctx.rect(drawX, clipY, crossing.width, rectBottom - clipY);
           ctx.clip();
           ctx.drawImage(groundLot.image, toScreenX(lotWorldLeft), roadTop, lotDrawWidth, groundLot.imageHeight * scale);
           ctx.restore();
