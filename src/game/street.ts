@@ -45,6 +45,13 @@ import {
   PENTHOUSE_LOT_GROUND_STRIP_TOP,
   PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/penthouseLot";
+import {
+  OFFICE_PARK_LOT_DATA_URI,
+  OFFICE_PARK_LOT_WIDTH,
+  OFFICE_PARK_LOT_HEIGHT,
+  OFFICE_PARK_LOT_GROUND_STRIP_TOP,
+  OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/officeParkLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -60,6 +67,8 @@ const apartmentLotImage = new Image();
 apartmentLotImage.src = APARTMENT_LOT_DATA_URI;
 const penthouseLotImage = new Image();
 penthouseLotImage.src = PENTHOUSE_LOT_DATA_URI;
+const officeParkLotImage = new Image();
+officeParkLotImage.src = OFFICE_PARK_LOT_DATA_URI;
 
 // Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
 // not a single building icon, so it's drawn as ground rather than a
@@ -99,6 +108,33 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripTop: PENTHOUSE_LOT_GROUND_STRIP_TOP,
     groundStripHeight: PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
     touchesLeft: true, // touches the Apartment lot next door, no gap
+    touchesRight: true, // touches the Frame 1 filler-group image next door, no gap
+  },
+};
+
+// Decorative filler lots (the "filler, filler, MAIN, filler, filler" slots
+// flanking each standard frame's required/flavor building) aren't
+// BuildingDef entries — no name, no ENTER trigger — so they can't key into
+// GROUND_IMAGE_LOTS by name. This is the same idea (a photo drawn as
+// ground, via drawGroundImageLot) but one image can span several
+// consecutive filler slots at once (lotCount), keyed by exactly which
+// slots: `${frame.index}:${row}:${startLotIndex}`. See the standard-frame
+// branch in render().
+interface FillerGroupImage extends GroundImageLot {
+  lotCount: number;
+}
+
+const FILLER_GROUP_IMAGES: Record<string, FillerGroupImage> = {
+  // Frame 1 (Office/Mall), bottom (required/south) row, the two filler
+  // slots between the Housing frame's Penthouse Apartment and Office.
+  "1:bottom:0": {
+    image: officeParkLotImage,
+    imageWidth: OFFICE_PARK_LOT_WIDTH,
+    imageHeight: OFFICE_PARK_LOT_HEIGHT,
+    groundStripTop: OFFICE_PARK_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
+    lotCount: 2,
+    touchesLeft: true, // touches Penthouse Apartment (previous frame), no gap
   },
 };
 
@@ -391,25 +427,43 @@ export class StreetScene {
           );
         }
       } else {
+        // skipBottomUntil tracks lot indices already drawn as part of a
+        // multi-slot filler-group image (see FILLER_GROUP_IMAGES), so
+        // they're not also drawn as individual random-colored fillers.
+        let skipBottomUntil = -1;
         for (let lot = 0; lot < LOTS_PER_ROW; lot++) {
           const lotCenterWorld = frameLeftWorld + (lot + 0.5) * LOT_WIDTH;
           const sx = toScreenX(lotCenterWorld);
-          if (sx < -LOT_WIDTH || sx > width + LOT_WIDTH) continue;
-
           const lotW = LOT_WIDTH - LOT_GAP;
           const isMain = lot === MAIN_LOT_INDEX;
+          const onScreen = sx >= -LOT_WIDTH && sx <= width + LOT_WIDTH;
 
-          drawLot(ctx, isMain ? frame.flavor : null, sx, topEdgeY, lotW, "up", height, seedFor(frame.index, 0, lot));
-          drawLot(
-            ctx,
-            isMain ? frame.required : null,
-            sx,
-            bottomEdgeY,
-            lotW,
-            "down",
-            height,
-            seedFor(frame.index, 1, lot),
-          );
+          if (onScreen) {
+            drawLot(ctx, isMain ? frame.flavor : null, sx, topEdgeY, lotW, "up", height, seedFor(frame.index, 0, lot));
+          }
+
+          if (lot <= skipBottomUntil) continue;
+          const group = FILLER_GROUP_IMAGES[`${frame.index}:bottom:${lot}`];
+          if (group) {
+            const groupLeftWorld = frameLeftWorld + lot * LOT_WIDTH + LOT_GAP / 2;
+            const groupWidth = group.lotCount * LOT_WIDTH - LOT_GAP;
+            const groupSx = toScreenX(groupLeftWorld + groupWidth / 2);
+            if (groupSx >= -groupWidth && groupSx <= width + groupWidth) {
+              drawGroundImageLot(ctx, group, groupSx - groupWidth / 2, groupWidth, bottomEdgeY, height);
+            }
+            skipBottomUntil = lot + group.lotCount - 1;
+          } else if (onScreen) {
+            drawLot(
+              ctx,
+              isMain ? frame.required : null,
+              sx,
+              bottomEdgeY,
+              lotW,
+              "down",
+              height,
+              seedFor(frame.index, 1, lot),
+            );
+          }
         }
       }
 
