@@ -740,13 +740,13 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // the far end of the building once the image was kept unrotated (pool
   // deck at top instead — see the "undo rotation" note in penthouseLot.ts
   // history), so there's nothing of its own to sample here; the literal
-  // road texture instead, matching "a road coming off the big road."
-  // Wide enough to span the gap between the roof deck's two AC-unit wings
-  // (native x ~175-290 of the 500-wide photo, either side of center) and
-  // extended past the sidewalk, through the grass, until it touches that
-  // deck's leading edge (native y ~185, i.e. roughly 111 screen px below
-  // the sidewalk's own outer edge) instead of stopping short in open grass.
-  { worldX: 750, width: 80, ...asphaltCrossingWidth(80, 200), extraDepth: 64, roadOverlap: 10 },
+  // road texture instead, matching "a road coming off the big road." Same
+  // one-car width as the Apartment's, extended past the sidewalk through
+  // the grass to touch the deck's leading edge (native y ~185 of the
+  // 500-wide photo, i.e. roughly 111 screen px below the sidewalk's own
+  // outer edge) — kept a few px short of that so it never paints over the
+  // building itself.
+  { worldX: 750, width: 30, ...asphaltCrossingWidth(30, 200), extraDepth: 45, roadOverlap: 10 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
