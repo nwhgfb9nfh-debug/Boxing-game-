@@ -746,7 +746,7 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // 500-wide photo, i.e. roughly 111 screen px below the sidewalk's own
   // outer edge) — kept a few px short of that so it never paints over the
   // building itself.
-  { worldX: 750, width: 30, ...asphaltCrossingWidth(30, 200), extraDepth: 45, roadOverlap: 10 },
+  { worldX: 750, width: 30, ...asphaltCrossingWidth(30, 200), extraDepth: 25, roadOverlap: 10 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
