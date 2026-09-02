@@ -770,7 +770,7 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
       groundLot: GROUND_IMAGE_LOTS["Penthouse Apartment"],
       lotWorldLeft: 600, // Penthouse lot's own world bounds: 750 (center) - 300/2 (HOUSING_LOT_WIDTH) = 600
       lotDrawWidth: 300, // HOUSING_LOT_WIDTH — touchesLeft/Right both fill the LOT_GAP, so this is the full 300, not 300-LOT_GAP
-      nativeY: 185,
+      nativeY: 178, // a few px of safety margin above the measured grass/deck boundary (~185)
     },
   },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
@@ -825,12 +825,15 @@ function drawSidewalkCrossings(
     if (crossing.reclaim) {
       const { groundLot, lotWorldLeft, lotDrawWidth, nativeY } = crossing.reclaim;
       if (groundLot.image.complete && groundLot.image.naturalWidth > 0) {
-        // roadTop matches drawGroundImageLot's own roadTop for this same
-        // lot exactly (both are yStart — see drawGroundImageLot), so this
-        // reproduces the same source-to-screen mapping it used, just
-        // clipped to the overshoot strip instead of the whole lot.
+        // Reproduces drawGroundImageLot's own roadTop for this same lot —
+        // NOT yStart itself (a bottom-row lot's `top` is bottomEdgeY =
+        // roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN, so its roadTop =
+        // bottomEdgeY - SIDEWALK_SOUTH_DEPTH = yStart + BUILDING_MARGIN -
+        // SIDEWALK_SOUTH_DEPTH; treating it as plain yStart was a bug that
+        // placed the reclaim ~23px too deep, letting the crossing paint
+        // over the building right at the boundary before being reclaimed).
         const scale = lotDrawWidth / groundLot.imageWidth;
-        const roadTop = yStart;
+        const roadTop = yStart + BUILDING_MARGIN - SIDEWALK_SOUTH_DEPTH;
         const clipY = roadTop + nativeY * scale;
         if (clipY < yEnd) {
           ctx.save();
