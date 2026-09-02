@@ -835,11 +835,11 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // accounts for that, at this lot's actual drawn scale (293/500, since
   // it touchesRight into the Suburban House lot's gap-fill).
   { worldX: 133, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
-  // Suburban House: same idea — gate sits at native x~380 of its own
-  // photo (well right of center, mirroring how the source's garage/
-  // driveway leaned right within each repeat — see suburbanHouseLot.ts),
-  // at this lot's drawn scale (293/500, touchesLeft into Mansion's gap).
-  { worldX: 523, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
+  // Suburban House: same idea — gate sits at native x~360 of its own
+  // photo (right of center, mirroring how the source's garage/driveway
+  // leaned right within each repeat — see suburbanHouseLot.ts), at this
+  // lot's drawn scale (293/500, touchesLeft into Mansion's gap).
+  { worldX: 511, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
