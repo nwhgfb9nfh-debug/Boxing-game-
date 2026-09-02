@@ -59,6 +59,13 @@ import {
   MANSION_LOT_GROUND_STRIP_TOP,
   MANSION_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/mansionLot";
+import {
+  SUBURBAN_HOUSE_LOT_DATA_URI,
+  SUBURBAN_HOUSE_LOT_WIDTH,
+  SUBURBAN_HOUSE_LOT_HEIGHT,
+  SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
+  SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/suburbanHouseLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -78,6 +85,8 @@ const officeParkLotImage = new Image();
 officeParkLotImage.src = OFFICE_PARK_LOT_DATA_URI;
 const mansionLotImage = new Image();
 mansionLotImage.src = MANSION_LOT_DATA_URI;
+const suburbanHouseLotImage = new Image();
+suburbanHouseLotImage.src = SUBURBAN_HOUSE_LOT_DATA_URI;
 
 // Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
 // not a single building icon, so it's drawn as ground rather than a
@@ -124,9 +133,8 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     touchesLeft: true, // touches the Apartment lot next door, no gap
     touchesRight: true, // touches the Frame 1 filler-group image next door, no gap
   },
-  // North row (top-left of the housing frame) — drawn with dir="up", see
-  // drawGroundImageLot. No neighboring ground-image lot yet on either side
-  // (Suburban House, Townhouse are still placeholder blocks).
+  // North row (top of the housing frame) — drawn with dir="up", see
+  // drawGroundImageLot.
   Mansion: {
     image: mansionLotImage,
     imageWidth: MANSION_LOT_WIDTH,
@@ -134,6 +142,17 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripTop: MANSION_LOT_GROUND_STRIP_TOP,
     groundStripHeight: MANSION_LOT_GROUND_STRIP_HEIGHT,
     groundFallbackColor: "#1c3005", // no clean full-width grass band — see mansionLot.ts
+    touchesRight: true, // touches the Suburban House lot next door, no gap
+  },
+  "Suburban House": {
+    image: suburbanHouseLotImage,
+    imageWidth: SUBURBAN_HOUSE_LOT_WIDTH,
+    imageHeight: SUBURBAN_HOUSE_LOT_HEIGHT,
+    groundStripTop: SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
+    groundFallbackColor: "#1c3005", // no clean full-width grass band — see suburbanHouseLot.ts
+    touchesLeft: true, // touches the Mansion lot next door, no gap
+    // No touchesRight — Townhouse is still a placeholder block.
   },
 };
 
@@ -812,10 +831,15 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
   // wider posts-and-lamps span either side of it. Off-center: the gate
   // itself sits at native x~215 of the photo, not the photo's own
-  // horizontal center (250) — worldX is shifted left to match (150 - (250
-  // - 215) * lot scale, lot scale here being 286/500 since this lot, unlike
-  // Penthouse, doesn't touchesLeft/Right into a neighboring gap-fill).
-  { worldX: 130, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
+  // horizontal center (250) — worldX (133, not the lot's own center 150)
+  // accounts for that, at this lot's actual drawn scale (293/500, since
+  // it touchesRight into the Suburban House lot's gap-fill).
+  { worldX: 133, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
+  // Suburban House: same idea — gate sits at native x~380 of its own
+  // photo (well right of center, mirroring how the source's garage/
+  // driveway leaned right within each repeat — see suburbanHouseLot.ts),
+  // at this lot's drawn scale (293/500, touchesLeft into Mansion's gap).
+  { worldX: 523, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
