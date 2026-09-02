@@ -706,6 +706,20 @@ interface SidewalkCrossing {
   // continuous surface instead of stopping at (and exposing) that seam. Road-textured
   // crossings only — a crossing using its own lot's dirt/gravel texture (Trailer) must
   // still stop cleanly at the road's edge instead of bleeding onto the asphalt.
+  reclaim?: {
+    // A crossing reaching for a building can't know its exact edge to the
+    // pixel — so instead of trying to land extraDepth exactly on it (any
+    // error either paints over the building or leaves a grass gap), this
+    // lets the crossing overshoot on purpose, then the building's own
+    // ground image is redrawn on top wherever it's actually there,
+    // reclaiming any overshoot. The crossing itself is untouched above
+    // that line, so it still visibly reaches the building either way.
+    groundLot: GroundImageLot; // the building's own ground photo
+    lotWorldLeft: number; // world-x of that lot's own drawn left edge (post touchesLeft gap-fill)
+    lotDrawWidth: number; // that lot's own drawn width (post touchesLeft/Right gap-fill)
+    nativeY: number; // source-image y (in groundLot's own pixels) where the building's edge is —
+    // the crossing is left alone above this line, reclaimed by the building at and below it
+  };
 }
 
 // Every lot still stops at the sidewalk like normal (drawn after every lot,
@@ -741,12 +755,24 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // deck at top instead — see the "undo rotation" note in penthouseLot.ts
   // history), so there's nothing of its own to sample here; the literal
   // road texture instead, matching "a road coming off the big road." Same
-  // one-car width as the Apartment's, extended past the sidewalk through
-  // the grass to touch the deck's leading edge (native y ~185 of the
-  // 500-wide photo, i.e. roughly 111 screen px below the sidewalk's own
-  // outer edge) — kept a few px short of that so it never paints over the
-  // building itself.
-  { worldX: 750, width: 30, ...asphaltCrossingWidth(30, 200), extraDepth: 25, roadOverlap: 10 },
+  // one-car width as the Apartment's. Deliberately overshoots into the
+  // deck (extraDepth reaches past native y ~185, the deck's actual leading
+  // edge) so it always touches with no grass gap — see `reclaim` below,
+  // which redraws the deck on top of that overshoot so the crossing never
+  // visibly paints over it either way.
+  {
+    worldX: 750,
+    width: 30,
+    ...asphaltCrossingWidth(30, 200),
+    extraDepth: 70,
+    roadOverlap: 10,
+    reclaim: {
+      groundLot: GROUND_IMAGE_LOTS["Penthouse Apartment"],
+      lotWorldLeft: 600, // Penthouse lot's own world bounds: 750 (center) - 300/2 (HOUSING_LOT_WIDTH) = 600
+      lotDrawWidth: 300, // HOUSING_LOT_WIDTH — touchesLeft/Right both fill the LOT_GAP, so this is the full 300, not 300-LOT_GAP
+      nativeY: 185,
+    },
+  },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
@@ -795,6 +821,27 @@ function drawSidewalkCrossings(
       );
     }
     ctx.restore();
+
+    if (crossing.reclaim) {
+      const { groundLot, lotWorldLeft, lotDrawWidth, nativeY } = crossing.reclaim;
+      if (groundLot.image.complete && groundLot.image.naturalWidth > 0) {
+        // roadTop matches drawGroundImageLot's own roadTop for this same
+        // lot exactly (both are yStart — see drawGroundImageLot), so this
+        // reproduces the same source-to-screen mapping it used, just
+        // clipped to the overshoot strip instead of the whole lot.
+        const scale = lotDrawWidth / groundLot.imageWidth;
+        const roadTop = yStart;
+        const clipY = roadTop + nativeY * scale;
+        if (clipY < yEnd) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(drawX, clipY, crossing.width, yEnd - clipY);
+          ctx.clip();
+          ctx.drawImage(groundLot.image, toScreenX(lotWorldLeft), roadTop, lotDrawWidth, groundLot.imageHeight * scale);
+          ctx.restore();
+        }
+      }
+    }
   }
 }
 
