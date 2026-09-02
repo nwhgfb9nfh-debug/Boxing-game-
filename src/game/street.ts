@@ -488,10 +488,10 @@ export class StreetScene {
     // above so it always sits on top of them (see the layer-order note).
     drawRoadSurface(ctx, width, roadY, camX, toScreenX);
 
-    // The Penthouse Apartment / office-park seam's road-colored strip
-    // crosses the sidewalk here, on top of it, instead of stopping dead
-    // at the lot boundary like every other lot's edge.
-    drawSidewalkBridge(ctx, width, roadY, toScreenX);
+    // Driveway crossings (see SIDEWALK_CROSSINGS): short strips crossing
+    // the sidewalk, on top of it, connecting specific lots to the road
+    // instead of stopping dead at the lot boundary like every lot's edge.
+    drawSidewalkCrossings(ctx, width, roadY, toScreenX);
 
     // Arena terminus: parking lots flanking the road, then the arena
     // facade spanning the full width of the road at the literal dead end.
@@ -692,50 +692,81 @@ function drawBuilding(
   }
 }
 
-// World-x of the Housing / Frame 1 boundary — the Penthouse Apartment /
-// office-park seam that drawSidewalkBridge() bridges across the sidewalk.
-const SIDEWALK_BRIDGE_WORLD_X = FRAME_WIDTH;
-const SIDEWALK_BRIDGE_WIDTH = 40; // screen/world px — matches the seam's own road-colored strip
+interface SidewalkCrossing {
+  worldX: number; // where this crossing is centered — same world-x as the lot's ENTER trigger
+  width: number; // screen/world px
+  image: HTMLImageElement;
+  srcX: number;
+  srcY: number;
+  srcW: number;
+  srcH: number;
+}
 
-/**
- * The Penthouse Apartment and office-park lot images both extend a
- * road-colored strip right up to this seam, but like every lot they still
- * stop at the sidewalk (drawn after every lot, on top of them all — see
- * render()'s layer-order note). This draws a short continuation of that
- * same strip — sampled from the office-park photo's own road-colored
- * column, tiled vertically — filling just the sidewalk's depth at this one
- * x position, so the road-colored seam reads as running all the way from
- * the lots to the actual road instead of stopping dead at the lot edge.
- */
-function drawSidewalkBridge(
+// Every lot still stops at the sidewalk like normal (drawn after every lot,
+// on top of them all — see render()'s layer-order note), but real
+// driveways don't: at each of these world-x positions (all ENTER-trigger
+// positions, one exception below), a short strip crosses the sidewalk
+// connecting the lot to the road, sampled from a source patch (tiled
+// vertically) so it reads as a continuation of ground already visible in
+// that lot's own photo rather than a new element.
+const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
+  // Trailer: its own central gravel lane, sampled from directly below
+  // where this crossing sits, continues right up through the sidewalk.
+  { worldX: 150, width: 30, image: trailerLotImage, srcX: 215, srcY: 40, srcW: 75, srcH: 80 },
+  // Apartment: same idea, sampled from its own gravel path between the
+  // two front buildings.
+  { worldX: 450, width: 30, image: apartmentLotImage, srcX: 200, srcY: 90, srcW: 100, srcH: 70 },
+  // Penthouse: paved, not dirt — its own photo's real driveway ended up at
+  // the far end of the building once the image was kept unrotated (pool
+  // deck at top instead — see the "undo rotation" note in penthouseLot.ts
+  // history), so there's nothing of its own to sample here; reuses the
+  // office-park photo's road-colored patch instead, matching "a road
+  // coming off the big road."
+  { worldX: 750, width: 45, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
+  // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
+  // Housing / Frame 1 boundary): both lot images already extend a
+  // road-colored strip right up to this seam — this just continues it
+  // through the sidewalk to the road's edge.
+  { worldX: FRAME_WIDTH, width: 40, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
+];
+
+function drawSidewalkCrossings(
   ctx: CanvasRenderingContext2D,
   width: number,
   roadY: number,
   toScreenX: (wx: number) => number,
 ) {
-  if (!officeParkLotImage.complete || officeParkLotImage.naturalWidth === 0) return;
-
-  const screenX = toScreenX(SIDEWALK_BRIDGE_WORLD_X);
-  if (screenX < -SIDEWALK_BRIDGE_WIDTH || screenX > width + SIDEWALK_BRIDGE_WIDTH) return;
-
-  const drawX = screenX - SIDEWALK_BRIDGE_WIDTH / 2;
   const yStart = roadY + ROAD_HALF_HEIGHT; // the road's own outer edge
   const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH; // the sidewalk's outer edge, where the lots already pick up
 
-  const srcX = 0;
-  const srcW = 26;
-  const srcY = 150;
-  const srcH = 90;
-  const tileH = srcH * (SIDEWALK_BRIDGE_WIDTH / srcW);
+  for (const crossing of SIDEWALK_CROSSINGS) {
+    if (!crossing.image.complete || crossing.image.naturalWidth === 0) continue;
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(drawX, yStart, SIDEWALK_BRIDGE_WIDTH, yEnd - yStart);
-  ctx.clip();
-  for (let y = yStart; y < yEnd; y += tileH) {
-    ctx.drawImage(officeParkLotImage, srcX, srcY, srcW, srcH, drawX, y, SIDEWALK_BRIDGE_WIDTH, tileH);
+    const screenX = toScreenX(crossing.worldX);
+    if (screenX < -crossing.width || screenX > width + crossing.width) continue;
+
+    const drawX = screenX - crossing.width / 2;
+    const tileH = crossing.srcH * (crossing.width / crossing.srcW);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(drawX, yStart, crossing.width, yEnd - yStart);
+    ctx.clip();
+    for (let y = yStart; y < yEnd; y += tileH) {
+      ctx.drawImage(
+        crossing.image,
+        crossing.srcX,
+        crossing.srcY,
+        crossing.srcW,
+        crossing.srcH,
+        drawX,
+        y,
+        crossing.width,
+        tileH,
+      );
+    }
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 /**
