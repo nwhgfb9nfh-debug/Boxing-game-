@@ -701,6 +701,11 @@ interface SidewalkCrossing {
   srcW: number;
   srcH: number;
   extraDepth?: number; // extends past the sidewalk's outer edge, into the lot, toward the building
+  roadOverlap?: number; // starts this many px inside the road's own edge, painting over the
+  // road/sidewalk curb line baked into the road texture so the crossing reads as one
+  // continuous surface instead of stopping at (and exposing) that seam. Road-textured
+  // crossings only — a crossing using its own lot's dirt/gravel texture (Trailer) must
+  // still stop cleanly at the road's edge instead of bleeding onto the asphalt.
 }
 
 // Every lot still stops at the sidewalk like normal (drawn after every lot,
@@ -710,26 +715,43 @@ interface SidewalkCrossing {
 // connecting the lot to the road, sampled from a source patch (tiled
 // vertically) so it reads as a continuation of ground already visible in
 // that lot's own photo rather than a new element.
+// A clean patch of the road's own asphalt texture (no dashed centerline —
+// that sits around source y 225-245 in roadTexture.png, avoided here) so
+// paved crossings read as the literal road continuing, not a lookalike
+// sampled from an unrelated photo. Scaled at ROAD_SCALE (same as the road
+// itself), so the grain size matches exactly; only the width varies.
+const CROSSING_ASPHALT_SRC_Y = 120;
+const CROSSING_ASPHALT_SRC_H = 90;
+function asphaltCrossingWidth(worldWidth: number, srcX: number) {
+  return { image: roadImage, srcX, srcY: CROSSING_ASPHALT_SRC_Y, srcW: Math.round(worldWidth / ROAD_SCALE), srcH: CROSSING_ASPHALT_SRC_H };
+}
+
 const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // Trailer: its own central gravel lane, sampled from directly below
   // where this crossing sits, continues right up through the sidewalk.
+  // Dirt, not asphalt — stops cleanly at the road edge (no roadOverlap).
   { worldX: 150, width: 30, image: trailerLotImage, srcX: 215, srcY: 40, srcW: 75, srcH: 80 },
-  // Apartment: paved asphalt, not dirt (matches the road's own look) —
-  // reuses the office-park photo's road-colored patch, same as Penthouse.
-  { worldX: 450, width: 30, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
+  // Apartment: paved asphalt, not dirt — the literal road texture, and
+  // painted a little into the road itself (roadOverlap) so the seam/curb
+  // line baked into the road texture at the road/sidewalk edge doesn't
+  // show through where the road "lies over" the sidewalk here.
+  { worldX: 450, width: 30, ...asphaltCrossingWidth(30, 40), roadOverlap: 10 },
   // Penthouse: paved, not dirt — its own photo's real driveway ended up at
   // the far end of the building once the image was kept unrotated (pool
   // deck at top instead — see the "undo rotation" note in penthouseLot.ts
-  // history), so there's nothing of its own to sample here; reuses the
-  // office-park photo's road-colored patch instead, matching "a road
-  // coming off the big road." Wider than the others and extended past the
-  // sidewalk into the lot, up to the building's own roofline.
-  { worldX: 750, width: 65, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90, extraDepth: 22 },
+  // history), so there's nothing of its own to sample here; the literal
+  // road texture instead, matching "a road coming off the big road."
+  // Wide enough to span the gap between the roof deck's two AC-unit wings
+  // (native x ~175-290 of the 500-wide photo, either side of center) and
+  // extended past the sidewalk, through the grass, until it touches that
+  // deck's leading edge (native y ~185, i.e. roughly 111 screen px below
+  // the sidewalk's own outer edge) instead of stopping short in open grass.
+  { worldX: 750, width: 80, ...asphaltCrossingWidth(80, 200), extraDepth: 64, roadOverlap: 10 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
   // through the sidewalk to the road's edge.
-  { worldX: FRAME_WIDTH, width: 40, image: officeParkLotImage, srcX: 0, srcY: 150, srcW: 26, srcH: 90 },
+  { worldX: FRAME_WIDTH, width: 40, ...asphaltCrossingWidth(40, 300), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
@@ -750,13 +772,16 @@ function drawSidewalkCrossings(
     // The sidewalk's outer edge, where the lots already pick up — plus
     // extraDepth, for a crossing that continues past it into the lot.
     const yEnd = roadY + ROAD_HALF_HEIGHT + SIDEWALK_SOUTH_DEPTH + (crossing.extraDepth ?? 0);
+    // roadOverlap pulls the top edge back into the road itself, painting
+    // over the road/sidewalk curb line instead of stopping right at it.
+    const rectTop = yStart - (crossing.roadOverlap ?? 0);
     const tileH = crossing.srcH * (crossing.width / crossing.srcW);
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(drawX, yStart, crossing.width, yEnd - yStart);
+    ctx.rect(drawX, rectTop, crossing.width, yEnd - rectTop);
     ctx.clip();
-    for (let y = yStart; y < yEnd; y += tileH) {
+    for (let y = rectTop; y < yEnd; y += tileH) {
       ctx.drawImage(
         crossing.image,
         crossing.srcX,
