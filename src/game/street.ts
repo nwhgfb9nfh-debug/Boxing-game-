@@ -52,6 +52,13 @@ import {
   OFFICE_PARK_LOT_GROUND_STRIP_TOP,
   OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/officeParkLot";
+import {
+  MANSION_LOT_DATA_URI,
+  MANSION_LOT_WIDTH,
+  MANSION_LOT_HEIGHT,
+  MANSION_LOT_GROUND_STRIP_TOP,
+  MANSION_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/mansionLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -69,6 +76,8 @@ const penthouseLotImage = new Image();
 penthouseLotImage.src = PENTHOUSE_LOT_DATA_URI;
 const officeParkLotImage = new Image();
 officeParkLotImage.src = OFFICE_PARK_LOT_DATA_URI;
+const mansionLotImage = new Image();
+mansionLotImage.src = MANSION_LOT_DATA_URI;
 
 // Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
 // not a single building icon, so it's drawn as ground rather than a
@@ -114,6 +123,17 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripHeight: PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
     touchesLeft: true, // touches the Apartment lot next door, no gap
     touchesRight: true, // touches the Frame 1 filler-group image next door, no gap
+  },
+  // North row (top-left of the housing frame) — drawn with dir="up", see
+  // drawGroundImageLot. No neighboring ground-image lot yet on either side
+  // (Suburban House, Townhouse are still placeholder blocks).
+  Mansion: {
+    image: mansionLotImage,
+    imageWidth: MANSION_LOT_WIDTH,
+    imageHeight: MANSION_LOT_HEIGHT,
+    groundStripTop: MANSION_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: MANSION_LOT_GROUND_STRIP_HEIGHT,
+    groundFallbackColor: "#1c3005", // no clean full-width grass band — see mansionLot.ts
   },
 };
 
@@ -669,7 +689,7 @@ function drawBuilding(
     // No LOCKED overlay here — the ground photo is the whole lot, not a
     // labeled card, and the purchase gate is already enforced on entry
     // (main.ts) regardless of any on-lot text.
-    drawGroundImageLot(ctx, groundLot, x, w, top, canvasHeight);
+    drawGroundImageLot(ctx, groundLot, x, w, edgeY, canvasHeight, dir);
     return;
   }
 
@@ -855,19 +875,24 @@ function drawSidewalkCrossings(
 /**
  * Ground-image lots (Trailer, Apartment, ...): the photo is a whole small
  * lot, not one building icon, so it's drawn as ground — no border, no name
- * label. South row only (every entry in GROUND_IMAGE_LOTS is dir="down" —
- * SIDEWALK_SOUTH_DEPTH and "extend down to canvasHeight" both assume that).
- * None of this touches the ENTER trigger, which keys off the original
- * edgeY/w the caller (drawBuilding) received — this only moves pixels
- * drawn on top of it.
+ * label. Every photo's own native y=0 is its near-road content (the row of
+ * trailers, the driveway gate, ...), extending away from the road as
+ * native y increases — dir picks which screen direction "away from the
+ * road" is: "down" (south row) grows toward larger screen y, hidden behind
+ * the south sidewalk; "up" (north row) grows toward smaller screen y,
+ * hidden behind the north sidewalk instead, so the whole thing is just
+ * dir="down" mirrored vertically about edgeY. None of this touches the
+ * ENTER trigger, which keys off the original edgeY/w the caller
+ * (drawBuilding) received — this only moves pixels drawn on top of it.
  */
 function drawGroundImageLot(
   ctx: CanvasRenderingContext2D,
   lot: GroundImageLot,
   x: number,
   w: number,
-  top: number,
+  edgeY: number,
   canvasHeight: number,
+  dir: "up" | "down" = "down",
 ) {
   // Extend the drawn rect across half the lot gap on whichever side this
   // lot touches its ground-image neighbor, so there's no gray strip
@@ -883,43 +908,57 @@ function drawGroundImageLot(
     drawWidth += LOT_GAP / 2;
   }
 
-  const roadTop = top - SIDEWALK_SOUTH_DEPTH;
-  const imgDepth = canvasHeight - roadTop;
-
   // Scale by width only — never shrink the buildings in the photo — and
   // draw the whole photo at that size. If the box is shorter than the
-  // photo at that scale, the bottom is clipped (never the sides, since the
-  // photo is scaled to exactly match the lot's width) rather than shrinking
-  // anything; if the box is taller, the leftover depth below the photo is
-  // filled by repeating a building-free ground strip sampled from the
-  // photo itself, instead of a flat-color or blank gap.
+  // photo at that scale, the far edge is clipped (never the sides, since
+  // the photo is scaled to exactly match the lot's width) rather than
+  // shrinking anything; if the box is taller, the leftover depth beyond
+  // the photo is filled by repeating a building-free ground strip sampled
+  // from the photo itself, instead of a flat-color or blank gap.
   const scale = drawWidth / lot.imageWidth;
   const drawH = lot.imageHeight * scale;
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(drawX, roadTop, drawWidth, imgDepth);
-  ctx.clip();
-  ctx.drawImage(lot.image, drawX, roadTop, drawWidth, drawH);
 
-  if (roadTop + drawH < roadTop + imgDepth) {
-    if (lot.groundFallbackColor) {
-      ctx.fillStyle = lot.groundFallbackColor;
-      ctx.fillRect(drawX, roadTop + drawH, drawWidth, imgDepth - drawH);
-    } else {
-      const stripDrawH = lot.groundStripHeight * scale;
-      for (let cursorY = roadTop + drawH; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
-        ctx.drawImage(
-          lot.image,
-          0,
-          lot.groundStripTop,
-          lot.imageWidth,
-          lot.groundStripHeight,
-          drawX,
-          cursorY,
-          drawWidth,
-          stripDrawH,
-        );
+  if (dir === "down") {
+    const roadTop = edgeY - SIDEWALK_SOUTH_DEPTH;
+    const imgDepth = canvasHeight - roadTop;
+    ctx.rect(drawX, roadTop, drawWidth, imgDepth);
+    ctx.clip();
+    ctx.drawImage(lot.image, drawX, roadTop, drawWidth, drawH);
+    if (drawH < imgDepth) {
+      const farStart = roadTop + drawH;
+      if (lot.groundFallbackColor) {
+        ctx.fillStyle = lot.groundFallbackColor;
+        ctx.fillRect(drawX, farStart, drawWidth, imgDepth - drawH);
+      } else {
+        const stripDrawH = lot.groundStripHeight * scale;
+        for (let cursorY = farStart; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
+          ctx.drawImage(lot.image, 0, lot.groundStripTop, lot.imageWidth, lot.groundStripHeight, drawX, cursorY, drawWidth, stripDrawH);
+        }
+      }
+    }
+  } else {
+    // Mirror image of the "down" branch: native y=0 (near-road content)
+    // lands at roadBottom, growing upward (toward smaller screen y, away
+    // from the road) as native y increases, clipped to [0, roadBottom]
+    // instead of [roadTop, canvasHeight].
+    const roadBottom = edgeY + SIDEWALK_NORTH_DEPTH;
+    const imgDepth = roadBottom;
+    ctx.rect(drawX, 0, drawWidth, imgDepth);
+    ctx.clip();
+    ctx.drawImage(lot.image, drawX, roadBottom - drawH, drawWidth, drawH);
+    if (drawH < imgDepth) {
+      const farEnd = roadBottom - drawH; // leftover band from 0 to here, beyond the photo's own far edge
+      if (lot.groundFallbackColor) {
+        ctx.fillStyle = lot.groundFallbackColor;
+        ctx.fillRect(drawX, 0, drawWidth, farEnd);
+      } else {
+        const stripDrawH = lot.groundStripHeight * scale;
+        for (let cursorY = farEnd; cursorY > 0; cursorY -= stripDrawH) {
+          ctx.drawImage(lot.image, 0, lot.groundStripTop, lot.imageWidth, lot.groundStripHeight, drawX, cursorY - stripDrawH, drawWidth, stripDrawH);
+        }
       }
     }
   }
