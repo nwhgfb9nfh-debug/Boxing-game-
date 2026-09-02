@@ -810,8 +810,12 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // right at the sidewalk with no gap, so this needs no extraDepth/reclaim
   // like Penthouse did. Sized to the gate opening itself (~65 of the
   // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
-  // wider posts-and-lamps span either side of it.
-  { worldX: 150, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
+  // wider posts-and-lamps span either side of it. Off-center: the gate
+  // itself sits at native x~215 of the photo, not the photo's own
+  // horizontal center (250) — worldX is shifted left to match (150 - (250
+  // - 215) * lot scale, lot scale here being 286/500 since this lot, unlike
+  // Penthouse, doesn't touchesLeft/Right into a neighboring gap-fill).
+  { worldX: 130, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
