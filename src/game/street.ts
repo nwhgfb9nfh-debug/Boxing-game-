@@ -859,21 +859,18 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
   // Townhouse closed the gap on its other side too).
   { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
-  // Townhouse: four units, four separate front-door paths. Third pass —
-  // the second measured the walkway at a y-band that was slightly above
-  // the true gate line, reading each path's center about 12-15 native px
-  // further left than it actually is; re-measured right at the fence/
-  // gate line itself (y~300-345 of the photo), where the paved strip is
-  // unambiguous: ~28 native px wide, centered at native x ~74/174/
-  // 271/376. At this lot's drawn scale (293/500, touchesLeft into
-  // Suburban House's gap — no touchesRight, it's the last housing slot):
-  // width 28*0.586≈16 (unchanged from the last pass — that part was
-  // already right), worldX = 600 (this lot's own drawn left edge) +
-  // native_x*0.586.
-  { worldX: 643, side: "north", width: 16, ...asphaltCrossingWidth(16, 440), roadOverlap: 10 },
-  { worldX: 702, side: "north", width: 16, ...asphaltCrossingWidth(16, 460), roadOverlap: 10 },
-  { worldX: 759, side: "north", width: 16, ...asphaltCrossingWidth(16, 480), roadOverlap: 10 },
-  { worldX: 820, side: "north", width: 16, ...asphaltCrossingWidth(16, 500), roadOverlap: 10 },
+  // Townhouse: four units, four separate front-door paths. Fourth pass —
+  // measured directly against the game's own render this time (not the
+  // source photo): at matching zoom, the actual rendered walkway is only
+  // ~22px wide next to the crossing's 30px, a real ~1.36x oversize (the
+  // native-photo reading two passes ago was itself about 36% too
+  // generous), and each crossing sat a couple of world units right of
+  // its walkway's true center. Width cut from 16 to 12 (16/1.36) and all
+  // four centers nudged left by ~2 to match.
+  { worldX: 641, side: "north", width: 12, ...asphaltCrossingWidth(12, 440), roadOverlap: 10 },
+  { worldX: 700, side: "north", width: 12, ...asphaltCrossingWidth(12, 460), roadOverlap: 10 },
+  { worldX: 757, side: "north", width: 12, ...asphaltCrossingWidth(12, 480), roadOverlap: 10 },
+  { worldX: 818, side: "north", width: 12, ...asphaltCrossingWidth(12, 500), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
