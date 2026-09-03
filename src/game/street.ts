@@ -859,12 +859,15 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
   // Townhouse closed the gap on its other side too).
   { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
-  // Townhouse: its own photo (a row of four townhouses) arrived close to
-  // square, so it needed almost no cropping — just picked the lamp post
-  // closest to the photo's own center (native x~200) as the crossing
-  // reference, at this lot's drawn scale (293/500, touchesLeft into
-  // Suburban House's gap — no touchesRight, it's the last housing slot).
-  { worldX: 717, side: "north", width: 40, ...asphaltCrossingWidth(40, 460), roadOverlap: 10 },
+  // Townhouse: four units, four separate front-door paths (native x
+  // ~45/158/273/390 of its own photo) — each gets its own narrow
+  // crossing instead of just one for the whole lot, at this lot's drawn
+  // scale (293/500, touchesLeft into Suburban House's gap — no
+  // touchesRight, it's the last housing slot).
+  { worldX: 626, side: "north", width: 25, ...asphaltCrossingWidth(25, 440), roadOverlap: 10 },
+  { worldX: 693, side: "north", width: 25, ...asphaltCrossingWidth(25, 460), roadOverlap: 10 },
+  { worldX: 760, side: "north", width: 25, ...asphaltCrossingWidth(25, 480), roadOverlap: 10 },
+  { worldX: 829, side: "north", width: 25, ...asphaltCrossingWidth(25, 500), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
