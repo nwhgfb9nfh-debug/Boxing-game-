@@ -244,11 +244,11 @@ const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * 
 
 // The pavement was reported too deep visually. Rather than shrinking
 // SIDEWALK_NORTH_DEPTH/SOUTH_DEPTH themselves — every ground-image lot's
-// hidden-zone clip (drawGroundImageLot) and the Penthouse crossing's
-// reclaim boundary are keyed off those exact values to land each
-// building's roofline right at the canvas top — this only narrows the
-// DRAWN band in drawRoadSurface. Ground-image lots keep clipping/
-// anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no building's
+// hidden-zone clip (drawGroundImageLot) and a `reclaim`ing crossing's own
+// boundary (see SidewalkCrossing.reclaim below) are keyed off those exact
+// values to land each building's roofline right at the canvas top — this
+// only narrows the DRAWN band in drawRoadSurface. Ground-image lots keep
+// clipping/anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no building's
 // placement changes at all; narrowing the band just reveals a bit more of
 // each lot's own already-baked-in near-road padding (grass/fence/pavers)
 // in the gap instead of a seam. Sidewalk crossings (driveways/walkways)
@@ -835,33 +835,14 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // line baked into the road texture at the road/sidewalk edge doesn't
   // show through where the road "lies over" the sidewalk here.
   { worldX: 450, width: 30, ...asphaltCrossingWidth(30, 40), roadOverlap: 10 },
-  // Penthouse: paved, not dirt — its own photo's real driveway ended up at
-  // the far end of the building once the image was kept unrotated (pool
-  // deck at top instead — see the "undo rotation" note in penthouseLot.ts
-  // history), so there's nothing of its own to sample here; the literal
-  // road texture instead, matching "a road coming off the big road." Same
-  // one-car width as the Apartment's. Deliberately overshoots into the
-  // deck (extraDepth reaches past native y ~185, the deck's actual leading
-  // edge) so it always touches with no grass gap — see `reclaim` below,
-  // which redraws the deck on top of that overshoot so the crossing never
-  // visibly paints over it either way.
-  {
-    worldX: 750,
-    width: 30,
-    ...asphaltCrossingWidth(30, 200),
-    extraDepth: 70,
-    roadOverlap: 10,
-    reclaim: {
-      groundLot: GROUND_IMAGE_LOTS["Penthouse Apartment"],
-      lotWorldLeft: 600, // Penthouse lot's own world bounds: 750 (center) - 300/2 (HOUSING_LOT_WIDTH) = 600
-      lotDrawWidth: 300, // HOUSING_LOT_WIDTH — touchesLeft/Right both fill the LOT_GAP, so this is the full 300, not 300-LOT_GAP
-      // Re-measured directly against the actual deck edge: the earlier 185
-      // reading only checked for saturated green and stopped a full ~15px
-      // early, at a transitional/shadowed strip that still reads as grass
-      // once rendered — the deck's actual white coping trim starts at 188.
-      nativeY: 188,
-    },
-  },
+  // Penthouse: paved, not dirt — the literal road texture, matching "a
+  // road coming off the big road," same as the Apartment's. New photo's
+  // gate sits centered right at the top of the frame (worldX 750 is
+  // already the lot's own center, no off-center correction needed like
+  // Mansion/Suburban), so — unlike the old photo, whose real driveway sat
+  // deep in the frame and needed an overshoot+reclaim hack to reach it —
+  // this one just needs a plain crossing like Trailer/Apartment's.
+  { worldX: 750, width: 32, ...asphaltCrossingWidth(32, 200), roadOverlap: 10 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
   // road-colored strip right up to this seam — this just continues it
@@ -869,8 +850,8 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   { worldX: FRAME_WIDTH, width: 40, ...asphaltCrossingWidth(40, 300), roadOverlap: 10 },
   // Mansion: north row (side: "north") — its own photo's gate was
   // deliberately trimmed/padded (see mansionLot.ts) to sit fully visible
-  // right at the sidewalk with no gap, so this needs no extraDepth/reclaim
-  // like Penthouse did. Sized to the gate opening itself (~65 of the
+  // right at the sidewalk with no gap, so this needs no extraDepth/reclaim.
+  // Sized to the gate opening itself (~65 of the
   // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
   // wider posts-and-lamps span either side of it. Off-center: the gate
   // itself sits at native x~215 of the photo, not the photo's own
