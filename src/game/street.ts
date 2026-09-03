@@ -448,7 +448,8 @@ export class StreetScene {
   getEntranceScreenPos(lot: LotInstance, width: number, height: number): { x: number; y: number } {
     const camX = Math.max(width / 2, Math.min(WORLD_WIDTH - width / 2, this.worldX));
     const roadY = height / 2;
-    const x = lot.worldX - camX + width / 2;
+    const entranceWorldX = ENTRANCE_WORLD_X_OVERRIDE[lot.building.name] ?? lot.worldX;
+    const x = entranceWorldX - camX + width / 2;
 
     if (lot.building === ARENA) return { x, y: roadY };
 
@@ -882,7 +883,11 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // leaned right within each repeat — see suburbanHouseLot.ts), at this
   // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
   // Townhouse closed the gap on its other side too).
-  { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
+  // extraDepth: measured directly against the game's own render — the
+  // crossing's un-extended reach left an ~8px strip of grass visible
+  // between it and the walkway/gate above, so it's pushed a little deeper
+  // to close that gap without overshooting onto the visible pavers.
+  { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), extraDepth: 9, roadOverlap: 10 },
   // Townhouse: four units, four separate front-door paths. Fourth pass —
   // measured directly against the game's own render this time (not the
   // source photo): at matching zoom, the actual rendered walkway is only
@@ -896,6 +901,17 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   { worldX: 757, side: "north", width: 12, ...asphaltCrossingWidth(12, 480), roadOverlap: 10 },
   { worldX: 818, side: "north", width: 12, ...asphaltCrossingWidth(12, 500), roadOverlap: 10 },
 ];
+
+// Mansion and Suburban House both have an off-center gate (see the
+// crossings above), so their crossing's own worldX already differs from
+// the lot's raw geometric center — but getEntranceScreenPos() was still
+// anchoring the ENTER button to that raw center, leaving it visibly
+// offset from the actual opening. Every other lot's crossing already
+// sits exactly at its lot's center, so only these two need an override.
+const ENTRANCE_WORLD_X_OVERRIDE: Record<string, number> = {
+  Mansion: 133,
+  "Suburban House": 516,
+};
 
 function drawSidewalkCrossings(
   ctx: CanvasRenderingContext2D,
