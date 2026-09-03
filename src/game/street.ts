@@ -835,13 +835,13 @@ function asphaltCrossingWidth(worldWidth: number, srcX: number) {
 }
 
 const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
-  // Trailer: paved asphalt now, not dirt — the literal road texture,
-  // same as Apartment/Penthouse. No extraDepth: the photo's gate was
-  // padded (see trailerLot.ts) to land exactly on this crossing's own
-  // default reach, same "trim the photo to the crossing" approach as
-  // Mansion/Penthouse. worldX 147 (not the lot's own center 150): the
-  // gate sits just left of center in the photo.
-  { worldX: 147, width: 30, ...asphaltCrossingWidth(30, 10), roadOverlap: 10 },
+  // Trailer: paved asphalt — the literal road texture, same as
+  // Apartment/Penthouse. No extraDepth: the photo's gate was padded (see
+  // trailerLot.ts) to land exactly on this crossing's own default reach,
+  // same "trim the photo to the crossing" approach as Mansion/Penthouse.
+  // Gate sits almost exactly centered in the photo, so worldX is just
+  // the lot's own center.
+  { worldX: 150, width: 30, ...asphaltCrossingWidth(30, 10), roadOverlap: 10 },
   // Apartment: paved asphalt, not dirt — the literal road texture, and
   // painted a little into the road itself (roadOverlap) so the seam/curb
   // line baked into the road texture at the road/sidewalk edge doesn't
