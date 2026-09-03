@@ -66,6 +66,13 @@ import {
   SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
   SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/suburbanHouseLot";
+import {
+  TOWNHOUSE_LOT_DATA_URI,
+  TOWNHOUSE_LOT_WIDTH,
+  TOWNHOUSE_LOT_HEIGHT,
+  TOWNHOUSE_LOT_GROUND_STRIP_TOP,
+  TOWNHOUSE_LOT_GROUND_STRIP_HEIGHT,
+} from "../assets/townhouseLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -87,6 +94,8 @@ const mansionLotImage = new Image();
 mansionLotImage.src = MANSION_LOT_DATA_URI;
 const suburbanHouseLotImage = new Image();
 suburbanHouseLotImage.src = SUBURBAN_HOUSE_LOT_DATA_URI;
+const townhouseLotImage = new Image();
+townhouseLotImage.src = TOWNHOUSE_LOT_DATA_URI;
 
 // Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
 // not a single building icon, so it's drawn as ground rather than a
@@ -152,7 +161,16 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripHeight: SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
     groundFallbackColor: "#1c3005", // no clean full-width grass band — see suburbanHouseLot.ts
     touchesLeft: true, // touches the Mansion lot next door, no gap
-    // No touchesRight — Townhouse is still a placeholder block.
+    touchesRight: true, // touches the Townhouse lot next door, no gap
+  },
+  Townhouse: {
+    image: townhouseLotImage,
+    imageWidth: TOWNHOUSE_LOT_WIDTH,
+    imageHeight: TOWNHOUSE_LOT_HEIGHT,
+    groundStripTop: TOWNHOUSE_LOT_GROUND_STRIP_TOP,
+    groundStripHeight: TOWNHOUSE_LOT_GROUND_STRIP_HEIGHT,
+    groundFallbackColor: "#141310", // dark/roofline-toned — see townhouseLot.ts
+    touchesLeft: true, // touches the Suburban House lot next door, no gap
   },
 };
 
@@ -838,8 +856,15 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // Suburban House: same idea — gate sits at native x~360 of its own
   // photo (right of center, mirroring how the source's garage/driveway
   // leaned right within each repeat — see suburbanHouseLot.ts), at this
-  // lot's drawn scale (293/500, touchesLeft into Mansion's gap).
-  { worldX: 511, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
+  // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
+  // Townhouse closed the gap on its other side too).
+  { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
+  // Townhouse: its own photo (a row of four townhouses) arrived close to
+  // square, so it needed almost no cropping — just picked the lamp post
+  // closest to the photo's own center (native x~200) as the crossing
+  // reference, at this lot's drawn scale (293/500, touchesLeft into
+  // Suburban House's gap — no touchesRight, it's the last housing slot).
+  { worldX: 717, side: "north", width: 40, ...asphaltCrossingWidth(40, 460), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
