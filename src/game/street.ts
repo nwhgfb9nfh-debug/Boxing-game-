@@ -251,13 +251,22 @@ const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * 
 // clipping/anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no building's
 // placement changes at all; narrowing the band just reveals a bit more of
 // each lot's own already-baked-in near-road padding (grass/fence/pavers)
-// in the gap instead of a seam. Sidewalk crossings (driveways/walkways)
-// aren't touched either — they're painted after the sidewalk/road bands
-// and already span road-edge to gate on their own, regardless of how deep
-// the sidewalk beneath them is drawn.
+// in the gap instead of a seam.
+//
+// Sidewalk crossings with no extraDepth of their own DO still reach as
+// far as the original (deeper) SIDEWALK_*_DEPTH, though — same reasoning
+// as the ground-image lots above, so a crossing that was already tuned to
+// land exactly on a building doesn't come up short. For a lot with real
+// content right at that boundary (a gate, a path) rather than plain
+// grass, that gap between the now-shallower visible sidewalk and the
+// crossing's unchanged reach means the crossing overshoots into it,
+// painting straight over what should be visible — see
+// SIDEWALK_SOUTH_OVERSHOOT below, subtracted back out via extraDepth on
+// the crossings that need it.
 const SIDEWALK_NARROW_FACTOR = 0.6;
 const SIDEWALK_BAND_SCALE = SIDEWALK_SCALE * SIDEWALK_NARROW_FACTOR;
 const SIDEWALK_BAND_NORTH_DEPTH = SIDEWALK_NORTH_DEPTH * SIDEWALK_NARROW_FACTOR;
+const SIDEWALK_SOUTH_OVERSHOOT = SIDEWALK_SOUTH_DEPTH - SIDEWALK_SOUTH_DEPTH * SIDEWALK_NARROW_FACTOR;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -829,19 +838,26 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // Trailer: its own central gravel lane, sampled from directly below
   // where this crossing sits, continues right up through the sidewalk.
   // Dirt, not asphalt — stops cleanly at the road edge (no roadOverlap).
-  { worldX: 150, width: 30, image: trailerLotImage, srcX: 215, srcY: 40, srcW: 75, srcH: 80 },
+  // extraDepth: -SIDEWALK_SOUTH_OVERSHOOT trims the reach back to the
+  // narrowed sidewalk's own visible edge — see the note above
+  // SIDEWALK_SOUTH_OVERSHOOT — instead of overshooting into the lot.
+  { worldX: 150, width: 30, image: trailerLotImage, srcX: 215, srcY: 40, srcW: 75, srcH: 80, extraDepth: -SIDEWALK_SOUTH_OVERSHOOT },
   // Apartment: paved asphalt, not dirt — the literal road texture, and
   // painted a little into the road itself (roadOverlap) so the seam/curb
   // line baked into the road texture at the road/sidewalk edge doesn't
   // show through where the road "lies over" the sidewalk here.
-  { worldX: 450, width: 30, ...asphaltCrossingWidth(30, 40), roadOverlap: 10 },
+  { worldX: 450, width: 30, ...asphaltCrossingWidth(30, 40), extraDepth: -SIDEWALK_SOUTH_OVERSHOOT, roadOverlap: 10 },
   // Penthouse: paved, not dirt — the literal road texture, matching "a
   // road coming off the big road," same as the Apartment's. New photo's
   // gate sits centered right at the top of the frame (worldX 750 is
   // already the lot's own center, no off-center correction needed like
-  // Mansion/Suburban), so — unlike the old photo, whose real driveway sat
-  // deep in the frame and needed an overshoot+reclaim hack to reach it —
-  // this one just needs a plain crossing like Trailer/Apartment's.
+  // Mansion/Suburban). No extraDepth: unlike Trailer/Apartment (plain
+  // grass/dirt at their near edge, so it doesn't matter exactly where the
+  // crossing stops), this one's photo was deliberately padded (see
+  // penthouseLot.ts) so the crossing's own default, un-adjusted reach
+  // lands right at the gate — same "trim the photo to the crossing"
+  // approach Mansion's gate uses, rather than adjusting the crossing to
+  // match the photo.
   { worldX: 750, width: 32, ...asphaltCrossingWidth(32, 200), roadOverlap: 10 },
   // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
   // Housing / Frame 1 boundary): both lot images already extend a
