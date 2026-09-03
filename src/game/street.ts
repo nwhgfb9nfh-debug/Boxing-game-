@@ -242,6 +242,23 @@ const ROAD_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEX
 const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * SIDEWALK_SCALE;
 const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * SIDEWALK_SCALE;
 
+// The pavement was reported too deep visually. Rather than shrinking
+// SIDEWALK_NORTH_DEPTH/SOUTH_DEPTH themselves — every ground-image lot's
+// hidden-zone clip (drawGroundImageLot) and the Penthouse crossing's
+// reclaim boundary are keyed off those exact values to land each
+// building's roofline right at the canvas top — this only narrows the
+// DRAWN band in drawRoadSurface. Ground-image lots keep clipping/
+// anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no building's
+// placement changes at all; narrowing the band just reveals a bit more of
+// each lot's own already-baked-in near-road padding (grass/fence/pavers)
+// in the gap instead of a seam. Sidewalk crossings (driveways/walkways)
+// aren't touched either — they're painted after the sidewalk/road bands
+// and already span road-edge to gate on their own, regardless of how deep
+// the sidewalk beneath them is drawn.
+const SIDEWALK_NARROW_FACTOR = 0.6;
+const SIDEWALK_BAND_SCALE = SIDEWALK_SCALE * SIDEWALK_NARROW_FACTOR;
+const SIDEWALK_BAND_NORTH_DEPTH = SIDEWALK_NORTH_DEPTH * SIDEWALK_NARROW_FACTOR;
+
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
@@ -634,8 +651,9 @@ function drawRoadSurface(
     toScreenX,
     0,
     ROAD_TEXTURE_ROAD_TOP,
-    roadY - ROAD_HALF_HEIGHT - SIDEWALK_NORTH_DEPTH,
+    roadY - ROAD_HALF_HEIGHT - SIDEWALK_BAND_NORTH_DEPTH,
     SIDEWALK_SCALE,
+    SIDEWALK_BAND_SCALE,
   );
   drawTexturedBand(
     ctx,
@@ -656,6 +674,7 @@ function drawRoadSurface(
     southSidewalkSourceHeight,
     roadY + ROAD_HALF_HEIGHT,
     SIDEWALK_SCALE,
+    SIDEWALK_BAND_SCALE,
   );
 }
 
@@ -671,9 +690,14 @@ function drawTexturedBand(
   sh: number,
   destTop: number,
   scale: number,
+  // Depth (vertical) scale, independent of `scale` (which still controls
+  // the horizontal tile width) — lets the sidewalk band be drawn shallower
+  // without also squeezing its pavement-panel tiling pattern narrower.
+  // Defaults to `scale` so the road band (uniform scale) is unaffected.
+  depthScale: number = scale,
 ) {
   const tileW = ROAD_TEXTURE_WIDTH * scale;
-  const destH = sh * scale;
+  const destH = sh * depthScale;
   const worldLeft = camX - width / 2;
   const firstTileIndex = Math.floor(worldLeft / tileW) - 1;
   for (let i = firstTileIndex; ; i++) {
