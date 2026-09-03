@@ -859,15 +859,19 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
   // Townhouse closed the gap on its other side too).
   { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
-  // Townhouse: four units, four separate front-door paths (native x
-  // ~45/158/273/390 of its own photo) — each gets its own narrow
-  // crossing instead of just one for the whole lot, at this lot's drawn
+  // Townhouse: four units, four separate front-door paths. Re-measured
+  // directly against the paved walkway itself (not the door/steps above
+  // it, which are wider than the path): each is ~27 native px wide,
+  // centered at native x ~59/161/258/365 of the photo — narrower and
+  // shifted from the first pass, which used the door centers and an
+  // arbitrary width instead of the actual walkway. At this lot's drawn
   // scale (293/500, touchesLeft into Suburban House's gap — no
-  // touchesRight, it's the last housing slot).
-  { worldX: 626, side: "north", width: 25, ...asphaltCrossingWidth(25, 440), roadOverlap: 10 },
-  { worldX: 693, side: "north", width: 25, ...asphaltCrossingWidth(25, 460), roadOverlap: 10 },
-  { worldX: 760, side: "north", width: 25, ...asphaltCrossingWidth(25, 480), roadOverlap: 10 },
-  { worldX: 829, side: "north", width: 25, ...asphaltCrossingWidth(25, 500), roadOverlap: 10 },
+  // touchesRight, it's the last housing slot): width 27*0.586≈16,
+  // worldX = 600 (this lot's own drawn left edge) + native_x*0.586.
+  { worldX: 635, side: "north", width: 16, ...asphaltCrossingWidth(16, 440), roadOverlap: 10 },
+  { worldX: 695, side: "north", width: 16, ...asphaltCrossingWidth(16, 460), roadOverlap: 10 },
+  { worldX: 751, side: "north", width: 16, ...asphaltCrossingWidth(16, 480), roadOverlap: 10 },
+  { worldX: 814, side: "north", width: 16, ...asphaltCrossingWidth(16, 500), roadOverlap: 10 },
 ];
 
 function drawSidewalkCrossings(
