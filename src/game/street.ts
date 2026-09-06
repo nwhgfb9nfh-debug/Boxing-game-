@@ -25,27 +25,6 @@ import {
   ROAD_TEXTURE_ROAD_BOTTOM,
 } from "../assets/roadTexture";
 import {
-  TRAILER_LOT_DATA_URI,
-  TRAILER_LOT_WIDTH,
-  TRAILER_LOT_HEIGHT,
-  TRAILER_LOT_GROUND_STRIP_TOP,
-  TRAILER_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/trailerLot";
-import {
-  APARTMENT_LOT_DATA_URI,
-  APARTMENT_LOT_WIDTH,
-  APARTMENT_LOT_HEIGHT,
-  APARTMENT_LOT_GROUND_STRIP_TOP,
-  APARTMENT_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/apartmentLot";
-import {
-  PENTHOUSE_LOT_DATA_URI,
-  PENTHOUSE_LOT_WIDTH,
-  PENTHOUSE_LOT_HEIGHT,
-  PENTHOUSE_LOT_GROUND_STRIP_TOP,
-  PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/penthouseLot";
-import {
   OFFICE_PARK_LOT_DATA_URI,
   OFFICE_PARK_LOT_WIDTH,
   OFFICE_PARK_LOT_HEIGHT,
@@ -66,13 +45,6 @@ import {
   SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
   SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
 } from "../assets/suburbanHouseLot";
-import {
-  TOWNHOUSE_LOT_DATA_URI,
-  TOWNHOUSE_LOT_WIDTH,
-  TOWNHOUSE_LOT_HEIGHT,
-  TOWNHOUSE_LOT_GROUND_STRIP_TOP,
-  TOWNHOUSE_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/townhouseLot";
 
 // Loaded once at module scope — decoding is async, so render() falls back
 // to the old flat-color road/sidewalk (see the `roadImage.complete` check
@@ -82,23 +54,15 @@ roadImage.src = ROAD_TEXTURE_DATA_URI;
 
 // Same async-load pattern as roadImage — drawBuilding() falls back to the
 // old flat-color fill for these ground-image lots until each decodes.
-const trailerLotImage = new Image();
-trailerLotImage.src = TRAILER_LOT_DATA_URI;
-const apartmentLotImage = new Image();
-apartmentLotImage.src = APARTMENT_LOT_DATA_URI;
-const penthouseLotImage = new Image();
-penthouseLotImage.src = PENTHOUSE_LOT_DATA_URI;
 const officeParkLotImage = new Image();
 officeParkLotImage.src = OFFICE_PARK_LOT_DATA_URI;
 const mansionLotImage = new Image();
 mansionLotImage.src = MANSION_LOT_DATA_URI;
 const suburbanHouseLotImage = new Image();
 suburbanHouseLotImage.src = SUBURBAN_HOUSE_LOT_DATA_URI;
-const townhouseLotImage = new Image();
-townhouseLotImage.src = TOWNHOUSE_LOT_DATA_URI;
 
-// Ground-image lots (Trailer, Apartment): the photo is a whole small lot,
-// not a single building icon, so it's drawn as ground rather than a
+// Ground-image lots (Mansion, Suburban House): the photo is a whole small
+// lot, not a single building icon, so it's drawn as ground rather than a
 // labeled/bordered box — see drawGroundImageLot(). Keyed by building name.
 interface GroundImageLot {
   image: HTMLImageElement;
@@ -115,33 +79,10 @@ interface GroundImageLot {
   groundFallbackColor?: string;
 }
 
+// Trailer, Apartment, Penthouse Apartment, and Townhouse are back to
+// plain placeholder boxes (drawBuilding's labeled-card fallback) — only
+// Mansion and Suburban House keep the real-photo ground-image treatment.
 const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
-  Trailer: {
-    image: trailerLotImage,
-    imageWidth: TRAILER_LOT_WIDTH,
-    imageHeight: TRAILER_LOT_HEIGHT,
-    groundStripTop: TRAILER_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: TRAILER_LOT_GROUND_STRIP_HEIGHT,
-    touchesRight: true, // touches the Apartment lot next door, no gap
-  },
-  Apartment: {
-    image: apartmentLotImage,
-    imageWidth: APARTMENT_LOT_WIDTH,
-    imageHeight: APARTMENT_LOT_HEIGHT,
-    groundStripTop: APARTMENT_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: APARTMENT_LOT_GROUND_STRIP_HEIGHT,
-    touchesLeft: true, // touches the Trailer lot next door, no gap
-    touchesRight: true, // touches the Penthouse Apartment lot next door, no gap
-  },
-  "Penthouse Apartment": {
-    image: penthouseLotImage,
-    imageWidth: PENTHOUSE_LOT_WIDTH,
-    imageHeight: PENTHOUSE_LOT_HEIGHT,
-    groundStripTop: PENTHOUSE_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: PENTHOUSE_LOT_GROUND_STRIP_HEIGHT,
-    touchesLeft: true, // touches the Apartment lot next door, no gap
-    touchesRight: true, // touches the Frame 1 filler-group image next door, no gap
-  },
   // North row (top of the housing frame) — drawn with dir="up", see
   // drawGroundImageLot.
   Mansion: {
@@ -161,16 +102,7 @@ const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
     groundStripHeight: SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
     groundFallbackColor: "#1c3005", // no clean full-width grass band — see suburbanHouseLot.ts
     touchesLeft: true, // touches the Mansion lot next door, no gap
-    touchesRight: true, // touches the Townhouse lot next door, no gap
-  },
-  Townhouse: {
-    image: townhouseLotImage,
-    imageWidth: TOWNHOUSE_LOT_WIDTH,
-    imageHeight: TOWNHOUSE_LOT_HEIGHT,
-    groundStripTop: TOWNHOUSE_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: TOWNHOUSE_LOT_GROUND_STRIP_HEIGHT,
-    groundFallbackColor: "#141310", // dark/roofline-toned — see townhouseLot.ts
-    touchesLeft: true, // touches the Suburban House lot next door, no gap
+    // No touchesRight — Townhouse is a placeholder block again.
   },
 };
 
@@ -237,36 +169,23 @@ const ORIGINAL_ROAD_HALF_HEIGHT = 90;
 const SIDEWALK_SCALE =
   (ORIGINAL_ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
 const ROAD_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
-// The Trailer/Apartment ground-image lots key off this to line their edge
-// up with the sidewalk's outer edge — unaffected by the road resize.
+// The Mansion/Suburban House ground-image lots key off this to line their
+// edge up with the sidewalk's outer edge — unaffected by the road resize.
 const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * SIDEWALK_SCALE;
 const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * SIDEWALK_SCALE;
 
 // The pavement was reported too deep visually. Rather than shrinking
 // SIDEWALK_NORTH_DEPTH/SOUTH_DEPTH themselves — every ground-image lot's
-// hidden-zone clip (drawGroundImageLot) and a `reclaim`ing crossing's own
-// boundary (see SidewalkCrossing.reclaim below) are keyed off those exact
-// values to land each building's roofline right at the canvas top — this
-// only narrows the DRAWN band in drawRoadSurface. Ground-image lots keep
-// clipping/anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no building's
-// placement changes at all; narrowing the band just reveals a bit more of
-// each lot's own already-baked-in near-road padding (grass/fence/pavers)
-// in the gap instead of a seam.
-//
-// Sidewalk crossings with no extraDepth of their own DO still reach as
-// far as the original (deeper) SIDEWALK_*_DEPTH, though — same reasoning
-// as the ground-image lots above, so a crossing that was already tuned to
-// land exactly on a building doesn't come up short. For a lot with real
-// content right at that boundary (a gate, a path) rather than plain
-// grass, that gap between the now-shallower visible sidewalk and the
-// crossing's unchanged reach means the crossing overshoots into it,
-// painting straight over what should be visible — see
-// SIDEWALK_SOUTH_OVERSHOOT below, subtracted back out via extraDepth on
-// the crossings that need it.
+// hidden-zone clip (drawGroundImageLot) is keyed off those exact values
+// to land each building's roofline right at the canvas top — this only
+// narrows the DRAWN band in drawRoadSurface. Ground-image lots keep
+// clipping/anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no
+// building's placement changes at all; narrowing the band just reveals a
+// bit more of each lot's own already-baked-in near-road padding (grass/
+// fence/pavers) in the gap instead of a seam.
 const SIDEWALK_NARROW_FACTOR = 0.6;
 const SIDEWALK_BAND_SCALE = SIDEWALK_SCALE * SIDEWALK_NARROW_FACTOR;
 const SIDEWALK_BAND_NORTH_DEPTH = SIDEWALK_NORTH_DEPTH * SIDEWALK_NARROW_FACTOR;
-const SIDEWALK_SOUTH_OVERSHOOT = SIDEWALK_SOUTH_DEPTH - SIDEWALK_SOUTH_DEPTH * SIDEWALK_NARROW_FACTOR;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -488,7 +407,7 @@ export class StreetScene {
     // Generic ground first (the same sidewalk-tone backdrop every frame has
     // always had beyond its buildings), then the building lots on top of
     // that, then the sidewalk/road texture last of all, so nothing in the
-    // lot layer — e.g. the Trailer's ground-texture lot reaching for the
+    // lot layer — e.g. the Mansion's ground-texture lot reaching for the
     // sidewalk's edge — can ever paint over the sidewalk or road.
     ctx.fillStyle = SIDEWALK_FALLBACK_COLOR;
     ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
@@ -797,23 +716,7 @@ interface SidewalkCrossing {
   extraDepth?: number; // extends past the sidewalk's outer edge, into the lot, toward the building
   roadOverlap?: number; // starts this many px inside the road's own edge, painting over the
   // road/sidewalk curb line baked into the road texture so the crossing reads as one
-  // continuous surface instead of stopping at (and exposing) that seam. Road-textured
-  // crossings only — a crossing using its own lot's dirt/gravel texture (Trailer) must
-  // still stop cleanly at the road's edge instead of bleeding onto the asphalt.
-  reclaim?: {
-    // A crossing reaching for a building can't know its exact edge to the
-    // pixel — so instead of trying to land extraDepth exactly on it (any
-    // error either paints over the building or leaves a grass gap), this
-    // lets the crossing overshoot on purpose, then the building's own
-    // ground image is redrawn on top wherever it's actually there,
-    // reclaiming any overshoot. The crossing itself is untouched above
-    // that line, so it still visibly reaches the building either way.
-    groundLot: GroundImageLot; // the building's own ground photo
-    lotWorldLeft: number; // world-x of that lot's own drawn left edge (post touchesLeft gap-fill)
-    lotDrawWidth: number; // that lot's own drawn width (post touchesLeft/Right gap-fill)
-    nativeY: number; // source-image y (in groundLot's own pixels) where the building's edge is —
-    // the crossing is left alone above this line, reclaimed by the building at and below it
-  };
+  // continuous surface instead of stopping at (and exposing) that seam.
 }
 
 // Every lot still stops at the sidewalk like normal (drawn after every lot,
@@ -834,39 +737,16 @@ function asphaltCrossingWidth(worldWidth: number, srcX: number) {
   return { image: roadImage, srcX, srcY: CROSSING_ASPHALT_SRC_Y, srcW: Math.round(worldWidth / ROAD_SCALE), srcH: CROSSING_ASPHALT_SRC_H };
 }
 
+// Trailer, Apartment, and Penthouse Apartment are plain placeholder
+// boxes again (see GROUND_IMAGE_LOTS above) — no ground photo for a
+// crossing to connect to, so their driveway crossings (and the seam
+// crossing bridging Penthouse Apartment's photo into the Frame 1 filler
+// image next door) are gone too. Only Mansion and Suburban House, whose
+// north-row gates still need a paved path through the sidewalk, remain.
 const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
-  // Trailer: paved asphalt — the literal road texture, same as
-  // Apartment/Penthouse. No extraDepth: the photo's gate was padded (see
-  // trailerLot.ts) to land exactly on this crossing's own default reach,
-  // same "trim the photo to the crossing" approach as Mansion/Penthouse.
-  // Gate sits almost exactly centered in the photo, so worldX is just
-  // the lot's own center.
-  { worldX: 150, width: 30, ...asphaltCrossingWidth(30, 10), roadOverlap: 10 },
-  // Apartment: paved asphalt, not dirt — the literal road texture, and
-  // painted a little into the road itself (roadOverlap) so the seam/curb
-  // line baked into the road texture at the road/sidewalk edge doesn't
-  // show through where the road "lies over" the sidewalk here.
-  { worldX: 450, width: 30, ...asphaltCrossingWidth(30, 40), extraDepth: -SIDEWALK_SOUTH_OVERSHOOT, roadOverlap: 10 },
-  // Penthouse: paved, not dirt — the literal road texture, matching "a
-  // road coming off the big road," same as the Apartment's. New photo's
-  // gate sits centered right at the top of the frame (worldX 750 is
-  // already the lot's own center, no off-center correction needed like
-  // Mansion/Suburban). No extraDepth: unlike Trailer/Apartment (plain
-  // grass/dirt at their near edge, so it doesn't matter exactly where the
-  // crossing stops), this one's photo was deliberately padded (see
-  // penthouseLot.ts) so the crossing's own default, un-adjusted reach
-  // lands right at the gate — same "trim the photo to the crossing"
-  // approach Mansion's gate uses, rather than adjusting the crossing to
-  // match the photo.
-  { worldX: 750, width: 32, ...asphaltCrossingWidth(32, 200), roadOverlap: 10 },
-  // The Penthouse Apartment / office-park seam (world x = FRAME_WIDTH, the
-  // Housing / Frame 1 boundary): both lot images already extend a
-  // road-colored strip right up to this seam — this just continues it
-  // through the sidewalk to the road's edge.
-  { worldX: FRAME_WIDTH, width: 40, ...asphaltCrossingWidth(40, 300), roadOverlap: 10 },
   // Mansion: north row (side: "north") — its own photo's gate was
   // deliberately trimmed/padded (see mansionLot.ts) to sit fully visible
-  // right at the sidewalk with no gap, so this needs no extraDepth/reclaim.
+  // right at the sidewalk with no gap, so this needs no extraDepth.
   // Sized to the gate opening itself (~65 of the
   // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
   // wider posts-and-lamps span either side of it. Off-center: the gate
@@ -878,25 +758,9 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
   // Suburban House: same idea — gate sits at native x~360 of its own
   // photo (right of center, mirroring how the source's garage/driveway
   // leaned right within each repeat — see suburbanHouseLot.ts), at this
-  // lot's drawn scale (300/500, now touchesLeft AND touchesRight since
-  // Townhouse closed the gap on its other side too).
-  // extraDepth: measured directly against the game's own render — the
-  // crossing's un-extended reach left an ~8px strip of grass visible
-  // between it and the walkway/gate above, so it's pushed a little deeper
-  // to close that gap without overshooting onto the visible pavers.
-  { worldX: 516, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), extraDepth: 9, roadOverlap: 10 },
-  // Townhouse: four units, four separate front-door paths. Fourth pass —
-  // measured directly against the game's own render this time (not the
-  // source photo): at matching zoom, the actual rendered walkway is only
-  // ~22px wide next to the crossing's 30px, a real ~1.36x oversize (the
-  // native-photo reading two passes ago was itself about 36% too
-  // generous), and each crossing sat a couple of world units right of
-  // its walkway's true center. Width cut from 16 to 12 (16/1.36) and all
-  // four centers nudged left by ~2 to match.
-  { worldX: 641, side: "north", width: 12, ...asphaltCrossingWidth(12, 440), roadOverlap: 10 },
-  { worldX: 700, side: "north", width: 12, ...asphaltCrossingWidth(12, 460), roadOverlap: 10 },
-  { worldX: 757, side: "north", width: 12, ...asphaltCrossingWidth(12, 480), roadOverlap: 10 },
-  { worldX: 818, side: "north", width: 12, ...asphaltCrossingWidth(12, 500), roadOverlap: 10 },
+  // lot's drawn scale (293/500, touchesLeft into Mansion's gap-fill —
+  // Townhouse is a placeholder block again, so no touchesRight).
+  { worldX: 511, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
 ];
 
 // Mansion and Suburban House both have an off-center gate (see the
@@ -907,7 +771,7 @@ const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
 // sits exactly at its lot's center, so only these two need an override.
 const ENTRANCE_WORLD_X_OVERRIDE: Record<string, number> = {
   Mansion: 133,
-  "Suburban House": 516,
+  "Suburban House": 511,
 };
 
 function drawSidewalkCrossings(
@@ -955,49 +819,21 @@ function drawSidewalkCrossings(
       ctx.drawImage(crossing.image, crossing.srcX, crossing.srcY, crossing.srcW, crossing.srcH, drawX, Math.min(y0, y1), crossing.width, tileH);
     }
     ctx.restore();
-
-    if (crossing.reclaim) {
-      // South-row geometry only so far — no north-row crossing has needed
-      // this yet (see the Mansion crossing above, whose photo was instead
-      // pre-trimmed/padded to land exactly on the sidewalk with nothing to
-      // reclaim). Extend this branch for dir when one does.
-      const { groundLot, lotWorldLeft, lotDrawWidth, nativeY } = crossing.reclaim;
-      if (groundLot.image.complete && groundLot.image.naturalWidth > 0) {
-        // Reproduces drawGroundImageLot's own roadTop for this same lot —
-        // NOT nearY itself (a bottom-row lot's `top` is bottomEdgeY =
-        // roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN, so its roadTop =
-        // bottomEdgeY - SIDEWALK_SOUTH_DEPTH = nearY + BUILDING_MARGIN -
-        // SIDEWALK_SOUTH_DEPTH; treating it as plain nearY was a bug that
-        // placed the reclaim ~23px too deep, letting the crossing paint
-        // over the building right at the boundary before being reclaimed).
-        const scale = lotDrawWidth / groundLot.imageWidth;
-        const roadTop = nearY + BUILDING_MARGIN - SIDEWALK_SOUTH_DEPTH;
-        const clipY = roadTop + nativeY * scale;
-        if (clipY < rectBottom) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(drawX, clipY, crossing.width, rectBottom - clipY);
-          ctx.clip();
-          ctx.drawImage(groundLot.image, toScreenX(lotWorldLeft), roadTop, lotDrawWidth, groundLot.imageHeight * scale);
-          ctx.restore();
-        }
-      }
-    }
   }
 }
 
 /**
- * Ground-image lots (Trailer, Apartment, ...): the photo is a whole small
- * lot, not one building icon, so it's drawn as ground — no border, no name
- * label. Every photo's own native y=0 is its near-road content (the row of
- * trailers, the driveway gate, ...), extending away from the road as
- * native y increases — dir picks which screen direction "away from the
- * road" is: "down" (south row) grows toward larger screen y, hidden behind
- * the south sidewalk; "up" (north row) grows toward smaller screen y,
- * hidden behind the north sidewalk instead, so the whole thing is just
- * dir="down" mirrored vertically about edgeY. None of this touches the
- * ENTER trigger, which keys off the original edgeY/w the caller
- * (drawBuilding) received — this only moves pixels drawn on top of it.
+ * Ground-image lots (Mansion, Suburban House, ...): the photo is a whole
+ * small lot, not one building icon, so it's drawn as ground — no border, no
+ * name label. Every photo's own native y=0 is its near-road content (the
+ * gate, the driveway, ...), extending away from the road as native y
+ * increases — dir picks which screen direction "away from the road" is:
+ * "down" (south row) grows toward larger screen y, hidden behind the south
+ * sidewalk; "up" (north row) grows toward smaller screen y, hidden behind
+ * the north sidewalk instead, so the whole thing is just dir="down"
+ * mirrored vertically about edgeY. None of this touches the ENTER trigger,
+ * which keys off the original edgeY/w the caller (drawBuilding) received —
+ * this only moves pixels drawn on top of it.
  */
 function drawGroundImageLot(
   ctx: CanvasRenderingContext2D,
