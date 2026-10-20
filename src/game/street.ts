@@ -17,122 +17,6 @@ import {
   type LotInstance,
 } from "./world";
 import type { DriveControls } from "../ui/controls";
-import {
-  ROAD_TEXTURE_DATA_URI,
-  ROAD_TEXTURE_WIDTH,
-  ROAD_TEXTURE_HEIGHT,
-  ROAD_TEXTURE_ROAD_TOP,
-  ROAD_TEXTURE_ROAD_BOTTOM,
-} from "../assets/roadTexture";
-import {
-  OFFICE_PARK_LOT_DATA_URI,
-  OFFICE_PARK_LOT_WIDTH,
-  OFFICE_PARK_LOT_HEIGHT,
-  OFFICE_PARK_LOT_GROUND_STRIP_TOP,
-  OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/officeParkLot";
-import {
-  MANSION_LOT_DATA_URI,
-  MANSION_LOT_WIDTH,
-  MANSION_LOT_HEIGHT,
-  MANSION_LOT_GROUND_STRIP_TOP,
-  MANSION_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/mansionLot";
-import {
-  SUBURBAN_HOUSE_LOT_DATA_URI,
-  SUBURBAN_HOUSE_LOT_WIDTH,
-  SUBURBAN_HOUSE_LOT_HEIGHT,
-  SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
-  SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
-} from "../assets/suburbanHouseLot";
-
-// Loaded once at module scope — decoding is async, so render() falls back
-// to the old flat-color road/sidewalk (see the `roadImage.complete` check
-// below) until it's ready, rather than risk a blank frame.
-const roadImage = new Image();
-roadImage.src = ROAD_TEXTURE_DATA_URI;
-
-// Same async-load pattern as roadImage — drawBuilding() falls back to the
-// old flat-color fill for these ground-image lots until each decodes.
-const officeParkLotImage = new Image();
-officeParkLotImage.src = OFFICE_PARK_LOT_DATA_URI;
-const mansionLotImage = new Image();
-mansionLotImage.src = MANSION_LOT_DATA_URI;
-const suburbanHouseLotImage = new Image();
-suburbanHouseLotImage.src = SUBURBAN_HOUSE_LOT_DATA_URI;
-
-// Ground-image lots (Mansion, Suburban House): the photo is a whole small
-// lot, not a single building icon, so it's drawn as ground rather than a
-// labeled/bordered box — see drawGroundImageLot(). Keyed by building name.
-interface GroundImageLot {
-  image: HTMLImageElement;
-  imageWidth: number;
-  imageHeight: number;
-  groundStripTop: number;
-  groundStripHeight: number;
-  touchesRight?: boolean; // extends its drawn rect across the lot gap on its east side
-  touchesLeft?: boolean; // extends its drawn rect across the lot gap on its west side
-  // Some photos (e.g. a busy streetscape) have no plain, object-free strip
-  // to repeat-tile — repeating one with benches/lampposts in it visibly
-  // duplicates them. When set, leftover depth below the photo is filled
-  // with this flat color instead of tiling groundStripTop/Height.
-  groundFallbackColor?: string;
-}
-
-// Trailer, Apartment, Penthouse Apartment, and Townhouse are back to
-// plain placeholder boxes (drawBuilding's labeled-card fallback) — only
-// Mansion and Suburban House keep the real-photo ground-image treatment.
-const GROUND_IMAGE_LOTS: Record<string, GroundImageLot> = {
-  // North row (top of the housing frame) — drawn with dir="up", see
-  // drawGroundImageLot.
-  Mansion: {
-    image: mansionLotImage,
-    imageWidth: MANSION_LOT_WIDTH,
-    imageHeight: MANSION_LOT_HEIGHT,
-    groundStripTop: MANSION_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: MANSION_LOT_GROUND_STRIP_HEIGHT,
-    groundFallbackColor: "#1c3005", // no clean full-width grass band — see mansionLot.ts
-    touchesRight: true, // touches the Suburban House lot next door, no gap
-  },
-  "Suburban House": {
-    image: suburbanHouseLotImage,
-    imageWidth: SUBURBAN_HOUSE_LOT_WIDTH,
-    imageHeight: SUBURBAN_HOUSE_LOT_HEIGHT,
-    groundStripTop: SUBURBAN_HOUSE_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: SUBURBAN_HOUSE_LOT_GROUND_STRIP_HEIGHT,
-    groundFallbackColor: "#1c3005", // no clean full-width grass band — see suburbanHouseLot.ts
-    touchesLeft: true, // touches the Mansion lot next door, no gap
-    // No touchesRight — Townhouse is a placeholder block again.
-  },
-};
-
-// Decorative filler lots (the "filler, filler, MAIN, filler, filler" slots
-// flanking each standard frame's required/flavor building) aren't
-// BuildingDef entries — no name, no ENTER trigger — so they can't key into
-// GROUND_IMAGE_LOTS by name. This is the same idea (a photo drawn as
-// ground, via drawGroundImageLot) but one image can span several
-// consecutive filler slots at once (lotCount), keyed by exactly which
-// slots: `${frame.index}:${row}:${startLotIndex}`. See the standard-frame
-// branch in render().
-interface FillerGroupImage extends GroundImageLot {
-  lotCount: number;
-}
-
-const FILLER_GROUP_IMAGES: Record<string, FillerGroupImage> = {
-  // Frame 1 (Office/Mall), bottom (required/south) row, the two filler
-  // slots between the Housing frame's Penthouse Apartment and Office.
-  "1:bottom:0": {
-    image: officeParkLotImage,
-    imageWidth: OFFICE_PARK_LOT_WIDTH,
-    imageHeight: OFFICE_PARK_LOT_HEIGHT,
-    groundStripTop: OFFICE_PARK_LOT_GROUND_STRIP_TOP,
-    groundStripHeight: OFFICE_PARK_LOT_GROUND_STRIP_HEIGHT,
-    groundFallbackColor: "#978573", // no plain strip to tile in this scene — see officeParkLot.ts
-    lotCount: 2,
-    touchesLeft: true, // touches Penthouse Apartment (previous frame), no gap
-  },
-};
-
 const MAX_SPEED = 420; // world px/sec, before any Speed Boost multiplier
 const ACCEL = 900; // px/sec^2 while gas or reverse held
 const DECEL = 1400; // px/sec^2 while released
@@ -159,33 +43,6 @@ const UTURN_DURATION = 0.8; // seconds for a real turn-around, not an instant fl
 const BUILDING_DEPTH = 140;
 const BUILDING_MARGIN = 24;
 const LOT_GAP = 14; // gap between neighboring lots so buildings read as separate
-
-// The sidewalk band's scale is pinned to the depth it has always rendered
-// at (as if ROAD_HALF_HEIGHT were still its original 90) — decoupled from
-// the current ROAD_HALF_HEIGHT so shrinking the road doesn't also shrink
-// the sidewalk. See drawRoadSurface(), which draws the sidewalk and road
-// bands as separate, independently-scaled strips of the same photo.
-const ORIGINAL_ROAD_HALF_HEIGHT = 90;
-const SIDEWALK_SCALE =
-  (ORIGINAL_ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
-const ROAD_SCALE = (ROAD_HALF_HEIGHT * 2) / (ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP);
-// The Mansion/Suburban House ground-image lots key off this to line their
-// edge up with the sidewalk's outer edge — unaffected by the road resize.
-const SIDEWALK_NORTH_DEPTH = ROAD_TEXTURE_ROAD_TOP * SIDEWALK_SCALE;
-const SIDEWALK_SOUTH_DEPTH = (ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM) * SIDEWALK_SCALE;
-
-// The pavement was reported too deep visually. Rather than shrinking
-// SIDEWALK_NORTH_DEPTH/SOUTH_DEPTH themselves — every ground-image lot's
-// hidden-zone clip (drawGroundImageLot) is keyed off those exact values
-// to land each building's roofline right at the canvas top — this only
-// narrows the DRAWN band in drawRoadSurface. Ground-image lots keep
-// clipping/anchoring to the original (deeper) SIDEWALK_*_DEPTH, so no
-// building's placement changes at all; narrowing the band just reveals a
-// bit more of each lot's own already-baked-in near-road padding (grass/
-// fence/pavers) in the gap instead of a seam.
-const SIDEWALK_NARROW_FACTOR = 0.6;
-const SIDEWALK_BAND_SCALE = SIDEWALK_SCALE * SIDEWALK_NARROW_FACTOR;
-const SIDEWALK_BAND_NORTH_DEPTH = SIDEWALK_NORTH_DEPTH * SIDEWALK_NARROW_FACTOR;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -376,8 +233,7 @@ export class StreetScene {
   getEntranceScreenPos(lot: LotInstance, width: number, height: number): { x: number; y: number } {
     const camX = Math.max(width / 2, Math.min(WORLD_WIDTH - width / 2, this.worldX));
     const roadY = height / 2;
-    const entranceWorldX = ENTRANCE_WORLD_X_OVERRIDE[lot.building.name] ?? lot.worldX;
-    const x = entranceWorldX - camX + width / 2;
+    const x = lot.worldX - camX + width / 2;
 
     if (lot.building === ARENA) return { x, y: roadY };
 
@@ -403,15 +259,7 @@ export class StreetScene {
     const topEdgeY = roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN; // flavor row (north)
     const bottomEdgeY = roadY + ROAD_HALF_HEIGHT + BUILDING_MARGIN; // required row (south)
 
-    // Layer order: ground → building lots → sidewalk → road → player/UI.
-    // Generic ground first (the same sidewalk-tone backdrop every frame has
-    // always had beyond its buildings), then the building lots on top of
-    // that, then the sidewalk/road texture last of all, so nothing in the
-    // lot layer — e.g. the Mansion's ground-texture lot reaching for the
-    // sidewalk's edge — can ever paint over the sidewalk or road.
-    ctx.fillStyle = SIDEWALK_FALLBACK_COLOR;
-    ctx.fillRect(0, 0, width, roadY - ROAD_HALF_HEIGHT);
-    ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, height - (roadY + ROAD_HALF_HEIGHT));
+    // Layer order: building lots → sidewalk → road → player/UI.
     for (const frame of FRAMES) {
       const frameLeftWorld = frame.index * FRAME_WIDTH;
 
@@ -422,7 +270,7 @@ export class StreetScene {
           if (sx < -HOUSING_LOT_WIDTH || sx > width + HOUSING_LOT_WIDTH) continue;
 
           const lotW = HOUSING_LOT_WIDTH - LOT_GAP;
-          drawBuilding(ctx, frame.top[lot], sx, topEdgeY, lotW, BUILDING_DEPTH, "up", height);
+          drawBuilding(ctx, frame.top[lot], sx, topEdgeY, lotW, BUILDING_DEPTH, "up");
           drawBuilding(
             ctx,
             frame.bottom[lot],
@@ -431,48 +279,27 @@ export class StreetScene {
             lotW,
             BUILDING_DEPTH,
             "down",
-            height,
             lot === 0, // bottom-left: Trailer, the start location
           );
         }
       } else {
-        // skipBottomUntil tracks lot indices already drawn as part of a
-        // multi-slot filler-group image (see FILLER_GROUP_IMAGES), so
-        // they're not also drawn as individual random-colored fillers.
-        let skipBottomUntil = -1;
         for (let lot = 0; lot < LOTS_PER_ROW; lot++) {
           const lotCenterWorld = frameLeftWorld + (lot + 0.5) * LOT_WIDTH;
           const sx = toScreenX(lotCenterWorld);
           const lotW = LOT_WIDTH - LOT_GAP;
           const isMain = lot === MAIN_LOT_INDEX;
-          const onScreen = sx >= -LOT_WIDTH && sx <= width + LOT_WIDTH;
+          if (sx < -LOT_WIDTH || sx > width + LOT_WIDTH) continue;
 
-          if (onScreen) {
-            drawLot(ctx, isMain ? frame.flavor : null, sx, topEdgeY, lotW, "up", height, seedFor(frame.index, 0, lot));
-          }
-
-          if (lot <= skipBottomUntil) continue;
-          const group = FILLER_GROUP_IMAGES[`${frame.index}:bottom:${lot}`];
-          if (group) {
-            const groupLeftWorld = frameLeftWorld + lot * LOT_WIDTH + LOT_GAP / 2;
-            const groupWidth = group.lotCount * LOT_WIDTH - LOT_GAP;
-            const groupSx = toScreenX(groupLeftWorld + groupWidth / 2);
-            if (groupSx >= -groupWidth && groupSx <= width + groupWidth) {
-              drawGroundImageLot(ctx, group, groupSx - groupWidth / 2, groupWidth, bottomEdgeY, height);
-            }
-            skipBottomUntil = lot + group.lotCount - 1;
-          } else if (onScreen) {
-            drawLot(
-              ctx,
-              isMain ? frame.required : null,
-              sx,
-              bottomEdgeY,
-              lotW,
-              "down",
-              height,
-              seedFor(frame.index, 1, lot),
-            );
-          }
+          drawLot(ctx, isMain ? frame.flavor : null, sx, topEdgeY, lotW, "up", seedFor(frame.index, 0, lot));
+          drawLot(
+            ctx,
+            isMain ? frame.required : null,
+            sx,
+            bottomEdgeY,
+            lotW,
+            "down",
+            seedFor(frame.index, 1, lot),
+          );
         }
       }
 
@@ -485,16 +312,9 @@ export class StreetScene {
       ctx.stroke();
     }
 
-    // Road + flanking sidewalk strip — real texture (see roadTexture.ts),
-    // tiled left-to-right; see drawRoadSurface for the fallback while it
-    // loads and the scale-to-ROAD_HALF_HEIGHT math. Drawn after every lot
-    // above so it always sits on top of them (see the layer-order note).
-    drawRoadSurface(ctx, width, roadY, camX, toScreenX);
-
-    // Driveway crossings (see SIDEWALK_CROSSINGS): short strips crossing
-    // the sidewalk, on top of it, connecting specific lots to the road
-    // instead of stopping dead at the lot boundary like every lot's edge.
-    drawSidewalkCrossings(ctx, width, roadY, toScreenX);
+    // Road + flanking sidewalk strips, drawn after every lot above so they
+    // always sit on top of them.
+    drawRoadSurface(ctx, width, roadY);
 
     // Arena terminus: parking lots flanking the road, then the arena
     // facade spanning the full width of the road at the literal dead end.
@@ -528,112 +348,26 @@ function hash01(n: number): number {
 
 const FILLER_COLORS = ["#4a4f5c", "#3f4a52", "#4f4640", "#454050", "#3d4a3f"];
 
-// Blended from the road texture's own sidewalk tone (see roadTexture.ts) —
-// the generic ground fill painted before every lot layer in render() (grass
-// then overwrites the Housing frame's own strip of it), and also what
-// backs the real sidewalk texture if it hasn't decoded yet.
-const SIDEWALK_FALLBACK_COLOR = "#8c8b8a";
+const SIDEWALK_COLOR = "#8c8b8a";
+const ROAD_COLOR = "#3a3f4b";
 
-/**
- * Draws the road + flanking sidewalk strip using the real texture (see
- * assets/roadTexture.ts). The sidewalk and road bands are cropped from the
- * source photo and drawn as two independently-scaled strips (SIDEWALK_SCALE
- * vs ROAD_SCALE) rather than one uniform scale for the whole image, so the
- * road can be resized (ROAD_HALF_HEIGHT) without also resizing the
- * sidewalk. Falls back to the original flat-color road/dashes if the image
- * hasn't finished decoding yet (module load is async).
- */
-function drawRoadSurface(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  roadY: number,
-  camX: number,
-  toScreenX: (wx: number) => number,
-) {
-  // The sidewalk-tone ground fill (SIDEWALK_FALLBACK_COLOR) is already
-  // painted for the full canvas in render(), before the building-lot
-  // layer — this function only has to add the sidewalk + road bands on
-  // top of that.
-  if (!roadImage.complete || roadImage.naturalWidth === 0) {
-    // Not decoded yet — keep the original flat road + dashed centerline
-    // instead of a gap while roadImage finishes loading.
-    ctx.fillStyle = "#3a3f4b";
-    ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT, width, ROAD_HALF_HEIGHT * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = 4;
-    ctx.setLineDash([28, 22]);
-    ctx.beginPath();
-    ctx.moveTo(0, roadY);
-    ctx.lineTo(width, roadY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    return;
-  }
+// Flat road with a dashed centerline, flanked by a plain sidewalk band
+// filling the BUILDING_MARGIN gap between the road and each row of lots.
+function drawRoadSurface(ctx: CanvasRenderingContext2D, width: number, roadY: number) {
+  ctx.fillStyle = SIDEWALK_COLOR;
+  ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT - BUILDING_MARGIN, width, BUILDING_MARGIN);
+  ctx.fillRect(0, roadY + ROAD_HALF_HEIGHT, width, BUILDING_MARGIN);
 
-  const roadBandSourceHeight = ROAD_TEXTURE_ROAD_BOTTOM - ROAD_TEXTURE_ROAD_TOP;
-  const southSidewalkSourceHeight = ROAD_TEXTURE_HEIGHT - ROAD_TEXTURE_ROAD_BOTTOM;
-
-  drawTexturedBand(
-    ctx,
-    width,
-    camX,
-    toScreenX,
-    0,
-    ROAD_TEXTURE_ROAD_TOP,
-    roadY - ROAD_HALF_HEIGHT - SIDEWALK_BAND_NORTH_DEPTH,
-    SIDEWALK_SCALE,
-    SIDEWALK_BAND_SCALE,
-  );
-  drawTexturedBand(
-    ctx,
-    width,
-    camX,
-    toScreenX,
-    ROAD_TEXTURE_ROAD_TOP,
-    roadBandSourceHeight,
-    roadY - ROAD_HALF_HEIGHT,
-    ROAD_SCALE,
-  );
-  drawTexturedBand(
-    ctx,
-    width,
-    camX,
-    toScreenX,
-    ROAD_TEXTURE_ROAD_BOTTOM,
-    southSidewalkSourceHeight,
-    roadY + ROAD_HALF_HEIGHT,
-    SIDEWALK_SCALE,
-    SIDEWALK_BAND_SCALE,
-  );
-}
-
-// Tiles one horizontal slice of the road texture (source rows [sy, sy+sh))
-// left-to-right, world-locked (like the buildings) so it scrolls with the
-// world instead of sitting screen-fixed, at its own independent scale.
-function drawTexturedBand(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  camX: number,
-  toScreenX: (wx: number) => number,
-  sy: number,
-  sh: number,
-  destTop: number,
-  scale: number,
-  // Depth (vertical) scale, independent of `scale` (which still controls
-  // the horizontal tile width) — lets the sidewalk band be drawn shallower
-  // without also squeezing its pavement-panel tiling pattern narrower.
-  // Defaults to `scale` so the road band (uniform scale) is unaffected.
-  depthScale: number = scale,
-) {
-  const tileW = ROAD_TEXTURE_WIDTH * scale;
-  const destH = sh * depthScale;
-  const worldLeft = camX - width / 2;
-  const firstTileIndex = Math.floor(worldLeft / tileW) - 1;
-  for (let i = firstTileIndex; ; i++) {
-    const screenX = toScreenX(i * tileW);
-    if (screenX > width) break;
-    ctx.drawImage(roadImage, 0, sy, ROAD_TEXTURE_WIDTH, sh, screenX, destTop, tileW, destH);
-  }
+  ctx.fillStyle = ROAD_COLOR;
+  ctx.fillRect(0, roadY - ROAD_HALF_HEIGHT, width, ROAD_HALF_HEIGHT * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([28, 22]);
+  ctx.beginPath();
+  ctx.moveTo(0, roadY);
+  ctx.lineTo(width, roadY);
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawLot(
@@ -643,7 +377,6 @@ function drawLot(
   edgeY: number,
   w: number,
   dir: "up" | "down",
-  canvasHeight: number,
   seed: number,
   isStart = false,
 ) {
@@ -652,7 +385,7 @@ function drawLot(
     return;
   }
   if (building) {
-    drawBuilding(ctx, building, centerX, edgeY, w, BUILDING_DEPTH, dir, canvasHeight, isStart);
+    drawBuilding(ctx, building, centerX, edgeY, w, BUILDING_DEPTH, dir, isStart);
     return;
   }
   drawFillerBuilding(ctx, centerX, edgeY, w, dir, seed);
@@ -666,22 +399,10 @@ function drawBuilding(
   w: number,
   depth: number,
   dir: "up" | "down",
-  canvasHeight: number,
   isStart = false,
 ) {
   const top = dir === "up" ? edgeY - depth : edgeY;
   const x = centerX - w / 2;
-
-  const groundLot = GROUND_IMAGE_LOTS[building.name];
-  const useGroundImage = !!groundLot && groundLot.image.complete && groundLot.image.naturalWidth > 0;
-
-  if (useGroundImage) {
-    // No LOCKED overlay here — the ground photo is the whole lot, not a
-    // labeled card, and the purchase gate is already enforced on entry
-    // (main.ts) regardless of any on-lot text.
-    drawGroundImageLot(ctx, groundLot, x, w, edgeY, canvasHeight, dir);
-    return;
-  }
 
   ctx.fillStyle = building.locked ? "#3d3d3d" : isStart ? "#4a6fa5" : "#5a4a7a";
   ctx.fillRect(x, top, w, depth);
@@ -700,219 +421,6 @@ function drawBuilding(
     ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.fillText("LOCKED", centerX, top + depth / 2 + 34);
   }
-}
-
-interface SidewalkCrossing {
-  worldX: number; // where this crossing is centered — same world-x as the lot's ENTER trigger
-  side?: "south" | "north"; // which sidewalk this crosses — south (default) for a bottom-row
-  // lot, north for a top-row one. Mirrors everything about the road's own edge on that side:
-  // "away from the road" is increasing screen y for south, decreasing for north.
-  width: number; // screen/world px
-  image: HTMLImageElement;
-  srcX: number;
-  srcY: number;
-  srcW: number;
-  srcH: number;
-  extraDepth?: number; // extends past the sidewalk's outer edge, into the lot, toward the building
-  roadOverlap?: number; // starts this many px inside the road's own edge, painting over the
-  // road/sidewalk curb line baked into the road texture so the crossing reads as one
-  // continuous surface instead of stopping at (and exposing) that seam.
-}
-
-// Every lot still stops at the sidewalk like normal (drawn after every lot,
-// on top of them all — see render()'s layer-order note), but real
-// driveways don't: at each of these world-x positions (all ENTER-trigger
-// positions, one exception below), a short strip crosses the sidewalk
-// connecting the lot to the road, sampled from a source patch (tiled
-// vertically) so it reads as a continuation of ground already visible in
-// that lot's own photo rather than a new element.
-// A clean patch of the road's own asphalt texture (no dashed centerline —
-// that sits around source y 225-245 in roadTexture.png, avoided here) so
-// paved crossings read as the literal road continuing, not a lookalike
-// sampled from an unrelated photo. Scaled at ROAD_SCALE (same as the road
-// itself), so the grain size matches exactly; only the width varies.
-const CROSSING_ASPHALT_SRC_Y = 120;
-const CROSSING_ASPHALT_SRC_H = 90;
-function asphaltCrossingWidth(worldWidth: number, srcX: number) {
-  return { image: roadImage, srcX, srcY: CROSSING_ASPHALT_SRC_Y, srcW: Math.round(worldWidth / ROAD_SCALE), srcH: CROSSING_ASPHALT_SRC_H };
-}
-
-// Trailer, Apartment, and Penthouse Apartment are plain placeholder
-// boxes again (see GROUND_IMAGE_LOTS above) — no ground photo for a
-// crossing to connect to, so their driveway crossings (and the seam
-// crossing bridging Penthouse Apartment's photo into the Frame 1 filler
-// image next door) are gone too. Only Mansion and Suburban House, whose
-// north-row gates still need a paved path through the sidewalk, remain.
-const SIDEWALK_CROSSINGS: SidewalkCrossing[] = [
-  // Mansion: north row (side: "north") — its own photo's gate was
-  // deliberately trimmed/padded (see mansionLot.ts) to sit fully visible
-  // right at the sidewalk with no gap, so this needs no extraDepth.
-  // Sized to the gate opening itself (~65 of the
-  // photo's own 500-wide native px, i.e. ~40 at this lot's scale), not the
-  // wider posts-and-lamps span either side of it. Off-center: the gate
-  // itself sits at native x~215 of the photo, not the photo's own
-  // horizontal center (250) — worldX (133, not the lot's own center 150)
-  // accounts for that, at this lot's actual drawn scale (293/500, since
-  // it touchesRight into the Suburban House lot's gap-fill).
-  { worldX: 133, side: "north", width: 40, ...asphaltCrossingWidth(40, 100), roadOverlap: 10 },
-  // Suburban House: same idea — gate sits at native x~360 of its own
-  // photo (right of center, mirroring how the source's garage/driveway
-  // leaned right within each repeat — see suburbanHouseLot.ts), at this
-  // lot's drawn scale (293/500, touchesLeft into Mansion's gap-fill —
-  // Townhouse is a placeholder block again, so no touchesRight).
-  { worldX: 511, side: "north", width: 50, ...asphaltCrossingWidth(50, 400), roadOverlap: 10 },
-];
-
-// Mansion and Suburban House both have an off-center gate (see the
-// crossings above), so their crossing's own worldX already differs from
-// the lot's raw geometric center — but getEntranceScreenPos() was still
-// anchoring the ENTER button to that raw center, leaving it visibly
-// offset from the actual opening. Every other lot's crossing already
-// sits exactly at its lot's center, so only these two need an override.
-const ENTRANCE_WORLD_X_OVERRIDE: Record<string, number> = {
-  Mansion: 133,
-  "Suburban House": 511,
-};
-
-function drawSidewalkCrossings(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  roadY: number,
-  toScreenX: (wx: number) => number,
-) {
-  for (const crossing of SIDEWALK_CROSSINGS) {
-    if (!crossing.image.complete || crossing.image.naturalWidth === 0) continue;
-
-    const screenX = toScreenX(crossing.worldX);
-    if (screenX < -crossing.width || screenX > width + crossing.width) continue;
-
-    const drawX = screenX - crossing.width / 2;
-
-    // dir mirrors every offset below about the road's own edge on this
-    // side: south (dir +1) grows toward larger screen y, away from the
-    // road; north (dir -1) grows toward smaller screen y instead. "near"
-    // is always the road edge itself, "far" always the sidewalk's own far
-    // edge (plus extraDepth, reaching into the lot beyond it).
-    const south = (crossing.side ?? "south") === "south";
-    const dir = south ? 1 : -1;
-    const nearY = roadY + dir * ROAD_HALF_HEIGHT;
-    const sidewalkDepth = south ? SIDEWALK_SOUTH_DEPTH : SIDEWALK_NORTH_DEPTH;
-    const farY = nearY + dir * (sidewalkDepth + (crossing.extraDepth ?? 0));
-    // roadOverlap pushes the near edge back into the road itself, painting
-    // over the road/sidewalk curb line instead of stopping right at it.
-    const rectNear = nearY - dir * (crossing.roadOverlap ?? 0);
-    const rectTop = Math.min(rectNear, farY);
-    const rectBottom = Math.max(rectNear, farY);
-    const tileH = crossing.srcH * (crossing.width / crossing.srcW);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(drawX, rectTop, crossing.width, rectBottom - rectTop);
-    ctx.clip();
-    // Tiles outward from the near (road) edge either way, so the texture
-    // always starts fresh at the road instead of at whichever of rectTop/
-    // rectBottom happens to be numerically smaller.
-    for (let d = 0; ; d += tileH) {
-      const y0 = rectNear + dir * d;
-      const y1 = rectNear + dir * (d + tileH);
-      if (south ? y0 > rectBottom : y0 < rectTop) break;
-      ctx.drawImage(crossing.image, crossing.srcX, crossing.srcY, crossing.srcW, crossing.srcH, drawX, Math.min(y0, y1), crossing.width, tileH);
-    }
-    ctx.restore();
-  }
-}
-
-/**
- * Ground-image lots (Mansion, Suburban House, ...): the photo is a whole
- * small lot, not one building icon, so it's drawn as ground — no border, no
- * name label. Every photo's own native y=0 is its near-road content (the
- * gate, the driveway, ...), extending away from the road as native y
- * increases — dir picks which screen direction "away from the road" is:
- * "down" (south row) grows toward larger screen y, hidden behind the south
- * sidewalk; "up" (north row) grows toward smaller screen y, hidden behind
- * the north sidewalk instead, so the whole thing is just dir="down"
- * mirrored vertically about edgeY. None of this touches the ENTER trigger,
- * which keys off the original edgeY/w the caller (drawBuilding) received —
- * this only moves pixels drawn on top of it.
- */
-function drawGroundImageLot(
-  ctx: CanvasRenderingContext2D,
-  lot: GroundImageLot,
-  x: number,
-  w: number,
-  edgeY: number,
-  canvasHeight: number,
-  dir: "up" | "down" = "down",
-) {
-  // Extend the drawn rect across half the lot gap on whichever side this
-  // lot touches its ground-image neighbor, so there's no gray strip
-  // between them (their outer, non-touching edges are untouched, so the
-  // gap toward every other neighbor is unchanged).
-  let drawX = x;
-  let drawWidth = w;
-  if (lot.touchesLeft) {
-    drawX -= LOT_GAP / 2;
-    drawWidth += LOT_GAP / 2;
-  }
-  if (lot.touchesRight) {
-    drawWidth += LOT_GAP / 2;
-  }
-
-  // Scale by width only — never shrink the buildings in the photo — and
-  // draw the whole photo at that size. If the box is shorter than the
-  // photo at that scale, the far edge is clipped (never the sides, since
-  // the photo is scaled to exactly match the lot's width) rather than
-  // shrinking anything; if the box is taller, the leftover depth beyond
-  // the photo is filled by repeating a building-free ground strip sampled
-  // from the photo itself, instead of a flat-color or blank gap.
-  const scale = drawWidth / lot.imageWidth;
-  const drawH = lot.imageHeight * scale;
-
-  ctx.save();
-  ctx.beginPath();
-
-  if (dir === "down") {
-    const roadTop = edgeY - SIDEWALK_SOUTH_DEPTH;
-    const imgDepth = canvasHeight - roadTop;
-    ctx.rect(drawX, roadTop, drawWidth, imgDepth);
-    ctx.clip();
-    ctx.drawImage(lot.image, drawX, roadTop, drawWidth, drawH);
-    if (drawH < imgDepth) {
-      const farStart = roadTop + drawH;
-      if (lot.groundFallbackColor) {
-        ctx.fillStyle = lot.groundFallbackColor;
-        ctx.fillRect(drawX, farStart, drawWidth, imgDepth - drawH);
-      } else {
-        const stripDrawH = lot.groundStripHeight * scale;
-        for (let cursorY = farStart; cursorY < roadTop + imgDepth; cursorY += stripDrawH) {
-          ctx.drawImage(lot.image, 0, lot.groundStripTop, lot.imageWidth, lot.groundStripHeight, drawX, cursorY, drawWidth, stripDrawH);
-        }
-      }
-    }
-  } else {
-    // Mirror image of the "down" branch: native y=0 (near-road content)
-    // lands at roadBottom, growing upward (toward smaller screen y, away
-    // from the road) as native y increases, clipped to [0, roadBottom]
-    // instead of [roadTop, canvasHeight].
-    const roadBottom = edgeY + SIDEWALK_NORTH_DEPTH;
-    const imgDepth = roadBottom;
-    ctx.rect(drawX, 0, drawWidth, imgDepth);
-    ctx.clip();
-    ctx.drawImage(lot.image, drawX, roadBottom - drawH, drawWidth, drawH);
-    if (drawH < imgDepth) {
-      const farEnd = roadBottom - drawH; // leftover band from 0 to here, beyond the photo's own far edge
-      if (lot.groundFallbackColor) {
-        ctx.fillStyle = lot.groundFallbackColor;
-        ctx.fillRect(drawX, 0, drawWidth, farEnd);
-      } else {
-        const stripDrawH = lot.groundStripHeight * scale;
-        for (let cursorY = farEnd; cursorY > 0; cursorY -= stripDrawH) {
-          ctx.drawImage(lot.image, 0, lot.groundStripTop, lot.imageWidth, lot.groundStripHeight, drawX, cursorY - stripDrawH, drawWidth, stripDrawH);
-        }
-      }
-    }
-  }
-  ctx.restore();
 }
 
 function drawFillerBuilding(
